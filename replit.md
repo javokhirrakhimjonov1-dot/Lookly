@@ -1,6 +1,6 @@
-# [Project name]
+# Lookly
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A fashion-tech mobile app for Tashkent that helps users organize their wardrobe, get weather-based outfit suggestions, discover local brand discounts, and share their Daily Look with friends.
 
 ## Run & Operate
 
@@ -14,6 +14,7 @@ _Replace the heading above with the project's name, and this line with one sente
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
+- Mobile: Expo (React Native), expo-router
 - API: Express 5
 - DB: PostgreSQL + Drizzle ORM
 - Validation: Zod (`zod/v4`), `drizzle-zod`
@@ -22,23 +23,39 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/lookly/` — Expo mobile app
+- `artifacts/lookly/app/(tabs)/` — Tab screens: Home, Wardrobe, Looks, Deals
+- `artifacts/lookly/app/add-item.tsx` — Add clothing item (modal)
+- `artifacts/lookly/app/profile.tsx` — Profile & settings
+- `artifacts/lookly/contexts/` — WardrobeContext, WeatherContext, SocialContext, DealsContext
+- `artifacts/lookly/components/` — WeatherWidget, OutfitSuggestion, ClothingItemCard, LookCard, DealCard, CategoryPill
+- `artifacts/lookly/constants/colors.ts` — Design tokens (warm cream/espresso palette)
+- `artifacts/api-server/` — Express API server
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Frontend-only for first build: all data persisted in AsyncStorage via context providers, no backend required
+- Weather data fetched live from Open-Meteo API (no key needed) for Tashkent (lat 41.2995, lon 69.2401)
+- Deals data is hardcoded with real Tashkent mall/brand names (Zara, Mango, H&M, Gloria Jeans, etc.)
+- Social feed seeded with Uzbek names for local feel; user posts stored in AsyncStorage
+- Color palette: warm cream (#FAF8F5) background, espresso (#1C1512) primary, caramel (#C8906A) accent
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- **Wardrobe organizer**: Add items by category, color, and season; view filtered by category
+- **Outfit suggestions**: Weather-based daily outfit recommendations powered by live Tashkent weather
+- **Local deals**: Discount alerts from Tashkent brands (Zara, Mango, H&M, Gloria Jeans, Reserved, etc.) with urgency indicators
+- **Daily Look**: Post looks with weather context and tags; like and browse friends' looks
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- App targets Tashkent, Uzbekistan — local brand names and weather location are fixed to Tashkent
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Weather uses Open-Meteo free API — no key needed; fetches on app start
+- expo-image-picker is pre-installed but photo upload is stubbed (coming soon) in the Looks post modal
+- Deals data is static; connect to a backend API to make it dynamic
 
 ## Pointers
 

@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/"
+title = "Lookly"
+version = "1.0.0"
+id = "artifacts/lookly"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/" ]
+localPort = 19224
+
+[services.development]
+run = "pnpm --filter @workspace/lookly run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/lookly", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/lookly", "run", "serve" ]
+
+[services.env]
+PORT = "19224"
+BASE_PATH = "/"
