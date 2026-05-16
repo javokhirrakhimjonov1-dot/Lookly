@@ -13,8 +13,13 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import CategoryPill from "@/components/CategoryPill";
 import ClothingItemCard from "@/components/ClothingItemCard";
+import ItemDetailSheet from "@/components/ItemDetailSheet";
 import { useColors } from "@/hooks/useColors";
-import { type ClothingCategory, useWardrobe } from "@/contexts/WardrobeContext";
+import {
+  type ClothingCategory,
+  type ClothingItem,
+  useWardrobe,
+} from "@/contexts/WardrobeContext";
 
 const CATEGORIES: { key: "all" | ClothingCategory; label: string }[] = [
   { key: "all", label: "All" },
@@ -31,6 +36,7 @@ export default function WardrobeScreen() {
   const insets = useSafeAreaInsets();
   const { items, removeItem, isLoading } = useWardrobe();
   const [activeCategory, setActiveCategory] = useState<"all" | ClothingCategory>("all");
+  const [selectedItem, setSelectedItem] = useState<ClothingItem | null>(null);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -42,6 +48,11 @@ export default function WardrobeScreen() {
   const handleDelete = (id: string) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     removeItem(id);
+  };
+
+  const handleItemPress = (item: ClothingItem) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedItem(item);
   };
 
   return (
@@ -129,15 +140,30 @@ export default function WardrobeScreen() {
             </TouchableOpacity>
           </View>
         ) : (
-          filtered.map((item) => (
-            <ClothingItemCard
-              key={item.id}
-              item={item}
-              onDelete={() => handleDelete(item.id)}
-            />
-          ))
+          <>
+            <Text style={[styles.tapHint, { color: colors.mutedForeground }]}>
+              Tap any item to style it with AI
+            </Text>
+            {filtered.map((item) => (
+              <ClothingItemCard
+                key={item.id}
+                item={item}
+                onPress={() => handleItemPress(item)}
+                onDelete={() => handleDelete(item.id)}
+              />
+            ))}
+          </>
         )}
       </ScrollView>
+
+      <ItemDetailSheet
+        item={selectedItem}
+        onClose={() => setSelectedItem(null)}
+        onDelete={(id) => {
+          handleDelete(id);
+          setSelectedItem(null);
+        }}
+      />
     </View>
   );
 }
@@ -197,6 +223,12 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 18,
     paddingTop: 16,
+    gap: 0,
+  },
+  tapHint: {
+    fontSize: 12,
+    fontWeight: "500",
+    marginBottom: 12,
   },
   empty: {
     alignItems: "center",
