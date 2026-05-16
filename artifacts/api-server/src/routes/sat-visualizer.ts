@@ -5,39 +5,126 @@ import os from "node:os";
 import { randomUUID } from "node:crypto";
 import Ffmpeg from "fluent-ffmpeg";
 import { openai, generateImageBuffer } from "@workspace/integrations-openai-ai-server";
+import { db, satVisualizerJobs, type SatVisualizerScene } from "@workspace/db";
+import { eq, lt } from "drizzle-orm";
+import {
+  serverUploadFile,
+  serverDownloadFile,
+  serverDeleteFile,
+  satVisualizerVideoPath,
+} from "../lib/objectStorage";
 
 const router = Router();
 
-interface Scene {
-  index: number;
-  title: string;
-  description: string;
-  caption: string;
-}
-
+type Scene = SatVisualizerScene;
 type JobStatus = "pending" | "processing" | "done" | "error";
 
-interface Job {
-  jobId: string;
-  status: JobStatus;
-  progress: number;
-  step: string | null;
-  scenes: Scene[];
-  error: string | null;
-  videoPath: string | null;
-  createdAt: number;
+const JOB_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+
+// ---------------------------------------------------------------------------
+// DB helpers — all updates use table column types directly (no casts)
+// ---------------------------------------------------------------------------
+
+async function updateJob(
+  jobId: string,
+  updates: Partial<{
+    status: JobStatus;
+    progress: number;
+    step: string | null;
+    scenes: Scene[];
+    error: string | null;
+    videoObjectPath: string | null;
+  }>
+) {
+  await db.update(satVisualizerJobs).set(updates).where(eq(satVisualizerJobs.jobId, jobId));
 }
 
-const jobs = new Map<string, Job>();
+// ---------------------------------------------------------------------------
+// Startup: recover any jobs that were left in-flight when the server last died
+// ---------------------------------------------------------------------------
 
-const JOBS_DIR = path.join(os.tmpdir(), "sat-visualizer-jobs");
-if (!fs.existsSync(JOBS_DIR)) {
-  fs.mkdirSync(JOBS_DIR, { recursive: true });
+async function recoverStuckJobs() {
+  // Select both pending and processing before overwriting them
+  const stuck = await db
+    .select({ jobId: satVisualizerJobs.jobId })
+    .from(satVisualizerJobs)
+    .where(eq(satVisualizerJobs.status, "pending"));
+
+  const inProgress = await db
+    .select({ jobId: satVisualizerJobs.jobId })
+    .from(satVisualizerJobs)
+    .where(eq(satVisualizerJobs.status, "processing"));
+
+  const recoveryUpdate = {
+    status: "error" as JobStatus,
+    step: null,
+    error: "Server restarted during generation. Please try again.",
+  };
+
+  await db
+    .update(satVisualizerJobs)
+    .set(recoveryUpdate)
+    .where(eq(satVisualizerJobs.status, "pending"));
+
+  await db
+    .update(satVisualizerJobs)
+    .set(recoveryUpdate)
+    .where(eq(satVisualizerJobs.status, "processing"));
+
+  const total = stuck.length + inProgress.length;
+  if (total > 0) {
+    // Logger isn't available here (no req context), so use console.warn which
+    // pino captures. Non-fatal — server boot continues regardless.
+    console.warn(
+      `[sat-visualizer] Marked ${total} stuck job(s) as error on startup ` +
+        `(${stuck.length} pending, ${inProgress.length} processing)`
+    );
+  }
 }
 
-function updateJob(job: Job, updates: Partial<Job>) {
-  Object.assign(job, updates);
+// ---------------------------------------------------------------------------
+// Cleanup: delete expired jobs from DB AND their videos from object storage
+// ---------------------------------------------------------------------------
+
+async function purgeExpiredJobs() {
+  const now = new Date();
+  const expired = await db
+    .select({ jobId: satVisualizerJobs.jobId, videoObjectPath: satVisualizerJobs.videoObjectPath })
+    .from(satVisualizerJobs)
+    .where(lt(satVisualizerJobs.expiresAt, now));
+
+  for (const job of expired) {
+    if (job.videoObjectPath) {
+      await serverDeleteFile(job.videoObjectPath).catch((err: unknown) => {
+        console.warn(
+          `[sat-visualizer] Failed to delete GCS file for job ${job.jobId}:`,
+          err
+        );
+      });
+    }
+    await db.delete(satVisualizerJobs).where(eq(satVisualizerJobs.jobId, job.jobId));
+  }
 }
+
+// Run recovery and an initial cleanup at module load, then schedule ongoing cleanup
+recoverStuckJobs().catch((err: unknown) => {
+  console.warn("[sat-visualizer] Startup recovery failed:", err);
+});
+
+purgeExpiredJobs().catch((err: unknown) => {
+  console.warn("[sat-visualizer] Startup cleanup failed:", err);
+});
+
+setInterval(() => {
+  purgeExpiredJobs().catch((err: unknown) => {
+    console.warn("[sat-visualizer] Periodic cleanup failed:", err);
+  });
+}, CLEANUP_INTERVAL_MS);
+
+// ---------------------------------------------------------------------------
+// AI helpers
+// ---------------------------------------------------------------------------
 
 async function breakIntoScenes(passage: string): Promise<Scene[]> {
   const response = await openai.chat.completions.create({
@@ -110,7 +197,15 @@ async function generateSceneImage(scene: Scene, jobDir: string): Promise<string>
   return imagePath;
 }
 
-function wrapText(ctx: { measureText: (t: string) => { width: number } }, text: string, maxWidth: number): string[] {
+// ---------------------------------------------------------------------------
+// Image processing helpers
+// ---------------------------------------------------------------------------
+
+function wrapText(
+  ctx: { measureText: (t: string) => { width: number } },
+  text: string,
+  maxWidth: number
+): string[] {
   const words = text.split(" ");
   const lines: string[] = [];
   let current = "";
@@ -184,7 +279,6 @@ async function assembleVideo(imagePaths: string[], outputPath: string): Promise<
     const height = 1024;
     const n = imagePaths.length;
 
-    // Each input is a looped still held for sceneDuration seconds
     imagePaths.forEach((imgPath) => {
       command.addInput(imgPath);
       command.inputOptions([`-loop 1`, `-t ${sceneDuration}`]);
@@ -192,20 +286,16 @@ async function assembleVideo(imagePaths: string[], outputPath: string): Promise<
 
     const filterParts: string[] = [];
 
-    // Step 1: scale/pad/format every input to a uniform stream [v0]..[vN-1]
     imagePaths.forEach((_, i) => {
       filterParts.push(
         `[${i}:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,` +
-        `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps},format=yuv420p[v${i}]`
+          `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps},format=yuv420p[v${i}]`
       );
     });
 
     if (n === 1) {
-      // Single scene — no transitions needed
       filterParts.push(`[v0]copy[outv]`);
     } else {
-      // Step 2: chain xfade filters: [v0][v1]→[xf0], [xf0][v2]→[xf1], …
-      // offset for xfade i = (i+1) * sceneDuration - (i+1) * transitionDuration
       for (let i = 0; i < n - 1; i++) {
         const leftLabel = i === 0 ? `[v0]` : `[xf${i - 1}]`;
         const rightLabel = `[v${i + 1}]`;
@@ -234,45 +324,60 @@ async function assembleVideo(imagePaths: string[], outputPath: string): Promise<
   });
 }
 
-async function processJob(job: Job, passage: string) {
-  const jobDir = path.join(JOBS_DIR, job.jobId);
+// ---------------------------------------------------------------------------
+// Job processing
+// ---------------------------------------------------------------------------
+
+async function processJob(jobId: string, passage: string) {
+  const jobDir = path.join(os.tmpdir(), "sat-visualizer-jobs", jobId);
   fs.mkdirSync(jobDir, { recursive: true });
 
   try {
-    updateJob(job, { status: "processing", step: "Analyzing passage...", progress: 5 });
+    await updateJob(jobId, { status: "processing", step: "Analyzing passage...", progress: 5 });
 
     const scenes = await breakIntoScenes(passage);
-    updateJob(job, { scenes, step: "Generating scene images...", progress: 15 });
+    await updateJob(jobId, { scenes, step: "Generating scene images...", progress: 15 });
 
     const captionedPaths: string[] = [];
     for (let i = 0; i < scenes.length; i++) {
       const scene = scenes[i];
       const progressBase = 15 + Math.round((i / scenes.length) * 60);
-      updateJob(job, { step: `Generating image ${i + 1} of ${scenes.length}...`, progress: progressBase });
+      await updateJob(jobId, {
+        step: `Generating image ${i + 1} of ${scenes.length}...`,
+        progress: progressBase,
+      });
 
       const rawPath = path.join(jobDir, `raw_${i}.png`);
       const captionedPath = path.join(jobDir, `captioned_${i}.png`);
 
       await generateSceneImage(scene, jobDir);
-      fs.renameSync(path.join(jobDir, `scene_${i}.png`), rawPath);
+      fs.renameSync(path.join(jobDir, `scene_${scene.index}.png`), rawPath);
       await addCaptionToImage(rawPath, scene.caption, scene.title, captionedPath);
       captionedPaths.push(captionedPath);
     }
 
-    updateJob(job, { step: "Assembling video...", progress: 80 });
+    await updateJob(jobId, { step: "Assembling video...", progress: 80 });
 
-    const videoPath = path.join(jobDir, "output.mp4");
-    await assembleVideo(captionedPaths, videoPath);
+    const localVideoPath = path.join(jobDir, "output.mp4");
+    await assembleVideo(captionedPaths, localVideoPath);
 
-    updateJob(job, {
+    await updateJob(jobId, { step: "Uploading video...", progress: 90 });
+
+    const storagePath = satVisualizerVideoPath(jobId);
+    const videoObjectPath = await serverUploadFile(localVideoPath, storagePath, "video/mp4");
+
+    // Clean up local tmp files — non-fatal if it fails
+    fs.rmSync(jobDir, { recursive: true, force: true });
+
+    await updateJob(jobId, {
       status: "done",
       progress: 100,
       step: "Done!",
-      videoPath,
+      videoObjectPath,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    updateJob(job, {
+    await updateJob(jobId, {
       status: "error",
       progress: 0,
       step: null,
@@ -280,6 +385,10 @@ async function processJob(job: Job, passage: string) {
     });
   }
 }
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
 
 router.post("/sat-visualizer/extract-text", async (req, res) => {
   const { imageBase64, mimeType } = req.body as {
@@ -294,7 +403,9 @@ router.post("/sat-visualizer/extract-text", async (req, res) => {
 
   const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
   if (!allowedTypes.includes(mimeType)) {
-    res.status(400).json({ error: "Unsupported image type. Use JPEG, PNG, WebP, or GIF." });
+    res
+      .status(400)
+      .json({ error: "Unsupported image type. Use JPEG, PNG, WebP, or GIF." });
     return;
   }
 
@@ -357,30 +468,31 @@ router.post("/sat-visualizer/visualize", async (req, res) => {
   }
 
   const jobId = randomUUID();
-  const job: Job = {
+  const expiresAt = new Date(Date.now() + JOB_TTL_MS);
+
+  await db.insert(satVisualizerJobs).values({
     jobId,
     status: "pending",
     progress: 0,
     step: "Starting...",
     scenes: [],
     error: null,
-    videoPath: null,
-    createdAt: Date.now(),
-  };
-  jobs.set(jobId, job);
-
-  setImmediate(() => void processJob(job, trimmed));
-
-  res.json({
-    jobId,
-    status: job.status,
-    scenes: job.scenes,
+    videoObjectPath: null,
+    expiresAt,
   });
+
+  setImmediate(() => void processJob(jobId, trimmed));
+
+  res.json({ jobId, status: "pending", scenes: [] });
 });
 
-router.get("/sat-visualizer/status/:jobId", (req, res) => {
+router.get("/sat-visualizer/status/:jobId", async (req, res) => {
   const { jobId } = req.params;
-  const job = jobs.get(jobId);
+
+  const [job] = await db
+    .select()
+    .from(satVisualizerJobs)
+    .where(eq(satVisualizerJobs.jobId, jobId));
 
   if (!job) {
     res.status(404).json({ error: "Job not found" });
@@ -397,25 +509,29 @@ router.get("/sat-visualizer/status/:jobId", (req, res) => {
   });
 });
 
-router.get("/sat-visualizer/video/:jobId", (req, res) => {
+router.get("/sat-visualizer/video/:jobId", async (req, res) => {
   const { jobId } = req.params;
-  const job = jobs.get(jobId);
 
-  if (!job || job.status !== "done" || !job.videoPath) {
+  const [job] = await db
+    .select()
+    .from(satVisualizerJobs)
+    .where(eq(satVisualizerJobs.jobId, jobId));
+
+  if (!job || job.status !== "done" || !job.videoObjectPath) {
     res.status(404).json({ error: "Video not found or not ready" });
     return;
   }
 
-  if (!fs.existsSync(job.videoPath)) {
-    res.status(404).json({ error: "Video file not found" });
-    return;
+  try {
+    const videoBuffer = await serverDownloadFile(job.videoObjectPath);
+    res.setHeader("Content-Type", "video/mp4");
+    res.setHeader("Content-Length", videoBuffer.length);
+    res.setHeader("Content-Disposition", `inline; filename="visualization.mp4"`);
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.send(videoBuffer);
+  } catch {
+    res.status(404).json({ error: "Video file not found in storage" });
   }
-
-  const stat = fs.statSync(job.videoPath);
-  res.setHeader("Content-Type", "video/mp4");
-  res.setHeader("Content-Length", stat.size);
-  res.setHeader("Content-Disposition", `inline; filename="visualization.mp4"`);
-  fs.createReadStream(job.videoPath).pipe(res);
 });
 
 export default router;
