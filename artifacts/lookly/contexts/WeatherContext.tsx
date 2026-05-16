@@ -1,5 +1,4 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Location from "expo-location";
 import React, {
   createContext,
   useCallback,
@@ -114,32 +113,10 @@ export function WeatherProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     setError(null);
     try {
-      let lat = TASHKENT.lat;
-      let lon = TASHKENT.lon;
-      let resolvedCity = "Tashkent";
+      const lat = TASHKENT.lat;
+      const lon = TASHKENT.lon;
 
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === "granted") {
-        try {
-          const loc = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
-          });
-          lat = loc.coords.latitude;
-          lon = loc.coords.longitude;
-          try {
-            const geo = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
-            if (geo[0]?.city) resolvedCity = geo[0].city;
-            else if (geo[0]?.district) resolvedCity = geo[0].district;
-          } catch {
-            resolvedCity = "Tashkent";
-          }
-        } catch {
-          lat = TASHKENT.lat;
-          lon = TASHKENT.lon;
-        }
-      }
-
-      setCity(resolvedCity);
+      setCity("Tashkent");
 
       const currentUrl =
         `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
