@@ -319,7 +319,7 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
 export default function AddItemScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { addItem } = useWardrobe();
+  const { addItem, addBulkItems } = useWardrobe();
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState<ClothingCategory | null>(null);
@@ -381,20 +381,24 @@ export default function AddItemScreen() {
     setShowPicker(false);
     setIsSaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    for (const item of items) {
-      const color = resolveColor(item.colorName, item.colorHex);
-      await addItem({
-        name: item.name,
-        category: item.category,
-        color: color.name,
-        colorHex: color.hex,
-        seasons: item.seasons.filter((s): s is Season => ["spring", "summer", "fall", "winter"].includes(s)),
-        fabricWeight: item.fabricWeight ?? "medium",
-        isWorkwear: false,
-        tags: item.tags.length > 0 ? item.tags : [item.category],
-        imageUri: scannedImage ?? undefined,
-      });
-    }
+    await addBulkItems(
+      items.map((item) => {
+        const color = resolveColor(item.colorName, item.colorHex);
+        return {
+          name: item.name,
+          category: item.category,
+          color: color.name,
+          colorHex: color.hex,
+          seasons: item.seasons.filter((s): s is Season =>
+            ["spring", "summer", "fall", "winter"].includes(s)
+          ),
+          fabricWeight: item.fabricWeight ?? "medium",
+          isWorkwear: false,
+          tags: item.tags.length > 0 ? item.tags : [item.category],
+          imageUri: scannedImage ?? undefined,
+        };
+      })
+    );
     setIsSaving(false);
     router.back();
   };
@@ -450,10 +454,43 @@ export default function AddItemScreen() {
       quality: 0.7,
       base64: true,
       allowsEditing: false,
+      allowsMultipleSelection: true,
     });
-    if (result.canceled || !result.assets[0] || !result.assets[0].base64) return;
-    const asset = result.assets[0];
-    await runScan(asset.base64!, asset.mimeType ?? "image/jpeg", asset.uri);
+    if (result.canceled || result.assets.length === 0) return;
+
+    if (result.assets.length === 1) {
+      const asset = result.assets[0]!;
+      if (!asset.base64) return;
+      await runScan(asset.base64, asset.mimeType ?? "image/jpeg", asset.uri);
+      return;
+    }
+
+    setIsScanning(true);
+    setScanDone(false);
+    setScannedImage(result.assets[0]!.uri);
+    const allItems: DetectedItem[] = [];
+    for (const asset of result.assets) {
+      if (!asset.base64) continue;
+      try {
+        const found = await scanClothingItems(asset.base64, asset.mimeType ?? "image/jpeg");
+        allItems.push(...found);
+      } catch {}
+    }
+    setIsScanning(false);
+
+    if (allItems.length === 0) {
+      Alert.alert("Nothing detected", "No clothing items were found in the selected photos. Try clearer images or fill in manually.");
+      setScannedImage(null);
+      return;
+    }
+
+    setDetectedItems(allItems);
+    if (allItems.length === 1) {
+      applyDetectedItem(allItems[0]!);
+    } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setShowPicker(true);
+    }
   };
 
   const handleCameraCapture = async () => {

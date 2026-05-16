@@ -45,6 +45,7 @@ export interface SavedOutfit {
 interface WardrobeContextValue {
   items: ClothingItem[];
   addItem: (item: Omit<ClothingItem, "id" | "createdAt" | "timesWorn">) => Promise<void>;
+  addBulkItems: (items: Omit<ClothingItem, "id" | "createdAt" | "timesWorn">[]) => Promise<void>;
   removeItem: (id: string) => Promise<void>;
   updateItem: (id: string, updates: Partial<ClothingItem>) => Promise<void>;
   markWorn: (ids: string[]) => Promise<void>;
@@ -104,11 +105,31 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
         timesWorn: 0,
         createdAt: new Date().toISOString(),
       };
-      const next = [newItem, ...items];
-      setItems(next);
-      await persistItems(next);
+      setItems((prev) => {
+        const next = [newItem, ...prev];
+        persistItems(next);
+        return next;
+      });
     },
-    [items, persistItems]
+    [persistItems]
+  );
+
+  const addBulkItems = useCallback(
+    async (newItems: Omit<ClothingItem, "id" | "createdAt" | "timesWorn">[]) => {
+      const now = Date.now();
+      const built: ClothingItem[] = newItems.map((item, i) => ({
+        ...item,
+        id: (now + i).toString() + Math.random().toString(36).slice(2, 7),
+        timesWorn: 0,
+        createdAt: new Date().toISOString(),
+      }));
+      setItems((prev) => {
+        const next = [...built, ...prev];
+        persistItems(next);
+        return next;
+      });
+    },
+    [persistItems]
   );
 
   const removeItem = useCallback(
@@ -195,6 +216,7 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
       value={{
         items,
         addItem,
+        addBulkItems,
         removeItem,
         updateItem,
         markWorn,
