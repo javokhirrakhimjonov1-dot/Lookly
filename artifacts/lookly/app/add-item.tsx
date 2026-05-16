@@ -112,16 +112,17 @@ async function scanClothingItems(base64: string, mimeType: string): Promise<Dete
 }
 
 async function removeBg(
-  base64: string,
-  mimeType: string,
-  itemName?: string,
-  category?: string,
+  itemName: string,
+  category: string,
+  colorName?: string,
+  colorHex?: string,
+  material?: string,
 ): Promise<string | null> {
   try {
     const res = await fetch(`${API_BASE}/remove-bg`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ imageBase64: base64, mimeType, itemName, category }),
+      body: JSON.stringify({ itemName, category, colorName, colorHex, material }),
     });
     if (!res.ok) return null;
     const data = await res.json() as { image?: string };
@@ -462,13 +463,17 @@ export default function AddItemScreen() {
         setShowPicker(true);
       }
 
-      const firstName = taggedItems[0]?.name;
-      const firstCat = taggedItems[0]?.category;
-      removeBg(base64, mimeType, firstName, firstCat).then((cleanUri) => {
-        if (cleanUri) {
-          setScannedImage(cleanUri);
-          setDetectedItems((prev) => prev.map((i) => ({ ...i, _photoUri: cleanUri })));
-        }
+      taggedItems.forEach((item, idx) => {
+        const color = resolveColor(item.colorName, item.colorHex);
+        removeBg(item.name, item.category, color.name, color.hex, item.material).then((cleanUri) => {
+          if (!cleanUri) return;
+          setDetectedItems((prev) => {
+            const next = [...prev];
+            if (next[idx]) next[idx] = { ...next[idx]!, _photoUri: cleanUri };
+            return next;
+          });
+          if (idx === 0) setScannedImage(cleanUri);
+        });
       });
     } catch {
       Alert.alert("Scan failed", "Could not identify items. Please fill in the details manually.");

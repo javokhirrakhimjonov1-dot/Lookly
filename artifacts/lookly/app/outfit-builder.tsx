@@ -102,9 +102,10 @@ interface SlotCardProps {
   assignedItem: ClothingItem | null;
   onClear: () => void;
   flex?: number;
+  isLocked?: boolean;
 }
 
-function SlotCard({ slotKey: _slotKey, label, icon, assignedItem, onClear, flex = 1 }: SlotCardProps) {
+function SlotCard({ slotKey: _slotKey, label, icon, assignedItem, onClear, flex = 1, isLocked }: SlotCardProps) {
   const colors = useColors();
   const scale = useSharedValue(1);
 
@@ -158,6 +159,24 @@ function SlotCard({ slotKey: _slotKey, label, icon, assignedItem, onClear, flex 
               {label}
             </Text>
           </View>
+          {isLocked && (
+            <View
+              style={[
+                styles.lockBadge,
+                {
+                  backgroundColor: isLight(assignedItem.colorHex)
+                    ? "rgba(28,21,18,0.22)"
+                    : "rgba(250,248,245,0.25)",
+                },
+              ]}
+            >
+              <Feather
+                name="lock"
+                size={9}
+                color={isLight(assignedItem.colorHex) ? "#1C1512" : "#FAF8F5"}
+              />
+            </View>
+          )}
           <TouchableOpacity
             onPress={onClear}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -270,6 +289,9 @@ export default function OutfitBuilderScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
   const [assigned, setAssigned] = useState<Partial<Record<OutfitSlotKey, ClothingItem>>>({});
+  const [lockedSlots, setLockedSlots] = useState<Set<OutfitSlotKey>>(new Set());
+  const [lastAutoIds, setLastAutoIds] = useState<Set<string>>(new Set());
+  const [hasDoneAuto, setHasDoneAuto] = useState(false);
   const [filterCat, setFilterCat] = useState<"all" | ClothingCategory>("all");
 
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -287,8 +309,10 @@ export default function OutfitBuilderScreen() {
       if (prev[slotKey]?.id === item.id) {
         const next = { ...prev };
         delete next[slotKey];
+        setLockedSlots((ls) => { const n = new Set(ls); n.delete(slotKey); return n; });
         return next;
       }
+      setLockedSlots((ls) => new Set([...ls, slotKey]));
       return { ...prev, [slotKey]: item };
     });
   }, []);
@@ -300,12 +324,14 @@ export default function OutfitBuilderScreen() {
       delete next[slotKey];
       return next;
     });
+    setLockedSlots((ls) => { const n = new Set(ls); n.delete(slotKey); return n; });
   }, []);
 
   const handleAutoSuggest = () => {
     const season = getCurrentSeason();
-    const seasonItems = items.filter((i) => i.seasons.includes(season));
-    const next: Partial<Record<OutfitSlotKey, ClothingItem>> = {};
+    const next = { ...assigned };
+    const newAutoIds = new Set<string>();
+
     for (const cat of [
       "tops",
       "bottoms",
@@ -314,9 +340,26 @@ export default function OutfitBuilderScreen() {
       "accessories",
       "dresses",
     ] as ClothingCategory[]) {
-      const match = seasonItems.find((i) => i.category === cat);
-      if (match) next[categoryToSlotKey(cat)] = match;
+      const slotKey = categoryToSlotKey(cat);
+      if (lockedSlots.has(slotKey)) {
+        if (next[slotKey]) newAutoIds.delete(next[slotKey]!.id);
+        continue;
+      }
+
+      const all = items.filter((i) => i.category === cat);
+      if (all.length === 0) continue;
+
+      const seasonFresh = all.filter((i) => i.seasons.includes(season) && !lastAutoIds.has(i.id));
+      const allFresh = all.filter((i) => !lastAutoIds.has(i.id));
+      const pool = seasonFresh.length > 0 ? seasonFresh : allFresh.length > 0 ? allFresh : all;
+
+      const pick = pool[Math.floor(Math.random() * pool.length)]!;
+      next[slotKey] = pick;
+      newAutoIds.add(pick.id);
     }
+
+    setLastAutoIds(newAutoIds);
+    setHasDoneAuto(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setAssigned(next);
   };
@@ -324,6 +367,9 @@ export default function OutfitBuilderScreen() {
   const handleClearAll = () => {
     setAssigned({});
     setPreviewImage(null);
+    setLockedSlots(new Set());
+    setLastAutoIds(new Set());
+    setHasDoneAuto(false);
   };
 
   const handleGeneratePreview = async (forceRegenerate = false) => {
@@ -439,8 +485,10 @@ export default function OutfitBuilderScreen() {
           onPress={handleAutoSuggest}
           style={[styles.autoBtn, { backgroundColor: colors.secondary, marginLeft: 8 }]}
         >
-          <Feather name="zap" size={14} color={colors.accent} />
-          <Text style={[styles.autoBtnText, { color: colors.accent }]}>Auto</Text>
+          <Feather name={hasDoneAuto ? "refresh-cw" : "zap"} size={14} color={colors.accent} />
+          <Text style={[styles.autoBtnText, { color: colors.accent }]}>
+            {hasDoneAuto ? "Reshuffle" : "Auto"}
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -464,6 +512,7 @@ export default function OutfitBuilderScreen() {
               icon="layers"
               assignedItem={assigned["outerwear"] ?? null}
               onClear={() => clearSlot("outerwear")}
+              isLocked={lockedSlots.has("outerwear")}
             />
             <SlotCard
               slotKey="tops"
@@ -471,6 +520,7 @@ export default function OutfitBuilderScreen() {
               icon="wind"
               assignedItem={hasDress ? null : (assigned["tops"] ?? null)}
               onClear={() => clearSlot("tops")}
+              isLocked={lockedSlots.has("tops")}
             />
           </View>
 
@@ -482,6 +532,7 @@ export default function OutfitBuilderScreen() {
                 icon="star"
                 assignedItem={assigned["dresses"] ?? null}
                 onClear={() => clearSlot("dresses")}
+                isLocked={lockedSlots.has("dresses")}
               />
             </View>
           ) : (
@@ -492,6 +543,7 @@ export default function OutfitBuilderScreen() {
                 icon="minus"
                 assignedItem={assigned["bottoms"] ?? null}
                 onClear={() => clearSlot("bottoms")}
+                isLocked={lockedSlots.has("bottoms")}
               />
             </View>
           )}
@@ -503,6 +555,7 @@ export default function OutfitBuilderScreen() {
               icon="chevrons-up"
               assignedItem={assigned["shoes"] ?? null}
               onClear={() => clearSlot("shoes")}
+              isLocked={lockedSlots.has("shoes")}
             />
             <SlotCard
               slotKey="accessories"
@@ -510,6 +563,7 @@ export default function OutfitBuilderScreen() {
               icon="circle"
               assignedItem={assigned["accessories"] ?? null}
               onClear={() => clearSlot("accessories")}
+              isLocked={lockedSlots.has("accessories")}
             />
           </View>
 
@@ -995,6 +1049,16 @@ const styles = StyleSheet.create({
   slotFilledContent: { flex: 1, padding: 10, justifyContent: "flex-end" },
   slotFilledName: { fontSize: 13, fontWeight: "700", lineHeight: 16 },
   slotFilledSub: { fontSize: 10, fontWeight: "500", marginTop: 2 },
+  lockBadge: {
+    position: "absolute",
+    top: 8,
+    left: 8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   clearBtn: {
     position: "absolute",
     top: 8,
