@@ -102,7 +102,7 @@ router.post("/outfit-preview", async (req, res) => {
 
   let buffer: Buffer;
   try {
-    buffer = await generateImageBuffer(prompt, "1024x1536");
+    buffer = await generateImageBuffer(prompt, "1024x1024");
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     const isQuota =

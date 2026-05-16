@@ -15,6 +15,7 @@ export const satVisualizerJobs = pgTable("sat_visualizer_jobs", {
   progress: integer("progress").notNull().default(0),
   step: text("step"),
   scenes: jsonb("scenes").notNull().default([]).$type<SatVisualizerScene[]>(),
+  thumbnails: jsonb("thumbnails").notNull().default([]).$type<string[]>(),
   error: text("error"),
   videoObjectPath: text("video_object_path"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

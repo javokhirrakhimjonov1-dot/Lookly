@@ -92,6 +92,8 @@ export interface JobStatus {
      */
   step?: string | null;
   scenes?: Scene[];
+  /** Base64-encoded JPEG thumbnail for each scene as it is generated (one per completed scene) */
+  thumbnails?: string[];
   /**
      * Error message if status is error
      * @nullable

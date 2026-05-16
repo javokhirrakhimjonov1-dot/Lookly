@@ -247,6 +247,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Scene"
+        thumbnails:
+          type: array
+          items:
+            type: string
+          description: Base64-encoded JPEG thumbnail for each scene as it is generated (one per completed scene)
         error:
           type: ["string", "null"]
           description: Error message if status is error

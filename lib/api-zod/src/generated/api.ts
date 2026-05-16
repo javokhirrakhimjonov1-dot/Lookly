@@ -74,6 +74,7 @@ export const GetVisualizationStatusResponse = zod.object({
   "description": zod.string().describe('Visual description for image generation'),
   "caption": zod.string().describe('Caption text to overlay on the video')
 })).optional(),
+  "thumbnails": zod.array(zod.string()).optional().describe('Base64-encoded JPEG thumbnail for each scene as it is generated (one per completed scene)'),
   "error": zod.string().nullish().describe('Error message if status is error')
 })
 

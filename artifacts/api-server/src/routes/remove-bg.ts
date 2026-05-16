@@ -30,7 +30,7 @@ router.post("/remove-bg", async (req, res) => {
       n: 1,
     });
 
-    const b64 = (response.data[0] as { b64_json?: string } | undefined)?.b64_json;
+    const b64 = (response.data?.[0] as { b64_json?: string } | undefined)?.b64_json;
     if (!b64) {
       res.status(500).json({ error: "No image data returned" });
       return;

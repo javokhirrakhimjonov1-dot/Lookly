@@ -33,6 +33,7 @@ async function updateJob(
     progress: number;
     step: string | null;
     scenes: Scene[];
+    thumbnails: string[];
     error: string | null;
     videoObjectPath: string | null;
   }>
@@ -223,6 +224,28 @@ function wrapText(
   return lines;
 }
 
+async function createThumbnailBase64(imagePath: string): Promise<string> {
+  const { createCanvas: makeCanvas, loadImage } = await import("canvas");
+  const THUMB_SIZE = 400;
+
+  const img = await loadImage(imagePath);
+  const canvas = makeCanvas(THUMB_SIZE, THUMB_SIZE);
+  const ctx = canvas.getContext("2d");
+
+  // Fill background black then draw scaled image centered
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, THUMB_SIZE, THUMB_SIZE);
+
+  const scale = Math.min(THUMB_SIZE / img.width, THUMB_SIZE / img.height);
+  const drawW = img.width * scale;
+  const drawH = img.height * scale;
+  const offsetX = (THUMB_SIZE - drawW) / 2;
+  const offsetY = (THUMB_SIZE - drawH) / 2;
+  ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
+
+  return canvas.toDataURL("image/jpeg", 0.7).split(",")[1];
+}
+
 async function addCaptionToImage(
   imagePath: string,
   caption: string,
@@ -339,6 +362,7 @@ async function processJob(jobId: string, passage: string) {
     await updateJob(jobId, { scenes, step: "Generating scene images...", progress: 15 });
 
     const captionedPaths: string[] = [];
+    const thumbnails: string[] = [];
     for (let i = 0; i < scenes.length; i++) {
       const scene = scenes[i];
       const progressBase = 15 + Math.round((i / scenes.length) * 60);
@@ -354,6 +378,11 @@ async function processJob(jobId: string, passage: string) {
       fs.renameSync(path.join(jobDir, `scene_${scene.index}.png`), rawPath);
       await addCaptionToImage(rawPath, scene.caption, scene.title, captionedPath);
       captionedPaths.push(captionedPath);
+
+      // Generate a small thumbnail and stream it to the DB so the frontend can show it immediately
+      const thumb = await createThumbnailBase64(captionedPath);
+      thumbnails.push(thumb);
+      await updateJob(jobId, { thumbnails: [...thumbnails] });
     }
 
     await updateJob(jobId, { step: "Assembling video...", progress: 80 });
@@ -505,6 +534,7 @@ router.get("/sat-visualizer/status/:jobId", async (req, res) => {
     progress: job.progress,
     step: job.step,
     scenes: job.scenes,
+    thumbnails: job.thumbnails,
     error: job.error,
   });
 });

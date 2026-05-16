@@ -162,6 +162,7 @@ export function Visualizer() {
     const isDone = statusData?.status === "done";
     const isError = statusData?.status === "error" || !!statusError;
     const scenes = statusData?.scenes || visualizeMutation.data?.scenes || [];
+    const thumbnails: string[] = statusData?.thumbnails || [];
     const progress = statusData?.progress || 0;
     const currentStep = statusData?.step || "Initializing visualization...";
 
@@ -245,28 +246,54 @@ export function Visualizer() {
                   <Sparkles className="w-5 h-5" /> Upcoming Scenes
                 </h3>
                 <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-border before:to-transparent">
-                  {scenes.map((scene, index) => (
-                    <div
-                      key={scene.index}
-                      className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group animate-in fade-in slide-in-from-bottom-4 fill-mode-both"
-                      style={{
-                        animationDelay: `${index * 150}ms`,
-                        animationDuration: "700ms",
-                      }}
-                    >
-                      <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-background bg-primary text-primary-foreground shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 font-sans font-bold z-10">
-                        {scene.index + 1}
+                  {scenes.map((scene, index) => {
+                    const thumb = thumbnails[scene.index];
+                    return (
+                      <div
+                        key={scene.index}
+                        className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group animate-in fade-in slide-in-from-bottom-4 fill-mode-both"
+                        style={{
+                          animationDelay: `${index * 150}ms`,
+                          animationDuration: "700ms",
+                        }}
+                      >
+                        <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-background bg-primary text-primary-foreground shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 font-sans font-bold z-10">
+                          {scene.index + 1}
+                        </div>
+                        <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] rounded-xl border bg-card shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+                          {thumb ? (
+                            <>
+                              <img
+                                src={`data:image/jpeg;base64,${thumb}`}
+                                alt={scene.title}
+                                className="w-full aspect-square object-cover animate-in fade-in duration-700"
+                              />
+                              <div className="p-3">
+                                <h4 className="font-bold text-primary mb-0.5 font-serif text-base">
+                                  {scene.title}
+                                </h4>
+                                <p className="text-xs text-muted-foreground font-sans leading-relaxed">
+                                  "{scene.caption}"
+                                </p>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="p-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground shrink-0" />
+                                <h4 className="font-bold text-primary font-serif text-lg">
+                                  {scene.title}
+                                </h4>
+                              </div>
+                              <p className="text-sm text-muted-foreground font-sans leading-relaxed">
+                                "{scene.caption}"
+                              </p>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border bg-card shadow-sm hover:shadow-md transition-shadow">
-                        <h4 className="font-bold text-primary mb-1 font-serif text-lg">
-                          {scene.title}
-                        </h4>
-                        <p className="text-sm text-muted-foreground font-sans leading-relaxed">
-                          "{scene.caption}"
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {scenes.length === 0 && (
                     <div className="text-center p-8 text-muted-foreground font-sans animate-pulse">
                       Analyzing passage structure...
@@ -283,24 +310,36 @@ export function Visualizer() {
                 Scene Breakdown
               </h3>
               <div className="grid gap-4 md:grid-cols-2">
-                {scenes.map((scene) => (
-                  <div
-                    key={scene.index}
-                    className="p-4 rounded-lg bg-background border flex gap-4"
-                  >
-                    <div className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold font-sans text-sm">
-                      {scene.index + 1}
+                {scenes.map((scene) => {
+                  const thumb = thumbnails[scene.index];
+                  return (
+                    <div
+                      key={scene.index}
+                      className="rounded-lg bg-background border overflow-hidden"
+                    >
+                      {thumb && (
+                        <img
+                          src={`data:image/jpeg;base64,${thumb}`}
+                          alt={scene.title}
+                          className="w-full aspect-video object-cover"
+                        />
+                      )}
+                      <div className="p-4 flex gap-3">
+                        <div className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold font-sans text-sm">
+                          {scene.index + 1}
+                        </div>
+                        <div>
+                          <h4 className="font-bold mb-1 font-serif">
+                            {scene.title}
+                          </h4>
+                          <p className="text-sm text-muted-foreground font-sans">
+                            {scene.caption}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-bold mb-1 font-serif">
-                        {scene.title}
-                      </h4>
-                      <p className="text-sm text-muted-foreground font-sans">
-                        {scene.caption}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <div className="mt-8 flex justify-center">
                 <Button
