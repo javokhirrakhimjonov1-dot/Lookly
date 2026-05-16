@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import React from "react";
 import {
   Pressable,
@@ -42,11 +43,20 @@ export default function ClothingItemCard({ item, onPress, onDelete }: Props) {
       ]}
     >
       <View style={[styles.colorBlock, { backgroundColor: item.colorHex }]}>
-        <Feather
-          name={CATEGORY_ICONS[item.category] ?? "circle"}
-          size={22}
-          color={isLight(item.colorHex) ? "#1C1512" : "#FAF8F5"}
-        />
+        {item.imageUri ? (
+          <Image
+            source={{ uri: item.imageUri }}
+            style={StyleSheet.absoluteFillObject}
+            contentFit="cover"
+            transition={200}
+          />
+        ) : (
+          <Feather
+            name={CATEGORY_ICONS[item.category] ?? "circle"}
+            size={22}
+            color={isLight(item.colorHex) ? "#1C1512" : "#FAF8F5"}
+          />
+        )}
       </View>
       <View style={styles.info}>
         <Text
@@ -101,11 +111,13 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   colorBlock: {
-    width: 64,
-    height: 80,
+    width: 72,
+    height: 84,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
+    overflow: "hidden",
+    position: "relative",
   },
   info: {
     flex: 1,

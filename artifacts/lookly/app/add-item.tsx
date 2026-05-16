@@ -97,6 +97,7 @@ interface DetectedItem {
   seasons: Season[];
   tags: string[];
   locationHint: string;
+  _photoUri?: string;
 }
 
 async function scanClothingItems(base64: string, mimeType: string): Promise<DetectedItem[]> {
@@ -108,6 +109,22 @@ async function scanClothingItems(base64: string, mimeType: string): Promise<Dete
   if (!res.ok) throw new Error(`API error ${res.status}`);
   const data = await res.json() as { items: DetectedItem[] };
   return data.items ?? [];
+}
+
+async function removeBg(base64: string, mimeType: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/remove-bg`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imageBase64: base64, mimeType }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { image?: string };
+    if (!data.image) return null;
+    return `data:image/png;base64,${data.image}`;
+  } catch {
+    return null;
+  }
 }
 
 function resolveColor(colorName: string, colorHex: string): { name: string; hex: string } {
@@ -395,7 +412,7 @@ export default function AddItemScreen() {
           fabricWeight: item.fabricWeight ?? "medium",
           isWorkwear: false,
           tags: item.tags.length > 0 ? item.tags : [item.category],
-          imageUri: scannedImage ?? undefined,
+          imageUri: item._photoUri ?? scannedImage ?? undefined,
         };
       })
     );
@@ -410,8 +427,9 @@ export default function AddItemScreen() {
     }
   };
 
-  const runScan = async (base64: string, mimeType: string, uri: string) => {
-    setScannedImage(uri);
+  const runScan = async (base64: string, mimeType: string) => {
+    const dataUri = `data:${mimeType};base64,${base64}`;
+    setScannedImage(dataUri);
     setIsScanning(true);
     setScanDone(false);
     scanScale.value = withSpring(0.97, { damping: 12 }, () => {
@@ -427,14 +445,22 @@ export default function AddItemScreen() {
         return;
       }
 
-      setDetectedItems(items);
+      const taggedItems = items.map((i) => ({ ...i, _photoUri: dataUri }));
+      setDetectedItems(taggedItems);
 
-      if (items.length === 1) {
-        applyDetectedItem(items[0]!);
+      if (taggedItems.length === 1) {
+        applyDetectedItem(taggedItems[0]!);
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setShowPicker(true);
       }
+
+      removeBg(base64, mimeType).then((cleanUri) => {
+        if (cleanUri) {
+          setScannedImage(cleanUri);
+          setDetectedItems((prev) => prev.map((i) => ({ ...i, _photoUri: cleanUri })));
+        }
+      });
     } catch {
       Alert.alert("Scan failed", "Could not identify items. Please fill in the details manually.");
       setScannedImage(null);
@@ -451,7 +477,7 @@ export default function AddItemScreen() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: "images",
-      quality: 0.7,
+      quality: 0.6,
       base64: true,
       allowsEditing: false,
       allowsMultipleSelection: true,
@@ -461,19 +487,24 @@ export default function AddItemScreen() {
     if (result.assets.length === 1) {
       const asset = result.assets[0]!;
       if (!asset.base64) return;
-      await runScan(asset.base64, asset.mimeType ?? "image/jpeg", asset.uri);
+      await runScan(asset.base64, asset.mimeType ?? "image/jpeg");
       return;
     }
 
     setIsScanning(true);
     setScanDone(false);
-    setScannedImage(result.assets[0]!.uri);
+    const firstAsset = result.assets[0]!;
+    const firstDataUri = `data:${firstAsset.mimeType ?? "image/jpeg"};base64,${firstAsset.base64 ?? ""}`;
+    setScannedImage(firstDataUri);
+
     const allItems: DetectedItem[] = [];
     for (const asset of result.assets) {
       if (!asset.base64) continue;
+      const mime = asset.mimeType ?? "image/jpeg";
+      const photoDataUri = `data:${mime};base64,${asset.base64}`;
       try {
-        const found = await scanClothingItems(asset.base64, asset.mimeType ?? "image/jpeg");
-        allItems.push(...found);
+        const found = await scanClothingItems(asset.base64, mime);
+        allItems.push(...found.map((i) => ({ ...i, _photoUri: photoDataUri })));
       } catch {}
     }
     setIsScanning(false);
@@ -500,13 +531,13 @@ export default function AddItemScreen() {
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
-      quality: 0.7,
+      quality: 0.6,
       base64: true,
       allowsEditing: false,
     });
     if (result.canceled || !result.assets[0] || !result.assets[0].base64) return;
     const asset = result.assets[0];
-    await runScan(asset.base64!, asset.mimeType ?? "image/jpeg", asset.uri);
+    await runScan(asset.base64, asset.mimeType ?? "image/jpeg");
   };
 
   const canSave = !!name.trim() && !!category && !!selectedColor && seasons.length > 0;
