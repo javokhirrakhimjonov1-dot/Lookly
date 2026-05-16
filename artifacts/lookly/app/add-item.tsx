@@ -111,12 +111,17 @@ async function scanClothingItems(base64: string, mimeType: string): Promise<Dete
   return data.items ?? [];
 }
 
-async function removeBg(base64: string, mimeType: string): Promise<string | null> {
+async function removeBg(
+  base64: string,
+  mimeType: string,
+  itemName?: string,
+  category?: string,
+): Promise<string | null> {
   try {
     const res = await fetch(`${API_BASE}/remove-bg`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ imageBase64: base64, mimeType }),
+      body: JSON.stringify({ imageBase64: base64, mimeType, itemName, category }),
     });
     if (!res.ok) return null;
     const data = await res.json() as { image?: string };
@@ -352,6 +357,8 @@ export default function AddItemScreen() {
   const [scannedImage, setScannedImage] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [scanDone, setScanDone] = useState(false);
+  const [scanPhotoIndex, setScanPhotoIndex] = useState(0);
+  const [scanPhotoTotal, setScanPhotoTotal] = useState(0);
 
   const [detectedItems, setDetectedItems] = useState<DetectedItem[]>([]);
   const [showPicker, setShowPicker] = useState(false);
@@ -455,7 +462,9 @@ export default function AddItemScreen() {
         setShowPicker(true);
       }
 
-      removeBg(base64, mimeType).then((cleanUri) => {
+      const firstName = taggedItems[0]?.name;
+      const firstCat = taggedItems[0]?.category;
+      removeBg(base64, mimeType, firstName, firstCat).then((cleanUri) => {
         if (cleanUri) {
           setScannedImage(cleanUri);
           setDetectedItems((prev) => prev.map((i) => ({ ...i, _photoUri: cleanUri })));
@@ -493,21 +502,27 @@ export default function AddItemScreen() {
 
     setIsScanning(true);
     setScanDone(false);
+    setScanPhotoTotal(result.assets.length);
+    setScanPhotoIndex(1);
     const firstAsset = result.assets[0]!;
     const firstDataUri = `data:${firstAsset.mimeType ?? "image/jpeg"};base64,${firstAsset.base64 ?? ""}`;
     setScannedImage(firstDataUri);
 
     const allItems: DetectedItem[] = [];
-    for (const asset of result.assets) {
+    for (let idx = 0; idx < result.assets.length; idx++) {
+      const asset = result.assets[idx]!;
       if (!asset.base64) continue;
       const mime = asset.mimeType ?? "image/jpeg";
       const photoDataUri = `data:${mime};base64,${asset.base64}`;
+      setScanPhotoIndex(idx + 1);
+      setScannedImage(photoDataUri);
       try {
         const found = await scanClothingItems(asset.base64, mime);
         allItems.push(...found.map((i) => ({ ...i, _photoUri: photoDataUri })));
       } catch {}
     }
     setIsScanning(false);
+    setScanPhotoTotal(0);
 
     if (allItems.length === 0) {
       Alert.alert("Nothing detected", "No clothing items were found in the selected photos. Try clearer images or fill in manually.");
@@ -634,9 +649,30 @@ export default function AddItemScreen() {
             <View style={styles.scannedImageWrap}>
               <Image source={{ uri: scannedImage }} style={styles.scannedImage} contentFit="cover" />
               {isScanning && (
-                <View style={[styles.scanOverlay, { backgroundColor: "rgba(28,21,18,0.6)" }]}>
+                <View style={[styles.scanOverlay, { backgroundColor: "rgba(28,21,18,0.7)" }]}>
                   <ActivityIndicator size="large" color="#FAF8F5" />
-                  <Text style={styles.scanOverlayText}>Detecting items...</Text>
+                  {scanPhotoTotal > 1 ? (
+                    <>
+                      <Text style={styles.scanOverlayText}>
+                        Analyzing photo {scanPhotoIndex} of {scanPhotoTotal}…
+                      </Text>
+                      <View style={styles.scanDots}>
+                        {Array.from({ length: scanPhotoTotal }).map((_, i) => (
+                          <View
+                            key={i}
+                            style={[
+                              styles.scanDot,
+                              i < scanPhotoIndex
+                                ? { backgroundColor: colors.accent }
+                                : { backgroundColor: "rgba(250,248,245,0.35)" },
+                            ]}
+                          />
+                        ))}
+                      </View>
+                    </>
+                  ) : (
+                    <Text style={styles.scanOverlayText}>Detecting items…</Text>
+                  )}
                 </View>
               )}
               {scanDone && !isScanning && (
@@ -909,6 +945,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   scanOverlayText: { color: "#FAF8F5", fontSize: 14, fontWeight: "600" },
+  scanDots: { flexDirection: "row", gap: 7, marginTop: 4 },
+  scanDot: { width: 8, height: 8, borderRadius: 4 },
   scanDoneBadge: {
     position: "absolute",
     bottom: 10,

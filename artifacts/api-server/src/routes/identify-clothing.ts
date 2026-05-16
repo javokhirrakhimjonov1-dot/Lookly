@@ -3,9 +3,9 @@ import { openai } from "@workspace/integrations-openai-ai-server";
 
 const router = Router();
 
-const SYSTEM_PROMPT = `You are a fashion expert and textile analyst. Carefully examine the photo and identify EVERY distinct clothing item or accessory visible — whether it is being worn, laid flat, hanging, or placed on a surface.
+const SYSTEM_PROMPT = `You are a fashion expert and textile analyst. Examine the photo and identify ONLY the clothing items that are clearly and fully visible.
 
-Return a JSON object with a single key "items" containing an array. Each element of the array is one clothing item with these exact fields:
+Return a JSON object with a single key "items" containing an array. Each element is one clothing item with these exact fields:
 - name: specific descriptive name (e.g. "White linen button-down shirt", "Navy blue slim-fit jeans", "Brown leather loafers")
 - category: exactly one of "tops", "bottoms", "dresses", "outerwear", "shoes", "accessories"
 - colorName: dominant color name, pick the closest from: Black, White, Beige, Navy, Camel, Burgundy, Olive, Gray, Blush, Denim, Terracotta, Cream. If none match, pick the nearest.
@@ -14,16 +14,21 @@ Return a JSON object with a single key "items" containing an array. Each element
 - fabricWeight: exactly one of "light", "medium", "heavy" based on the material (light=linen/cotton voile, medium=denim/knit/wool, heavy=leather/puffer/thick coat)
 - seasons: array of suitable seasons from ["spring", "summer", "fall", "winter"] (can include multiple)
 - tags: array of 2-4 style descriptors (e.g. ["casual", "workwear", "minimal", "streetwear", "formal", "boho", "sporty"])
-- locationHint: a short phrase saying where in the image this item is (e.g. "worn on top", "bottom half", "left shoe", "hanging on rack", "folded on left"). This helps the user identify which item is which.
+- locationHint: a short phrase saying where in the image this item is (e.g. "worn on top", "bottom half", "left shoe", "hanging on rack", "folded on left").
 
-Rules:
-- Include EVERY distinct item you can see — tops, bottoms, shoes, bags, hats, belts, jackets, dresses, etc.
-- If only one item is visible, return an array with one object.
+STRICT VISIBILITY RULES — follow these absolutely:
+- ONLY include an item if at least 70% of it is clearly visible in the frame. If it is cut off, partially hidden, or only implied, DO NOT include it.
+- If the photo shows only the upper body (chest, shoulders, torso), include ONLY upper-body items (tops, outerwear, accessories on the upper body). NEVER add bottoms, shoes, or lower-body items that are not visible.
+- If the photo shows only a single clothing item (e.g. a hoodie laid flat or held up), return ONLY that one item.
+- Do NOT guess, infer, or assume items that are not clearly shown. What you cannot see, you must not include.
 - Do NOT include the same item twice.
 - Maximum 6 items.
 - Return ONLY valid JSON — no markdown fences, no explanation, no extra text.
 
-Example for a flat-lay photo with a shirt, jeans, and sneakers:
+Example — photo showing only a hoodie being held up:
+{"items":[{"name":"Grey zip-up hoodie","category":"tops","colorName":"Gray","colorHex":"#8A8A8A","material":"80% cotton 20% polyester fleece","fabricWeight":"medium","seasons":["fall","winter","spring"],"tags":["casual","streetwear","sporty"],"locationHint":"center of image"}]}
+
+Example — flat-lay with shirt, jeans, and sneakers all fully visible:
 {"items":[{"name":"White oversized cotton tee","category":"tops","colorName":"White","colorHex":"#FAF8F5","material":"100% cotton jersey","fabricWeight":"light","seasons":["spring","summer"],"tags":["casual","minimal","streetwear"],"locationHint":"top of flat lay"},{"name":"Blue slim-fit jeans","category":"bottoms","colorName":"Denim","colorHex":"#5B7FA6","material":"98% cotton 2% elastane denim","fabricWeight":"medium","seasons":["spring","summer","fall"],"tags":["casual","minimal"],"locationHint":"middle of flat lay"},{"name":"White leather sneakers","category":"shoes","colorName":"White","colorHex":"#FAF8F5","material":"genuine leather upper","fabricWeight":"medium","seasons":["spring","summer","fall"],"tags":["casual","streetwear","sporty"],"locationHint":"bottom of flat lay"}]}`;
 
 router.post("/identify-clothing", async (req, res) => {

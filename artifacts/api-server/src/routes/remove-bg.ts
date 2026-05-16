@@ -4,9 +4,11 @@ import { openai } from "@workspace/integrations-openai-ai-server";
 const router = Router();
 
 router.post("/remove-bg", async (req, res) => {
-  const { imageBase64, mimeType } = req.body as {
+  const { imageBase64, mimeType, itemName, category } = req.body as {
     imageBase64: string;
     mimeType?: string;
+    itemName?: string;
+    category?: string;
   };
 
   if (!imageBase64) {
@@ -18,14 +20,20 @@ router.post("/remove-bg", async (req, res) => {
   const buffer = Buffer.from(imageBase64, "base64");
   const file = new File([buffer], "clothing.jpg", { type: mime });
 
+  const target = itemName ?? (category ? `${category} item` : "clothing item");
+  const prompt =
+    `Extract and isolate ONLY the ${target} from this photo. ` +
+    `Crop tightly so the ${target} fills the frame from edge to edge — eliminate all empty margins. ` +
+    `Remove the background, other people, other clothing items, furniture, and all surroundings completely. ` +
+    `Place the ${target} centred on a pure white (#FFFFFF) background. ` +
+    `Preserve every detail of the ${target} — texture, colour, stitching, buttons, patterns, shape. ` +
+    `Do NOT modify the ${target} itself in any way.`;
+
   try {
     const response = await openai.images.edit({
       model: "gpt-image-1",
       image: file,
-      prompt:
-        "Remove the background completely. Show ONLY the clothing item isolated on a pure white (#FFFFFF) background. " +
-        "Preserve every detail of the clothing — texture, colour, stitching, buttons, patterns. " +
-        "Do NOT alter the clothing itself in any way. Just remove everything behind it.",
+      prompt,
       size: "1024x1024",
     });
 
