@@ -305,6 +305,7 @@ export default function OutfitBuilderScreen() {
 
   const assignItem = useCallback((item: ClothingItem) => {
     const slotKey = categoryToSlotKey(item.category);
+    setPreviewImage(null);
     setAssigned((prev) => {
       if (prev[slotKey]?.id === item.id) {
         const next = { ...prev };
@@ -319,6 +320,7 @@ export default function OutfitBuilderScreen() {
 
   const clearSlot = useCallback((slotKey: OutfitSlotKey) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setPreviewImage(null);
     setAssigned((prev) => {
       const next = { ...prev };
       delete next[slotKey];
@@ -360,6 +362,7 @@ export default function OutfitBuilderScreen() {
 
     setLastAutoIds(newAutoIds);
     setHasDoneAuto(true);
+    setPreviewImage(null);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setAssigned(next);
   };
