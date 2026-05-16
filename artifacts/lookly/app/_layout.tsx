@@ -35,6 +35,10 @@ function RootLayoutNav() {
         name="profile"
         options={{ headerShown: false }}
       />
+      <Stack.Screen
+        name="outfit-builder"
+        options={{ headerShown: false }}
+      />
     </Stack>
   );
 }

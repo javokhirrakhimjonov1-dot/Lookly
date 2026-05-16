@@ -63,12 +63,21 @@ export default function WardrobeScreen() {
               {items.length} {items.length === 1 ? "item" : "items"}
             </Text>
           </View>
-          <TouchableOpacity
-            onPress={() => router.push("/add-item")}
-            style={[styles.addBtn, { backgroundColor: colors.primary }]}
-          >
-            <Feather name="plus" size={20} color={colors.primaryForeground} />
-          </TouchableOpacity>
+          <View style={styles.headerBtns}>
+            <TouchableOpacity
+              onPress={() => router.push("/outfit-builder")}
+              style={[styles.buildBtn, { backgroundColor: colors.secondary }]}
+            >
+              <Feather name="scissors" size={16} color={colors.accent} />
+              <Text style={[styles.buildBtnText, { color: colors.accent }]}>Build Look</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push("/add-item")}
+              style={[styles.addBtn, { backgroundColor: colors.primary }]}
+            >
+              <Feather name="plus" size={20} color={colors.primaryForeground} />
+            </TouchableOpacity>
+          </View>
         </View>
         <ScrollView
           horizontal
@@ -157,6 +166,23 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 26,
     fontWeight: "700",
+  },
+  headerBtns: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  buildBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 22,
+  },
+  buildBtnText: {
+    fontSize: 13,
+    fontWeight: "600",
   },
   addBtn: {
     width: 44,
