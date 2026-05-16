@@ -32,6 +32,7 @@ import {
 } from "@/contexts/WardrobeContext";
 import { useSocial } from "@/contexts/SocialContext";
 import { useWeather } from "@/contexts/WeatherContext";
+import { useUserProfile } from "@/contexts/UserProfileContext";
 
 type OutfitSlotKey = "outerwear" | "tops" | "bottoms" | "dresses" | "shoes" | "accessories";
 
@@ -59,7 +60,9 @@ const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 async function generateOutfitPreview(
   items: ClothingItem[],
   weather: string,
-  temperature: number
+  temperature: number,
+  userBodyPhotoBase64?: string | null,
+  userBodyPhotoMime?: string
 ): Promise<string> {
   const body = {
     items: items.map((i) => ({
@@ -70,6 +73,8 @@ async function generateOutfitPreview(
     })),
     weather,
     temperature,
+    userBodyPhotoBase64: userBodyPhotoBase64 ?? undefined,
+    userBodyPhotoMime: userBodyPhotoBase64 ? (userBodyPhotoMime ?? "image/jpeg") : undefined,
   };
 
   const res = await fetch(`${API_BASE}/outfit-preview`, {
@@ -253,6 +258,7 @@ export default function OutfitBuilderScreen() {
   const { items, saveOutfit, savedOutfits } = useWardrobe();
   const { addLook } = useSocial();
   const { condition, temperature } = useWeather();
+  const { bodyPhotoBase64, bodyPhotoMime } = useUserProfile();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -313,16 +319,20 @@ export default function OutfitBuilderScreen() {
     setPreviewImage(null);
   };
 
-  const handleGeneratePreview = async () => {
+  const handleGeneratePreview = async (forceRegenerate = false) => {
     const pieces = Object.values(assigned).filter(Boolean) as ClothingItem[];
     if (pieces.length === 0) {
       Alert.alert("No items selected", "Add at least one item to preview the look.");
       return;
     }
+    if (previewImage && !forceRegenerate) {
+      setShowPreview(true);
+      return;
+    }
     setIsGenerating(true);
     setShowPreview(true);
     try {
-      const img = await generateOutfitPreview(pieces, condition, temperature);
+      const img = await generateOutfitPreview(pieces, condition, temperature, bodyPhotoBase64, bodyPhotoMime);
       setPreviewImage(img);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
@@ -364,8 +374,14 @@ export default function OutfitBuilderScreen() {
 
   const handleLoadSavedOutfit = (outfit: (typeof savedOutfits)[number]) => {
     setAssigned(outfit.items);
-    if (outfit.previewImage) setPreviewImage(outfit.previewImage);
-    setShowSavedOutfits(false);
+    if (outfit.previewImage) {
+      setPreviewImage(outfit.previewImage);
+      setShowSavedOutfits(false);
+      setShowPreview(true);
+    } else {
+      setPreviewImage(null);
+      setShowSavedOutfits(false);
+    }
   };
 
   const filteredItems =
@@ -490,7 +506,7 @@ export default function OutfitBuilderScreen() {
           </View>
 
           <TouchableOpacity
-            onPress={handleGeneratePreview}
+            onPress={() => handleGeneratePreview(false)}
             disabled={pieceCount === 0 || isGenerating}
             style={[
               styles.previewBtn,
@@ -503,7 +519,7 @@ export default function OutfitBuilderScreen() {
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
               <Feather
-                name="eye"
+                name={previewImage ? "image" : "eye"}
                 size={16}
                 color={pieceCount > 0 ? "#FFFFFF" : colors.mutedForeground}
               />
@@ -514,7 +530,11 @@ export default function OutfitBuilderScreen() {
                 { color: pieceCount > 0 ? "#FFFFFF" : colors.mutedForeground },
               ]}
             >
-              {isGenerating ? "Generating look..." : "Preview on Model"}
+              {isGenerating
+                ? "Generating look..."
+                : previewImage
+                ? "View Look"
+                : "Preview on Model"}
             </Text>
           </TouchableOpacity>
 
@@ -682,16 +702,26 @@ export default function OutfitBuilderScreen() {
             <Text style={[styles.previewModalTitle, { color: colors.foreground }]}>
               Your Look Preview
             </Text>
-            <TouchableOpacity
-              onPress={() => {
-                setShowPreview(false);
-                if (pieceCount > 0) setShowSaveModal(true);
-              }}
-              style={[styles.saveFromPreviewBtn, { backgroundColor: colors.secondary }]}
-            >
-              <Feather name="bookmark" size={14} color={colors.accent} />
-              <Text style={[styles.saveFromPreviewText, { color: colors.accent }]}>Save</Text>
-            </TouchableOpacity>
+            <View style={styles.previewHeaderActions}>
+              <TouchableOpacity
+                onPress={() => handleGeneratePreview(true)}
+                disabled={isGenerating}
+                style={[styles.regenBtn, { backgroundColor: colors.secondary }]}
+              >
+                <Feather name="refresh-cw" size={13} color={colors.mutedForeground} />
+                <Text style={[styles.regenBtnText, { color: colors.mutedForeground }]}>Regenerate</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowPreview(false);
+                  if (pieceCount > 0) setShowSaveModal(true);
+                }}
+                style={[styles.saveFromPreviewBtn, { backgroundColor: colors.secondary }]}
+              >
+                <Feather name="bookmark" size={14} color={colors.accent} />
+                <Text style={[styles.saveFromPreviewText, { color: colors.accent }]}>Save</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <ScrollView contentContainerStyle={styles.previewModalContent}>
@@ -1040,6 +1070,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   previewModalTitle: { fontSize: 17, fontWeight: "700" },
+  previewHeaderActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  regenBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 100,
+  },
+  regenBtnText: { fontSize: 12, fontWeight: "600" },
   saveFromPreviewBtn: {
     flexDirection: "row",
     alignItems: "center",

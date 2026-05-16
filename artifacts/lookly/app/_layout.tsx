@@ -18,6 +18,7 @@ import { WardrobeProvider } from "@/contexts/WardrobeContext";
 import { WeatherProvider } from "@/contexts/WeatherContext";
 import { SocialProvider } from "@/contexts/SocialContext";
 import { DealsProvider } from "@/contexts/DealsContext";
+import { UserProfileProvider } from "@/contexts/UserProfileContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -31,14 +32,9 @@ function RootLayoutNav() {
         name="add-item"
         options={{ headerShown: false, presentation: "modal" }}
       />
-      <Stack.Screen
-        name="profile"
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="outfit-builder"
-        options={{ headerShown: false }}
-      />
+      <Stack.Screen name="profile" options={{ headerShown: false }} />
+      <Stack.Screen name="outfit-builder" options={{ headerShown: false }} />
+      <Stack.Screen name="shuffle" options={{ headerShown: false }} />
     </Stack>
   );
 }
@@ -63,19 +59,21 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ErrorBoundary>
         <QueryClientProvider client={queryClient}>
-          <WeatherProvider>
-            <WardrobeProvider>
-              <SocialProvider>
-                <DealsProvider>
-                  <GestureHandlerRootView>
-                    <KeyboardProvider>
-                      <RootLayoutNav />
-                    </KeyboardProvider>
-                  </GestureHandlerRootView>
-                </DealsProvider>
-              </SocialProvider>
-            </WardrobeProvider>
-          </WeatherProvider>
+          <UserProfileProvider>
+            <WeatherProvider>
+              <WardrobeProvider>
+                <SocialProvider>
+                  <DealsProvider>
+                    <GestureHandlerRootView>
+                      <KeyboardProvider>
+                        <RootLayoutNav />
+                      </KeyboardProvider>
+                    </GestureHandlerRootView>
+                  </DealsProvider>
+                </SocialProvider>
+              </WardrobeProvider>
+            </WeatherProvider>
+          </UserProfileProvider>
         </QueryClientProvider>
       </ErrorBoundary>
     </SafeAreaProvider>
