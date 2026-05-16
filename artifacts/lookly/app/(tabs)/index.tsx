@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import OutfitSuggestion from "@/components/OutfitSuggestion";
+import OutfitCarousel from "@/components/OutfitCarousel";
 import WeatherWidget from "@/components/WeatherWidget";
 import { useColors } from "@/hooks/useColors";
 import { useSocial } from "@/contexts/SocialContext";
@@ -132,7 +132,7 @@ export default function HomeScreen() {
 
       <WeatherWidget />
 
-      <OutfitSuggestion />
+      <OutfitCarousel />
 
       <TouchableOpacity
         onPress={() => router.push("/shuffle")}
