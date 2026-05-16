@@ -1,0 +1,37 @@
+Here is the ultimate, absolute master blueprint. This prompt combines everything we’ve discussed: your core features, your real-world feedback research, the location/weather precision safeguards, data-loss protection, and the brand-new mandatory "Anchor Lock" feature.
+
+Copy and paste this exact block directly into your Replit Agent:
+
+```text
+Please build a premium, highly robust fashion-tech app prototype called Lookly using Expo React Native for the frontend and Express 5 on the backend. 
+
+Key Architecture & Feature Requirements:
+
+1. Location-Aware Weather Engine: 
+- On launch, request device location permissions, fetch live weather from the Open-Meteo API using current coordinates.
+- Implement an alert logic that checks the 48-hour forecast for sudden, abnormal shifts (e.g., tomorrow being 5°C+ colder/hotter than today, or unexpected heavy rain). Proactively send an in-app alert warning the user to prepare or wash specific items from their closet.
+
+2. Smart Digital Wardrobe with Logic Segregation: 
+- Allow users to upload clothing item images with background removal. 
+- Store items with metadata: Category (Tops, Bottoms, Shoes, Accessories), Fabric Weight, Color, and a critical boolean toggle: "Is Uniform/Workwear". If true, hard-code the algorithm to completely exclude this item from standard daily casual shuffles unless a "Work/Professional" mood is explicitly requested.
+
+3. Gamified Weather-Shuffle with Mandatory "Anchor Lock":
+- Build a visual slot-machine style card interface displaying rows for Top, Bottom, Shoes, and Accessories.
+- Implement a "Lock/Anchor" icon on each slot. When a user locks a specific item (e.g., a specific heavy jacket), that item must remain mandatory and constant.
+- When the user hits "Shuffle", the algorithm must hold the anchored item fixed and dynamically randomize the remaining unlocked slots. The generated pieces must strictly complement the anchored item's aesthetic style tags, fabric weight, and color profile, while staying strictly within the real-time temperature and humidity bounds fetched from the weather API.
+
+4. Cohesive Style Rules & Rejection Memory:
+- Establish algorithmic category harmony rules to prevent clashing recommendations (e.g., never pair athletic sweatpants with formal high heels).
+- Maintain a 'dislikedOutfits' array in storage. If a user dislikes a generated combination, ensure the shuffler hashes that combination ID and never suggests that exact configuration again.
+
+5. Bulletproof Canvas UI & Auto-Save:
+- Provide a clean outfit layout canvas where users can style and arrange looks.
+- Use AsyncStorage to continuously auto-save the active state of the canvas on every single adjustment, guaranteeing zero progress loss if the app crashes or restarts.
+
+6. Wardrobe ROI Analytics & Localized Deals Hub:
+- Include a "Stats" tab tracking total wardrobe usage history, a daily style calendar log, and an automated "Cost Per Wear" calculator (Purchase Price divided by Times Worn).
+- Build a dedicated "Deals Hub" tab that displays real-time localized brand discounts from nearby malls based on the user's GPS coordinates, including high-urgency visual badges for sales ending soon.
+
+Ensure all data operations, image paths, and state configurations load snappily and are managed locally via AsyncStorage for rapid MVP testing.
+
+```

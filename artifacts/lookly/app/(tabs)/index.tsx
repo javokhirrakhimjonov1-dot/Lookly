@@ -16,6 +16,32 @@ import { useColors } from "@/hooks/useColors";
 import { useSocial } from "@/contexts/SocialContext";
 import { useWardrobe } from "@/contexts/WardrobeContext";
 import { useDeals } from "@/contexts/DealsContext";
+import { useWeather } from "@/contexts/WeatherContext";
+
+const ALERT_BG: Record<string, string> = {
+  temperature_drop: "#EFF6FF",
+  temperature_rise: "#FEF9EC",
+  rain_incoming: "#EFF6FF",
+  snow_incoming: "#F0FDF4",
+};
+const ALERT_BORDER: Record<string, string> = {
+  temperature_drop: "#BFDBFE",
+  temperature_rise: "#FDE68A",
+  rain_incoming: "#93C5FD",
+  snow_incoming: "#BBF7D0",
+};
+const ALERT_COLOR: Record<string, string> = {
+  temperature_drop: "#1D4ED8",
+  temperature_rise: "#D97706",
+  rain_incoming: "#1D4ED8",
+  snow_incoming: "#059669",
+};
+const ALERT_ICON: Record<string, React.ComponentProps<typeof Feather>["name"]> = {
+  temperature_drop: "thermometer",
+  temperature_rise: "sun",
+  rain_incoming: "cloud-rain",
+  snow_incoming: "cloud-snow",
+};
 
 export default function HomeScreen() {
   const colors = useColors();
@@ -23,6 +49,7 @@ export default function HomeScreen() {
   const { items } = useWardrobe();
   const { looks } = useSocial();
   const { deals } = useDeals();
+  const { weatherAlert, dismissAlert } = useWeather();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const today = new Date().toLocaleDateString("en-US", {
@@ -67,9 +94,65 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
+      {weatherAlert && (
+        <TouchableOpacity
+          onPress={dismissAlert}
+          style={[
+            styles.alertCard,
+            {
+              backgroundColor: ALERT_BG[weatherAlert.type] ?? "#FEF9EC",
+              borderColor: ALERT_BORDER[weatherAlert.type] ?? "#FDE68A",
+            },
+          ]}
+          activeOpacity={0.85}
+        >
+          <View
+            style={[
+              styles.alertIconWrap,
+              { backgroundColor: (ALERT_COLOR[weatherAlert.type] ?? "#D97706") + "20" },
+            ]}
+          >
+            <Feather
+              name={ALERT_ICON[weatherAlert.type] ?? "alert-circle"}
+              size={16}
+              color={ALERT_COLOR[weatherAlert.type] ?? "#D97706"}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.alertTitle, { color: ALERT_COLOR[weatherAlert.type] ?? "#D97706" }]}>
+              {weatherAlert.title}
+            </Text>
+            <Text style={[styles.alertBody, { color: ALERT_COLOR[weatherAlert.type] ?? "#D97706" }]}>
+              {weatherAlert.message}
+            </Text>
+          </View>
+          <Feather name="x" size={14} color={ALERT_COLOR[weatherAlert.type] ?? "#D97706"} />
+        </TouchableOpacity>
+      )}
+
       <WeatherWidget />
 
       <OutfitSuggestion />
+
+      <TouchableOpacity
+        onPress={() => router.push("/shuffle")}
+        style={[styles.shuffleCard, { backgroundColor: colors.primary }]}
+      >
+        <View style={styles.shuffleLeft}>
+          <Text style={[styles.shuffleLabel, { color: "rgba(250,248,245,0.7)" }]}>
+            FEELING LUCKY?
+          </Text>
+          <Text style={[styles.shuffleTitle, { color: colors.primaryForeground }]}>
+            Lucky Shuffle
+          </Text>
+          <Text style={[styles.shuffleSub, { color: "rgba(250,248,245,0.7)" }]}>
+            Lock favourites · AI picks the rest
+          </Text>
+        </View>
+        <View style={[styles.shuffleIconWrap, { backgroundColor: "rgba(250,248,245,0.15)" }]}>
+          <Feather name="shuffle" size={28} color={colors.primaryForeground} />
+        </View>
+      </TouchableOpacity>
 
       <View style={styles.statsRow}>
         <TouchableOpacity
@@ -99,7 +182,7 @@ export default function HomeScreen() {
       </View>
 
       {urgentDeals.length > 0 && (
-        <View style={[styles.alertCard, { backgroundColor: "#FEF2F2", borderColor: "#FECACA" }]}>
+        <View style={[styles.dealsAlert, { backgroundColor: "#FEF2F2", borderColor: "#FECACA" }]}>
           <Feather name="bell" size={16} color="#DC2626" />
           <View style={{ flex: 1 }}>
             <Text style={[styles.alertTitle, { color: "#DC2626" }]}>
@@ -225,6 +308,52 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
   },
+  alertCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  alertIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  alertTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    marginBottom: 2,
+  },
+  alertBody: {
+    fontSize: 12,
+    fontWeight: "400",
+    lineHeight: 17,
+    opacity: 0.85,
+  },
+  shuffleCard: {
+    borderRadius: 20,
+    padding: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  shuffleLeft: { gap: 3 },
+  shuffleLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 1 },
+  shuffleTitle: { fontSize: 22, fontWeight: "800" },
+  shuffleSub: { fontSize: 12, fontWeight: "400" },
+  shuffleIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   statsRow: {
     flexDirection: "row",
     gap: 10,
@@ -245,22 +374,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "500",
   },
-  alertCard: {
+  dealsAlert: {
     borderRadius: 14,
     borderWidth: 1,
     padding: 14,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-  },
-  alertTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    marginBottom: 2,
-  },
-  alertBody: {
-    fontSize: 12,
-    fontWeight: "400",
   },
   sectionHeader: {
     flexDirection: "row",

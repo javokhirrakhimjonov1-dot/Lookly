@@ -1,3 +1,5 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Location from "expo-location";
 import React, {
   createContext,
   useCallback,
@@ -5,6 +7,13 @@ import React, {
   useEffect,
   useState,
 } from "react";
+
+export interface WeatherAlert {
+  type: "temperature_drop" | "temperature_rise" | "rain_incoming" | "snow_incoming";
+  title: string;
+  message: string;
+  degreeShift?: number;
+}
 
 export interface WeatherData {
   temperature: number;
@@ -17,8 +26,13 @@ export interface WeatherData {
   city: string;
   isLoading: boolean;
   error: string | null;
+  weatherAlert: WeatherAlert | null;
+  dismissAlert: () => void;
   refresh: () => void;
 }
+
+const TASHKENT = { lat: 41.2995, lon: 69.2401 };
+const ALERT_DISMISSED_KEY = "@lookly_alert_dismissed";
 
 function getCondition(code: number): { condition: string; detail: string } {
   if (code === 0) return { condition: "Sunny", detail: "Clear sky" };
@@ -32,6 +46,49 @@ function getCondition(code: number): { condition: string; detail: string } {
   return { condition: "Clear", detail: "Unknown" };
 }
 
+function buildAlert(
+  todayMax: number,
+  tomorrowMax: number,
+  tomorrowCode: number
+): WeatherAlert | null {
+  const diff = tomorrowMax - todayMax;
+  const isRainTomorrow = tomorrowCode >= 51 && tomorrowCode <= 82;
+  const isSnowTomorrow = tomorrowCode >= 71 && tomorrowCode <= 77;
+
+  if (isSnowTomorrow && tomorrowCode < 71) return null;
+  if (isSnowTomorrow) {
+    return {
+      type: "snow_incoming",
+      title: "Snow forecast tomorrow",
+      message: `Bundle up — snow is expected tomorrow. Prep your heavy coat and waterproof boots tonight.`,
+    };
+  }
+  if (isRainTomorrow) {
+    return {
+      type: "rain_incoming",
+      title: "Rain incoming tomorrow",
+      message: `Rain is forecast tomorrow. Grab a waterproof jacket or raincoat before you head out.`,
+    };
+  }
+  if (diff <= -5) {
+    return {
+      type: "temperature_drop",
+      title: `${Math.abs(Math.round(diff))}° colder tomorrow`,
+      message: `A sudden cold drop is coming. Plan a heavier outfit — your light layers won't be enough.`,
+      degreeShift: Math.round(diff),
+    };
+  }
+  if (diff >= 5) {
+    return {
+      type: "temperature_rise",
+      title: `${Math.round(diff)}° warmer tomorrow`,
+      message: `It'll be much hotter tomorrow. Switch to breathable fabrics and leave the heavy coat at home.`,
+      degreeShift: Math.round(diff),
+    };
+  }
+  return null;
+}
+
 const WeatherContext = createContext<WeatherData | null>(null);
 
 export function WeatherProvider({ children }: { children: React.ReactNode }) {
@@ -40,25 +97,81 @@ export function WeatherProvider({ children }: { children: React.ReactNode }) {
   const [humidity, setHumidity] = useState(40);
   const [windSpeed, setWindSpeed] = useState(10);
   const [weatherCode, setWeatherCode] = useState(0);
+  const [city, setCity] = useState("Tashkent");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [weatherAlert, setWeatherAlert] = useState<WeatherAlert | null>(null);
+  const [alertDismissedKey, setAlertDismissedKey] = useState<string | null>(null);
+
+  const dismissAlert = useCallback(async () => {
+    if (alertDismissedKey) {
+      await AsyncStorage.setItem(ALERT_DISMISSED_KEY, alertDismissedKey);
+    }
+    setWeatherAlert(null);
+  }, [alertDismissedKey]);
 
   const fetchWeather = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const url =
-        "https://api.open-meteo.com/v1/forecast?latitude=41.2995&longitude=69.2401" +
+      let lat = TASHKENT.lat;
+      let lon = TASHKENT.lon;
+      let resolvedCity = "Tashkent";
+
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === "granted") {
+        try {
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          lat = loc.coords.latitude;
+          lon = loc.coords.longitude;
+          try {
+            const geo = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
+            if (geo[0]?.city) resolvedCity = geo[0].city;
+            else if (geo[0]?.district) resolvedCity = geo[0].district;
+          } catch {
+            resolvedCity = "Tashkent";
+          }
+        } catch {
+          lat = TASHKENT.lat;
+          lon = TASHKENT.lon;
+        }
+      }
+
+      setCity(resolvedCity);
+
+      const currentUrl =
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
         "&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code" +
-        "&timezone=Asia/Tashkent&forecast_days=1";
-      const res = await fetch(url);
+        "&daily=temperature_2m_max,temperature_2m_min,weather_code" +
+        "&timezone=auto&forecast_days=3";
+
+      const res = await fetch(currentUrl);
       const data = await res.json();
+
       const c = data.current;
       setTemperature(Math.round(c.temperature_2m));
       setFeelsLike(Math.round(c.apparent_temperature));
       setHumidity(Math.round(c.relative_humidity_2m));
       setWindSpeed(Math.round(c.wind_speed_10m));
       setWeatherCode(c.weather_code);
+
+      if (data.daily) {
+        const todayMax = data.daily.temperature_2m_max?.[0] ?? c.temperature_2m;
+        const tomorrowMax = data.daily.temperature_2m_max?.[1] ?? c.temperature_2m;
+        const tomorrowCode = data.daily.weather_code?.[1] ?? c.weather_code;
+        const alert = buildAlert(todayMax, tomorrowMax, tomorrowCode);
+
+        if (alert) {
+          const key = `${alert.type}_${Math.round(tomorrowMax)}`;
+          setAlertDismissedKey(key);
+          const dismissed = await AsyncStorage.getItem(ALERT_DISMISSED_KEY);
+          if (dismissed !== key) {
+            setWeatherAlert(alert);
+          }
+        }
+      }
     } catch {
       setError("Could not fetch weather");
     } finally {
@@ -82,9 +195,11 @@ export function WeatherProvider({ children }: { children: React.ReactNode }) {
         weatherCode,
         condition,
         conditionDetail: detail,
-        city: "Tashkent",
+        city,
         isLoading,
         error,
+        weatherAlert,
+        dismissAlert,
         refresh: fetchWeather,
       }}
     >
