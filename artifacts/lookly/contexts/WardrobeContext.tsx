@@ -29,6 +29,14 @@ export interface ClothingItem {
   createdAt: string;
 }
 
+export interface SavedOutfit {
+  id: string;
+  name: string;
+  items: Partial<Record<ClothingCategory, ClothingItem>>;
+  previewImage?: string;
+  createdAt: string;
+}
+
 interface WardrobeContextValue {
   items: ClothingItem[];
   addItem: (item: Omit<ClothingItem, "id" | "createdAt">) => Promise<void>;
@@ -36,22 +44,35 @@ interface WardrobeContextValue {
   updateItem: (id: string, updates: Partial<ClothingItem>) => Promise<void>;
   getItemsByCategory: (category: ClothingCategory) => ClothingItem[];
   getItemsBySeason: (season: Season) => ClothingItem[];
+  savedOutfits: SavedOutfit[];
+  saveOutfit: (
+    name: string,
+    items: Partial<Record<ClothingCategory, ClothingItem>>,
+    previewImage?: string
+  ) => Promise<void>;
+  deleteSavedOutfit: (id: string) => Promise<void>;
   isLoading: boolean;
 }
 
 const WardrobeContext = createContext<WardrobeContextValue | null>(null);
 
-const STORAGE_KEY = "@lookly_wardrobe";
+const ITEMS_KEY = "@lookly_wardrobe";
+const OUTFITS_KEY = "@lookly_saved_outfits";
 
 export function WardrobeProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<ClothingItem[]>([]);
+  const [savedOutfits, setSavedOutfits] = useState<SavedOutfit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
       try {
-        const stored = await AsyncStorage.getItem(STORAGE_KEY);
-        if (stored) setItems(JSON.parse(stored));
+        const [storedItems, storedOutfits] = await Promise.all([
+          AsyncStorage.getItem(ITEMS_KEY),
+          AsyncStorage.getItem(OUTFITS_KEY),
+        ]);
+        if (storedItems) setItems(JSON.parse(storedItems));
+        if (storedOutfits) setSavedOutfits(JSON.parse(storedOutfits));
       } catch {
       } finally {
         setIsLoading(false);
@@ -59,8 +80,12 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  const persist = useCallback(async (next: ClothingItem[]) => {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  const persistItems = useCallback(async (next: ClothingItem[]) => {
+    await AsyncStorage.setItem(ITEMS_KEY, JSON.stringify(next));
+  }, []);
+
+  const persistOutfits = useCallback(async (next: SavedOutfit[]) => {
+    await AsyncStorage.setItem(OUTFITS_KEY, JSON.stringify(next));
   }, []);
 
   const addItem = useCallback(
@@ -72,27 +97,27 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
       };
       const next = [newItem, ...items];
       setItems(next);
-      await persist(next);
+      await persistItems(next);
     },
-    [items, persist]
+    [items, persistItems]
   );
 
   const removeItem = useCallback(
     async (id: string) => {
       const next = items.filter((i) => i.id !== id);
       setItems(next);
-      await persist(next);
+      await persistItems(next);
     },
-    [items, persist]
+    [items, persistItems]
   );
 
   const updateItem = useCallback(
     async (id: string, updates: Partial<ClothingItem>) => {
       const next = items.map((i) => (i.id === id ? { ...i, ...updates } : i));
       setItems(next);
-      await persist(next);
+      await persistItems(next);
     },
-    [items, persist]
+    [items, persistItems]
   );
 
   const getItemsByCategory = useCallback(
@@ -105,6 +130,35 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
     [items]
   );
 
+  const saveOutfit = useCallback(
+    async (
+      name: string,
+      outfitItems: Partial<Record<ClothingCategory, ClothingItem>>,
+      previewImage?: string
+    ) => {
+      const newOutfit: SavedOutfit = {
+        id: Date.now().toString() + Math.random().toString(36).slice(2, 7),
+        name,
+        items: outfitItems,
+        previewImage,
+        createdAt: new Date().toISOString(),
+      };
+      const next = [newOutfit, ...savedOutfits];
+      setSavedOutfits(next);
+      await persistOutfits(next);
+    },
+    [savedOutfits, persistOutfits]
+  );
+
+  const deleteSavedOutfit = useCallback(
+    async (id: string) => {
+      const next = savedOutfits.filter((o) => o.id !== id);
+      setSavedOutfits(next);
+      await persistOutfits(next);
+    },
+    [savedOutfits, persistOutfits]
+  );
+
   return (
     <WardrobeContext.Provider
       value={{
@@ -114,6 +168,9 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
         updateItem,
         getItemsByCategory,
         getItemsBySeason,
+        savedOutfits,
+        saveOutfit,
+        deleteSavedOutfit,
         isLoading,
       }}
     >
