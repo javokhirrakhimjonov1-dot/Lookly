@@ -83,7 +83,14 @@ async function generateOutfitPreview(
     body: JSON.stringify(body),
   });
 
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  if (!res.ok) {
+    let errMsg = `Preview unavailable (${res.status})`;
+    try {
+      const errBody = await res.json() as { error?: string };
+      if (errBody.error) errMsg = errBody.error;
+    } catch {}
+    throw new Error(errMsg);
+  }
   const data = await res.json() as { image: string };
   return data.image;
 }
@@ -335,8 +342,9 @@ export default function OutfitBuilderScreen() {
       const img = await generateOutfitPreview(pieces, condition, temperature, bodyPhotoBase64, bodyPhotoMime);
       setPreviewImage(img);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch {
-      Alert.alert("Preview failed", "Could not generate the look preview. Please try again.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Could not generate the look preview. Please try again.";
+      Alert.alert("Preview failed", msg);
       setShowPreview(false);
     } finally {
       setIsGenerating(false);

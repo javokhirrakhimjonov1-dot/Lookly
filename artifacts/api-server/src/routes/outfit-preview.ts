@@ -99,7 +99,25 @@ router.post("/outfit-preview", async (req, res) => {
   }
 
   const prompt = buildPrompt(items, weather ?? "Clear", temperature ?? 22, personDescription);
-  const buffer = await generateImageBuffer(prompt, "1024x1536");
+
+  let buffer: Buffer;
+  try {
+    buffer = await generateImageBuffer(prompt, "1024x1536");
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const isQuota =
+      msg.toLowerCase().includes("quota") ||
+      msg.toLowerCase().includes("rate limit") ||
+      msg.toLowerCase().includes("exceeded") ||
+      msg.toLowerCase().includes("429");
+    const status = isQuota ? 429 : 500;
+    const userMessage = isQuota
+      ? "Daily image generation limit reached. Please try again in a few hours."
+      : "Image generation failed. Please try again.";
+    res.status(status).json({ error: userMessage });
+    return;
+  }
+
   res.json({ image: buffer.toString("base64") });
 });
 
