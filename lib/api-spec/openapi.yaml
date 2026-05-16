@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: sat-visualizer
+    description: SAT Passage Visualizer operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,122 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /sat-visualizer/extract-text:
+    post:
+      operationId: extractTextFromImage
+      tags: [sat-visualizer]
+      summary: Extract text from a screenshot of an SAT passage
+      description: Uses AI vision to read and return the text from an uploaded image
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImageInput"
+      responses:
+        "200":
+          description: Extracted text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExtractedText"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResult"
+        "500":
+          description: Extraction error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResult"
+
+  /sat-visualizer/visualize:
+    post:
+      operationId: visualizePassage
+      tags: [sat-visualizer]
+      summary: Visualize an SAT passage
+      description: Analyzes an SAT passage with AI, generates images for each scene, and assembles a video
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PassageInput"
+      responses:
+        "200":
+          description: Video generation job started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisualizeResult"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResult"
+        "500":
+          description: Generation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResult"
+
+  /sat-visualizer/status/{jobId}:
+    get:
+      operationId: getVisualizationStatus
+      tags: [sat-visualizer]
+      summary: Get the status of a visualization job
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Job status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobStatus"
+        "404":
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResult"
+
+  /sat-visualizer/video/{jobId}:
+    get:
+      operationId: getVisualizationVideo
+      tags: [sat-visualizer]
+      summary: Get the generated video file for a completed job
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: MP4 video file
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Video not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResult"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +152,109 @@ components:
       required:
         - status
 
+    ImageInput:
+      type: object
+      required:
+        - imageBase64
+        - mimeType
+      properties:
+        imageBase64:
+          type: string
+          description: Base64-encoded image data
+        mimeType:
+          type: string
+          enum: [image/jpeg, image/png, image/webp, image/gif]
+          description: MIME type of the image
+
+    ExtractedText:
+      type: object
+      required:
+        - text
+      properties:
+        text:
+          type: string
+          description: The text extracted from the image
+
+    PassageInput:
+      type: object
+      required:
+        - passage
+      properties:
+        passage:
+          type: string
+          minLength: 50
+          maxLength: 3000
+          description: The SAT reading passage text to visualize
+
+    Scene:
+      type: object
+      required:
+        - index
+        - title
+        - description
+        - caption
+      properties:
+        index:
+          type: integer
+          description: Scene number (0-based)
+        title:
+          type: string
+          description: Short scene title
+        description:
+          type: string
+          description: Visual description for image generation
+        caption:
+          type: string
+          description: Caption text to overlay on the video
+
+    VisualizeResult:
+      type: object
+      required:
+        - jobId
+        - status
+        - scenes
+      properties:
+        jobId:
+          type: string
+          description: Unique job identifier for polling
+        status:
+          type: string
+          enum: [pending, processing, done, error]
+        scenes:
+          type: array
+          items:
+            $ref: "#/components/schemas/Scene"
+
+    JobStatus:
+      type: object
+      required:
+        - jobId
+        - status
+        - progress
+      properties:
+        jobId:
+          type: string
+        status:
+          type: string
+          enum: [pending, processing, done, error]
+        progress:
+          type: integer
+          description: Completion percentage 0-100
+        step:
+          type: ["string", "null"]
+          description: Current processing step label
+        scenes:
+          type: array
+          items:
+            $ref: "#/components/schemas/Scene"
+        error:
+          type: ["string", "null"]
+          description: Error message if status is error
+
+    ErrorResult:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
