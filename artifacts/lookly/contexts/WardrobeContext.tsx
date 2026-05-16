@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -65,13 +66,28 @@ interface WardrobeContextValue {
 
 const WardrobeContext = createContext<WardrobeContextValue | null>(null);
 
-const ITEMS_KEY = "@lookly_wardrobe";
+const ITEMS_KEY = "@lookly_wardrobe_v2";
 const OUTFITS_KEY = "@lookly_saved_outfits";
+const imageKey = (id: string) => `@lookly_img_${id}`;
+
+function stripImages(items: ClothingItem[]): Omit<ClothingItem, "imageUri">[] {
+  return items.map(({ imageUri: _img, ...rest }) => rest);
+}
 
 export function WardrobeProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<ClothingItem[]>([]);
   const [savedOutfits, setSavedOutfits] = useState<SavedOutfit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const itemsRef = useRef<ClothingItem[]>([]);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  const outfitsRef = useRef<SavedOutfit[]>([]);
+  useEffect(() => {
+    outfitsRef.current = savedOutfits;
+  }, [savedOutfits]);
 
   useEffect(() => {
     (async () => {
@@ -80,8 +96,24 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
           AsyncStorage.getItem(ITEMS_KEY),
           AsyncStorage.getItem(OUTFITS_KEY),
         ]);
-        if (storedItems) setItems(JSON.parse(storedItems));
-        if (storedOutfits) setSavedOutfits(JSON.parse(storedOutfits));
+
+        if (storedItems) {
+          const parsed: ClothingItem[] = JSON.parse(storedItems);
+          const withImages = await Promise.all(
+            parsed.map(async (item) => {
+              const uri = await AsyncStorage.getItem(imageKey(item.id));
+              return uri ? { ...item, imageUri: uri } : item;
+            })
+          );
+          setItems(withImages);
+          itemsRef.current = withImages;
+        }
+
+        if (storedOutfits) {
+          const parsed = JSON.parse(storedOutfits) as SavedOutfit[];
+          setSavedOutfits(parsed);
+          outfitsRef.current = parsed;
+        }
       } catch {
       } finally {
         setIsLoading(false);
@@ -90,7 +122,15 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const persistItems = useCallback(async (next: ClothingItem[]) => {
-    await AsyncStorage.setItem(ITEMS_KEY, JSON.stringify(next));
+    await AsyncStorage.setItem(ITEMS_KEY, JSON.stringify(stripImages(next)));
+  }, []);
+
+  const persistImage = useCallback(async (id: string, uri: string | undefined) => {
+    if (uri) {
+      await AsyncStorage.setItem(imageKey(id), uri);
+    } else {
+      await AsyncStorage.removeItem(imageKey(id));
+    }
   }, []);
 
   const persistOutfits = useCallback(async (next: SavedOutfit[]) => {
@@ -105,13 +145,15 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
         timesWorn: 0,
         createdAt: new Date().toISOString(),
       };
-      setItems((prev) => {
-        const next = [newItem, ...prev];
-        persistItems(next);
-        return next;
-      });
+      const next = [newItem, ...itemsRef.current];
+      itemsRef.current = next;
+      setItems(next);
+      await persistItems(next);
+      if (newItem.imageUri) {
+        await persistImage(newItem.id, newItem.imageUri);
+      }
     },
-    [persistItems]
+    [persistItems, persistImage]
   );
 
   const addBulkItems = useCallback(
@@ -123,63 +165,74 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
         timesWorn: 0,
         createdAt: new Date().toISOString(),
       }));
-      setItems((prev) => {
-        const next = [...built, ...prev];
-        persistItems(next);
-        return next;
-      });
+      const next = [...built, ...itemsRef.current];
+      itemsRef.current = next;
+      setItems(next);
+      await persistItems(next);
+      await Promise.all(
+        built.map((item) =>
+          item.imageUri ? persistImage(item.id, item.imageUri) : Promise.resolve()
+        )
+      );
     },
-    [persistItems]
+    [persistItems, persistImage]
   );
 
   const removeItem = useCallback(
     async (id: string) => {
-      const next = items.filter((i) => i.id !== id);
+      const next = itemsRef.current.filter((i) => i.id !== id);
+      itemsRef.current = next;
       setItems(next);
       await persistItems(next);
+      await persistImage(id, undefined);
     },
-    [items, persistItems]
+    [persistItems, persistImage]
   );
 
   const updateItem = useCallback(
     async (id: string, updates: Partial<ClothingItem>) => {
-      const next = items.map((i) => (i.id === id ? { ...i, ...updates } : i));
+      const next = itemsRef.current.map((i) => (i.id === id ? { ...i, ...updates } : i));
+      itemsRef.current = next;
       setItems(next);
       await persistItems(next);
+      if (updates.imageUri !== undefined) {
+        await persistImage(id, updates.imageUri);
+      }
     },
-    [items, persistItems]
+    [persistItems, persistImage]
   );
 
   const markWorn = useCallback(
     async (ids: string[]) => {
       const idSet = new Set(ids);
-      const next = items.map((i) =>
+      const next = itemsRef.current.map((i) =>
         idSet.has(i.id) ? { ...i, timesWorn: (i.timesWorn ?? 0) + 1 } : i
       );
+      itemsRef.current = next;
       setItems(next);
       await persistItems(next);
     },
-    [items, persistItems]
+    [persistItems]
   );
 
   const getItemsByCategory = useCallback(
-    (category: ClothingCategory) => items.filter((i) => i.category === category),
-    [items]
+    (category: ClothingCategory) => itemsRef.current.filter((i) => i.category === category),
+    []
   );
 
   const getItemsBySeason = useCallback(
-    (season: Season) => items.filter((i) => i.seasons.includes(season)),
-    [items]
+    (season: Season) => itemsRef.current.filter((i) => i.seasons.includes(season)),
+    []
   );
 
   const getCasualItems = useCallback(
-    () => items.filter((i) => !i.isWorkwear),
-    [items]
+    () => itemsRef.current.filter((i) => !i.isWorkwear),
+    []
   );
 
   const getWorkItems = useCallback(
-    () => items.filter((i) => i.isWorkwear),
-    [items]
+    () => itemsRef.current.filter((i) => i.isWorkwear),
+    []
   );
 
   const saveOutfit = useCallback(
@@ -195,20 +248,22 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
         previewImage,
         createdAt: new Date().toISOString(),
       };
-      const next = [newOutfit, ...savedOutfits];
+      const next = [newOutfit, ...outfitsRef.current];
+      outfitsRef.current = next;
       setSavedOutfits(next);
       await persistOutfits(next);
     },
-    [savedOutfits, persistOutfits]
+    [persistOutfits]
   );
 
   const deleteSavedOutfit = useCallback(
     async (id: string) => {
-      const next = savedOutfits.filter((o) => o.id !== id);
+      const next = outfitsRef.current.filter((o) => o.id !== id);
+      outfitsRef.current = next;
       setSavedOutfits(next);
       await persistOutfits(next);
     },
-    [savedOutfits, persistOutfits]
+    [persistOutfits]
   );
 
   return (

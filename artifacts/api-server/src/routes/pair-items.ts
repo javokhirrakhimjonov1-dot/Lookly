@@ -20,6 +20,7 @@ Rules:
 - Do NOT suggest items of the same category as the selected item (e.g. don't pair a top with another top).
 - Consider color harmony, occasion, and season compatibility.
 - Be specific and helpful in your reasoning — mention colors, style, or occasion.
+- If a list of "already suggested" IDs is provided, suggest DIFFERENT items — explore new combinations.
 
 Return ONLY a JSON array (no markdown, no explanation) with objects having these fields:
 - id: the exact wardrobe item ID
@@ -27,15 +28,18 @@ Return ONLY a JSON array (no markdown, no explanation) with objects having these
 - vibe: one label from: "Perfect match" | "Bold contrast" | "Classic combo" | "Layer up" | "Color harmony" | "Casual cool"`;
 
 router.post("/pair-items", async (req, res) => {
-  const { selectedItem, wardrobe } = req.body as {
+  const { selectedItem, wardrobe, excludeIds } = req.body as {
     selectedItem: WardrobeItem;
     wardrobe: WardrobeItem[];
+    excludeIds?: string[];
   };
 
   if (!selectedItem || !Array.isArray(wardrobe)) {
     res.status(400).json({ error: "selectedItem and wardrobe are required" });
     return;
   }
+
+  const excludeSet = new Set(excludeIds ?? []);
 
   const candidates = wardrobe.filter(
     (w) => w.id !== selectedItem.id && w.category !== selectedItem.category
@@ -46,19 +50,28 @@ router.post("/pair-items", async (req, res) => {
     return;
   }
 
-  const wardrobeList = candidates
+  const preferred = candidates.filter((w) => !excludeSet.has(w.id));
+  const fallback = candidates.filter((w) => excludeSet.has(w.id));
+  const pool = preferred.length >= 2 ? preferred : [...preferred, ...fallback];
+
+  const wardrobeList = pool
     .map(
       (w) =>
         `ID: ${w.id} | ${w.name} (${w.category}, ${w.color}, seasons: ${w.seasons.join(", ")})`
     )
     .join("\n");
 
-  const userMessage = `Selected item: ${selectedItem.name} — ${selectedItem.category}, ${selectedItem.color} (${selectedItem.colorHex}), seasons: ${selectedItem.seasons.join(", ")}
+  const alreadySuggestedNote =
+    excludeSet.size > 0
+      ? `\nAlready suggested in a previous look (avoid repeating these): ${[...excludeSet].join(", ")}`
+      : "";
+
+  const userMessage = `Selected item: ${selectedItem.name} — ${selectedItem.category}, ${selectedItem.color} (${selectedItem.colorHex}), seasons: ${selectedItem.seasons.join(", ")}${alreadySuggestedNote}
 
 Wardrobe to choose from:
 ${wardrobeList}
 
-Suggest 2–3 best matching items.`;
+Suggest 2–3 best matching items — make this combination feel fresh and different.`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-5.1",

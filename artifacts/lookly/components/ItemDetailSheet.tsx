@@ -67,6 +67,7 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
+  const [seenIds, setSeenIds] = useState<string[]>([]);
 
   const suggestOpacity = useSharedValue(0);
   const suggestTranslate = useSharedValue(20);
@@ -80,14 +81,16 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
     if (!item) {
       setSuggestions([]);
       setHasFetched(false);
+      setSeenIds([]);
       suggestOpacity.value = 0;
       suggestTranslate.value = 20;
     }
   }, [item?.id]);
 
-  const handleFindMatches = async () => {
+  const handleFindMatches = async (excludeIds?: string[]) => {
     if (!item) return;
     setIsLoading(true);
+    suggestOpacity.value = 0;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       const res = await fetch(`${API_BASE}/pair-items`, {
@@ -96,10 +99,13 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
         body: JSON.stringify({
           selectedItem: item,
           wardrobe: items,
+          excludeIds: excludeIds ?? [],
         }),
       });
       const data = (await res.json()) as { suggestions: Suggestion[] };
-      setSuggestions(data.suggestions ?? []);
+      const newSuggestions = data.suggestions ?? [];
+      setSuggestions(newSuggestions);
+      setSeenIds((prev) => [...prev, ...newSuggestions.map((s) => s.id)]);
       setHasFetched(true);
       suggestOpacity.value = withTiming(1, { duration: 400 });
       suggestTranslate.value = withSpring(0, { damping: 14 });
@@ -219,7 +225,7 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
               <Text style={[styles.actionBtnText, { color: colors.accent }]}>Build a look</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={handleFindMatches}
+              onPress={() => handleFindMatches(hasFetched ? seenIds : [])}
               disabled={isLoading}
               style={[
                 styles.actionBtn,
@@ -230,10 +236,14 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
               {isLoading ? (
                 <ActivityIndicator size="small" color="#FAF8F5" />
               ) : (
-                <Feather name="zap" size={16} color={colors.primaryForeground} />
+                <Feather
+                  name={hasFetched ? "refresh-cw" : "zap"}
+                  size={15}
+                  color={colors.primaryForeground}
+                />
               )}
               <Text style={[styles.actionBtnText, { color: colors.primaryForeground }]}>
-                {isLoading ? "Styling..." : "Style this with..."}
+                {isLoading ? "Styling…" : hasFetched ? "Different look" : "Style this with…"}
               </Text>
             </TouchableOpacity>
           </View>
