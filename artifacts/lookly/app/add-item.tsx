@@ -7,6 +7,7 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -68,6 +69,15 @@ const COLOR_SWATCHES: { name: string; hex: string }[] = [
   { name: "Cream", hex: "#FAF0E6" },
 ];
 
+const CATEGORY_ICONS: Record<ClothingCategory, React.ComponentProps<typeof Feather>["name"]> = {
+  tops: "wind",
+  bottoms: "minus",
+  dresses: "star",
+  outerwear: "layers",
+  shoes: "chevrons-up",
+  accessories: "circle",
+};
+
 function isLight(hex: string): boolean {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -77,24 +87,233 @@ function isLight(hex: string): boolean {
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
-interface ScanResult {
+interface DetectedItem {
   name: string;
   category: ClothingCategory;
   colorName: string;
   colorHex: string;
   material: string;
+  fabricWeight: FabricWeight;
   seasons: Season[];
   tags: string[];
+  locationHint: string;
 }
 
-async function identifyClothing(base64: string, mimeType: string): Promise<ScanResult> {
+async function scanClothingItems(base64: string, mimeType: string): Promise<DetectedItem[]> {
   const res = await fetch(`${API_BASE}/identify-clothing`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ image: base64, mimeType }),
   });
   if (!res.ok) throw new Error(`API error ${res.status}`);
-  return res.json() as Promise<ScanResult>;
+  const data = await res.json() as { items: DetectedItem[] };
+  return data.items ?? [];
+}
+
+function resolveColor(colorName: string, colorHex: string): { name: string; hex: string } {
+  const match = COLOR_SWATCHES.find(
+    (c) =>
+      c.name.toLowerCase() === colorName.toLowerCase() ||
+      c.hex.toLowerCase() === colorHex.toLowerCase()
+  );
+  return match ?? { name: colorName, hex: colorHex };
+}
+
+interface ItemPickerProps {
+  visible: boolean;
+  items: DetectedItem[];
+  imageUri: string;
+  onSelectOne: (item: DetectedItem) => void;
+  onAddAll: (items: DetectedItem[]) => void;
+  onDismiss: () => void;
+}
+
+function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss }: ItemPickerProps) {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const [selected, setSelected] = useState<Set<number>>(new Set(items.map((_, i) => i)));
+
+  const toggleSelect = (idx: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
+  const selectedItems = items.filter((_, i) => selected.has(i));
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent presentationStyle="overFullScreen">
+      <View style={styles.pickerOverlay}>
+        <View
+          style={[
+            styles.pickerSheet,
+            {
+              backgroundColor: colors.background,
+              paddingBottom: Platform.OS === "web" ? 24 : insets.bottom + 16,
+            },
+          ]}
+        >
+          <View style={[styles.pickerHandle, { backgroundColor: colors.border }]} />
+
+          <View style={styles.pickerHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.pickerTitle, { color: colors.foreground }]}>
+                {items.length} items detected
+              </Text>
+              <Text style={[styles.pickerSubtitle, { color: colors.mutedForeground }]}>
+                Select which ones to add to your wardrobe
+              </Text>
+            </View>
+            <TouchableOpacity onPress={onDismiss}>
+              <Feather name="x" size={20} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.pickerImageRow}>
+            <Image
+              source={{ uri: imageUri }}
+              style={[styles.pickerThumb, { borderColor: colors.border }]}
+              contentFit="cover"
+            />
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={[styles.pickerImageNote, { color: colors.mutedForeground }]}>
+                AI found these clothing items in your photo. Tap to select or deselect.
+              </Text>
+              <TouchableOpacity
+                onPress={() =>
+                  setSelected(
+                    selected.size === items.length
+                      ? new Set()
+                      : new Set(items.map((_, i) => i))
+                  )
+                }
+              >
+                <Text style={[styles.pickerToggleAll, { color: colors.accent }]}>
+                  {selected.size === items.length ? "Deselect all" : "Select all"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <ScrollView style={styles.pickerList} showsVerticalScrollIndicator={false}>
+            {items.map((item, idx) => {
+              const isSelected = selected.has(idx);
+              const color = resolveColor(item.colorName, item.colorHex);
+              return (
+                <TouchableOpacity
+                  key={idx}
+                  onPress={() => toggleSelect(idx)}
+                  style={[
+                    styles.pickerItem,
+                    {
+                      backgroundColor: isSelected ? colors.card : colors.background,
+                      borderColor: isSelected ? colors.accent : colors.border,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.pickerItemColor,
+                      { backgroundColor: color.hex },
+                    ]}
+                  >
+                    <Feather
+                      name={CATEGORY_ICONS[item.category] ?? "circle"}
+                      size={14}
+                      color={isLight(color.hex) ? "rgba(28,21,18,0.5)" : "rgba(250,248,245,0.5)"}
+                    />
+                  </View>
+
+                  <View style={{ flex: 1, gap: 3 }}>
+                    <Text style={[styles.pickerItemName, { color: colors.foreground }]} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <View style={styles.pickerItemMeta}>
+                      <Text style={[styles.pickerItemCat, { color: colors.accent }]}>
+                        {item.category.charAt(0).toUpperCase() + item.category.slice(1)}
+                      </Text>
+                      <Text style={[styles.pickerItemDot, { color: colors.border }]}>·</Text>
+                      <Text style={[styles.pickerItemMatl, { color: colors.mutedForeground }]} numberOfLines={1}>
+                        {item.material}
+                      </Text>
+                    </View>
+                    {item.locationHint ? (
+                      <Text style={[styles.pickerItemHint, { color: colors.mutedForeground }]}>
+                        {item.locationHint}
+                      </Text>
+                    ) : null}
+                    <View style={styles.pickerItemTags}>
+                      {item.tags.slice(0, 3).map((t) => (
+                        <View key={t} style={[styles.pickerTag, { backgroundColor: colors.secondary }]}>
+                          <Text style={[styles.pickerTagText, { color: colors.mutedForeground }]}>{t}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.pickerCheckbox,
+                      {
+                        backgroundColor: isSelected ? colors.accent : "transparent",
+                        borderColor: isSelected ? colors.accent : colors.border,
+                      },
+                    ]}
+                  >
+                    {isSelected && <Feather name="check" size={12} color="#FFFFFF" />}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          <View style={styles.pickerFooter}>
+            {selectedItems.length === 1 && (
+              <TouchableOpacity
+                onPress={() => onSelectOne(selectedItems[0]!)}
+                style={[styles.pickerFillBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+              >
+                <Feather name="edit-2" size={15} color={colors.foreground} />
+                <Text style={[styles.pickerFillBtnText, { color: colors.foreground }]}>
+                  Review & edit
+                </Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              onPress={() => onAddAll(selectedItems)}
+              disabled={selectedItems.length === 0}
+              style={[
+                styles.pickerAddBtn,
+                {
+                  backgroundColor: selectedItems.length > 0 ? colors.primary : colors.secondary,
+                },
+              ]}
+            >
+              <Feather
+                name="plus-circle"
+                size={15}
+                color={selectedItems.length > 0 ? colors.primaryForeground : colors.border}
+              />
+              <Text
+                style={[
+                  styles.pickerAddBtnText,
+                  { color: selectedItems.length > 0 ? colors.primaryForeground : colors.border },
+                ]}
+              >
+                {selectedItems.length === 0
+                  ? "Select items"
+                  : `Add ${selectedItems.length} item${selectedItems.length > 1 ? "s" : ""} to wardrobe`}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
 }
 
 export default function AddItemScreen() {
@@ -104,7 +323,7 @@ export default function AddItemScreen() {
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState<ClothingCategory | null>(null);
-  const [selectedColor, setSelectedColor] = useState<(typeof COLOR_SWATCHES)[number] | null>(null);
+  const [selectedColor, setSelectedColor] = useState<{ name: string; hex: string } | null>(null);
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [fabricWeight, setFabricWeight] = useState<FabricWeight>("medium");
   const [isWorkwear, setIsWorkwear] = useState(false);
@@ -116,6 +335,9 @@ export default function AddItemScreen() {
   const [scannedImage, setScannedImage] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [scanDone, setScanDone] = useState(false);
+
+  const [detectedItems, setDetectedItems] = useState<DetectedItem[]>([]);
+  const [showPicker, setShowPicker] = useState(false);
 
   const scanScale = useSharedValue(1);
   const scanCardOpacity = useSharedValue(0);
@@ -135,6 +357,55 @@ export default function AddItemScreen() {
     );
   };
 
+  const applyDetectedItem = (item: DetectedItem) => {
+    const color = resolveColor(item.colorName, item.colorHex);
+    setName(item.name);
+    setCategory(item.category);
+    setSelectedColor(color);
+    setSeasons(item.seasons.filter((s): s is Season => ["spring", "summer", "fall", "winter"].includes(s)));
+    setMaterial(item.material);
+    setFabricWeight(item.fabricWeight ?? "medium");
+    setTags(item.tags);
+    setScanDone(true);
+    scanCardOpacity.value = withTiming(1, { duration: 400 });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const handlePickerSelectOne = (item: DetectedItem) => {
+    setShowPicker(false);
+    applyDetectedItem(item);
+  };
+
+  const handlePickerAddAll = async (items: DetectedItem[]) => {
+    if (items.length === 0) return;
+    setShowPicker(false);
+    setIsSaving(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    for (const item of items) {
+      const color = resolveColor(item.colorName, item.colorHex);
+      await addItem({
+        name: item.name,
+        category: item.category,
+        color: color.name,
+        colorHex: color.hex,
+        seasons: item.seasons.filter((s): s is Season => ["spring", "summer", "fall", "winter"].includes(s)),
+        fabricWeight: item.fabricWeight ?? "medium",
+        isWorkwear: false,
+        tags: item.tags.length > 0 ? item.tags : [item.category],
+        imageUri: scannedImage ?? undefined,
+      });
+    }
+    setIsSaving(false);
+    router.back();
+  };
+
+  const handlePickerDismiss = () => {
+    setShowPicker(false);
+    if (detectedItems.length === 1 && detectedItems[0]) {
+      applyDetectedItem(detectedItems[0]);
+    }
+  };
+
   const runScan = async (base64: string, mimeType: string, uri: string) => {
     setScannedImage(uri);
     setIsScanning(true);
@@ -142,28 +413,26 @@ export default function AddItemScreen() {
     scanScale.value = withSpring(0.97, { damping: 12 }, () => {
       scanScale.value = withSpring(1);
     });
+
     try {
-      const scan = await identifyClothing(base64, mimeType);
-      setName(scan.name);
-      setCategory(scan.category);
-      const colorMatch = COLOR_SWATCHES.find(
-        (c) =>
-          c.name.toLowerCase() === scan.colorName.toLowerCase() ||
-          c.hex.toLowerCase() === scan.colorHex.toLowerCase()
-      );
-      setSelectedColor(colorMatch ?? { name: scan.colorName, hex: scan.colorHex });
-      setSeasons(
-        scan.seasons.filter((s): s is Season =>
-          ["spring", "summer", "fall", "winter"].includes(s)
-        )
-      );
-      setMaterial(scan.material);
-      setTags(scan.tags);
-      setScanDone(true);
-      scanCardOpacity.value = withTiming(1, { duration: 400 });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const items = await scanClothingItems(base64, mimeType);
+
+      if (items.length === 0) {
+        Alert.alert("Nothing detected", "No clothing items were found in the photo. Try a clearer image or fill in the details manually.");
+        setScannedImage(null);
+        return;
+      }
+
+      setDetectedItems(items);
+
+      if (items.length === 1) {
+        applyDetectedItem(items[0]!);
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setShowPicker(true);
+      }
     } catch {
-      Alert.alert("Scan failed", "Could not identify the item. Please fill in the details manually.");
+      Alert.alert("Scan failed", "Could not identify items. Please fill in the details manually.");
       setScannedImage(null);
     } finally {
       setIsScanning(false);
@@ -178,10 +447,9 @@ export default function AddItemScreen() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: "images",
-      quality: 0.6,
+      quality: 0.7,
       base64: true,
-      allowsEditing: true,
-      aspect: [3, 4],
+      allowsEditing: false,
     });
     if (result.canceled || !result.assets[0] || !result.assets[0].base64) return;
     const asset = result.assets[0];
@@ -195,10 +463,9 @@ export default function AddItemScreen() {
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
-      quality: 0.6,
+      quality: 0.7,
       base64: true,
-      allowsEditing: true,
-      aspect: [3, 4],
+      allowsEditing: false,
     });
     if (result.canceled || !result.assets[0] || !result.assets[0].base64) return;
     const asset = result.assets[0];
@@ -227,8 +494,28 @@ export default function AddItemScreen() {
     router.back();
   };
 
+  if (isSaving && !showPicker) {
+    return (
+      <View style={[styles.root, { backgroundColor: colors.background, alignItems: "center", justifyContent: "center", gap: 16 }]}>
+        <ActivityIndicator size="large" color={colors.accent} />
+        <Text style={[styles.savingText, { color: colors.mutedForeground }]}>Saving to wardrobe...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
+      {showPicker && scannedImage && (
+        <ItemPicker
+          visible={showPicker}
+          items={detectedItems}
+          imageUri={scannedImage}
+          onSelectOne={handlePickerSelectOne}
+          onAddAll={handlePickerAddAll}
+          onDismiss={handlePickerDismiss}
+        />
+      )}
+
       <View
         style={[
           styles.header,
@@ -270,25 +557,34 @@ export default function AddItemScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={[styles.scanSection, { borderColor: colors.border, backgroundColor: colors.card }]}>
-          <Text style={[styles.scanTitle, { color: colors.foreground }]}>Identify with AI</Text>
+          <Text style={[styles.scanTitle, { color: colors.foreground }]}>Scan with AI</Text>
           <Text style={[styles.scanSubtitle, { color: colors.mutedForeground }]}>
-            Take or upload a photo — we'll detect color, type, and fabric automatically
+            Point at one item or a full outfit flat-lay — we'll detect every piece automatically
           </Text>
 
           {scannedImage && (
             <View style={styles.scannedImageWrap}>
               <Image source={{ uri: scannedImage }} style={styles.scannedImage} contentFit="cover" />
               {isScanning && (
-                <View style={[styles.scanOverlay, { backgroundColor: "rgba(28,21,18,0.55)" }]}>
+                <View style={[styles.scanOverlay, { backgroundColor: "rgba(28,21,18,0.6)" }]}>
                   <ActivityIndicator size="large" color="#FAF8F5" />
-                  <Text style={styles.scanOverlayText}>Analyzing...</Text>
+                  <Text style={styles.scanOverlayText}>Detecting items...</Text>
                 </View>
               )}
               {scanDone && !isScanning && (
                 <View style={[styles.scanDoneBadge, { backgroundColor: colors.accent }]}>
                   <Feather name="check" size={12} color="#FFFFFF" />
-                  <Text style={styles.scanDoneText}>Fields filled</Text>
+                  <Text style={styles.scanDoneText}>Filled automatically</Text>
                 </View>
+              )}
+              {detectedItems.length > 1 && !isScanning && (
+                <TouchableOpacity
+                  onPress={() => setShowPicker(true)}
+                  style={[styles.rePickBadge, { backgroundColor: colors.primary + "EE" }]}
+                >
+                  <Feather name="list" size={12} color="#FAF8F5" />
+                  <Text style={styles.rePickText}>{detectedItems.length} items found · tap to repick</Text>
+                </TouchableOpacity>
               )}
             </View>
           )}
@@ -489,7 +785,9 @@ export default function AddItemScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Purchase price <Text style={{ fontWeight: "400" }}>(optional)</Text></Text>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+            Purchase price <Text style={{ fontWeight: "400" }}>(optional)</Text>
+          </Text>
           <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>
             Used to calculate cost per wear in Stats
           </Text>
@@ -512,6 +810,7 @@ export default function AddItemScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  savingText: { fontSize: 15, fontWeight: "500" },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -527,18 +826,65 @@ const styles = StyleSheet.create({
   scanSection: { borderRadius: 20, borderWidth: 1, padding: 18, gap: 14 },
   scanTitle: { fontSize: 16, fontWeight: "700" },
   scanSubtitle: { fontSize: 13, lineHeight: 18 },
-  scannedImageWrap: { borderRadius: 14, overflow: "hidden", width: "100%", aspectRatio: 3 / 4, maxHeight: 220, position: "relative" },
+  scannedImageWrap: {
+    borderRadius: 14,
+    overflow: "hidden",
+    width: "100%",
+    height: 200,
+    position: "relative",
+  },
   scannedImage: { width: "100%", height: "100%" },
-  scanOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", gap: 10 },
+  scanOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
   scanOverlayText: { color: "#FAF8F5", fontSize: 14, fontWeight: "600" },
-  scanDoneBadge: { position: "absolute", bottom: 10, right: 10, flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 100 },
+  scanDoneBadge: {
+    position: "absolute",
+    bottom: 10,
+    right: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 100,
+  },
   scanDoneText: { color: "#FFFFFF", fontSize: 11, fontWeight: "700" },
+  rePickBadge: {
+    position: "absolute",
+    bottom: 10,
+    left: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 100,
+  },
+  rePickText: { color: "#FAF8F5", fontSize: 11, fontWeight: "600" },
   scanButtons: { flexDirection: "row", gap: 10 },
-  scanBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 12, borderRadius: 12 },
+  scanBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
   scanBtnText: { fontSize: 14, fontWeight: "600" },
   materialCard: { borderRadius: 16, borderWidth: 1, padding: 14, gap: 12 },
   materialRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  materialIcon: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  materialIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   materialLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.8 },
   materialValue: { fontSize: 14, fontWeight: "600", marginTop: 2 },
   tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
@@ -551,20 +897,162 @@ const styles = StyleSheet.create({
   sectionHint: { fontSize: 12, lineHeight: 17, marginTop: -6 },
   input: { borderWidth: 1, borderRadius: 14, padding: 14, fontSize: 15 },
   categoryGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  categoryBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 11, borderRadius: 12, borderWidth: 1, width: "47%" },
+  categoryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    width: "47%",
+  },
   categoryLabel: { fontSize: 14, fontWeight: "500" },
   colorGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   colorItem: { alignItems: "center", gap: 4, width: 52 },
-  colorSwatch: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  colorSwatch: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   colorLabel: { fontSize: 10, fontWeight: "500", textAlign: "center" },
   seasonsRow: { flexDirection: "row", gap: 10 },
-  seasonBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, alignItems: "center" },
+  seasonBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+  },
   seasonLabel: { fontSize: 13, fontWeight: "600" },
   fabricRow: { flexDirection: "row", gap: 10 },
-  fabricBtn: { flex: 1, paddingVertical: 12, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, alignItems: "center", gap: 3 },
+  fabricBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+    gap: 3,
+  },
   fabricLabel: { fontSize: 14, fontWeight: "600" },
   fabricHint: { fontSize: 10, textAlign: "center" },
-  priceInputRow: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: 14, paddingHorizontal: 14, gap: 4 },
+  priceInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    gap: 4,
+  },
   priceCurrency: { fontSize: 16, fontWeight: "600" },
   priceInput: { flex: 1, paddingVertical: 14, fontSize: 15 },
+
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(28,21,18,0.5)",
+    justifyContent: "flex-end",
+  },
+  pickerSheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxHeight: "88%",
+    paddingTop: 12,
+  },
+  pickerHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  pickerHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    gap: 12,
+  },
+  pickerTitle: { fontSize: 20, fontWeight: "700" },
+  pickerSubtitle: { fontSize: 13, marginTop: 3 },
+  pickerImageRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 20,
+    marginBottom: 14,
+  },
+  pickerThumb: {
+    width: 64,
+    height: 64,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  pickerImageNote: { fontSize: 12, lineHeight: 17 },
+  pickerToggleAll: { fontSize: 13, fontWeight: "600", marginTop: 6 },
+  pickerList: {
+    paddingHorizontal: 20,
+    maxHeight: 340,
+  },
+  pickerItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 14,
+    marginBottom: 10,
+  },
+  pickerItemColor: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  pickerItemName: { fontSize: 14, fontWeight: "600" },
+  pickerItemMeta: { flexDirection: "row", alignItems: "center", gap: 6 },
+  pickerItemCat: { fontSize: 11, fontWeight: "700" },
+  pickerItemDot: { fontSize: 11 },
+  pickerItemMatl: { fontSize: 11, flex: 1 },
+  pickerItemHint: { fontSize: 10, fontStyle: "italic" },
+  pickerItemTags: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
+  pickerTag: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 100 },
+  pickerTagText: { fontSize: 10, fontWeight: "500" },
+  pickerCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  pickerFooter: {
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    gap: 10,
+  },
+  pickerFillBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 13,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  pickerFillBtnText: { fontSize: 14, fontWeight: "600" },
+  pickerAddBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 15,
+    borderRadius: 14,
+  },
+  pickerAddBtnText: { fontSize: 15, fontWeight: "700" },
 });
