@@ -19,6 +19,13 @@ export type ClothingCategory =
 export type Season = "spring" | "summer" | "fall" | "winter";
 export type FabricWeight = "light" | "medium" | "heavy";
 
+export interface BrandLogo {
+  brand: string;
+  description: string;
+  position: string;
+  size: "small" | "medium" | "large";
+}
+
 export interface ClothingItem {
   id: string;
   name: string;
@@ -32,6 +39,7 @@ export interface ClothingItem {
   timesWorn: number;
   imageUri?: string;
   tags: string[];
+  brandLogo?: BrandLogo;
   createdAt: string;
 }
 

@@ -27,6 +27,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import {
+  type BrandLogo,
   type ClothingCategory,
   type FabricWeight,
   type Season,
@@ -97,6 +98,7 @@ interface DetectedItem {
   seasons: Season[];
   tags: string[];
   locationHint: string;
+  brandLogo?: BrandLogo | null;
   _photoUri?: string;
   _extractedUri?: string;
 }
@@ -118,12 +120,13 @@ async function removeBg(
   colorName?: string,
   colorHex?: string,
   material?: string,
+  brandLogo?: BrandLogo | null,
 ): Promise<string | null> {
   try {
     const res = await fetch(`${API_BASE}/remove-bg`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ itemName, category, colorName, colorHex, material }),
+      body: JSON.stringify({ itemName, category, colorName, colorHex, material, brandLogo: brandLogo ?? undefined }),
     });
     if (!res.ok) return null;
     const data = await res.json() as { image?: string };
@@ -356,6 +359,7 @@ export default function AddItemScreen() {
   const [tags, setTags] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
+  const [brandLogo, setBrandLogo] = useState<BrandLogo | null>(null);
   const [scannedImage, setScannedImage] = useState<string | null>(null);
   const [extractedItemUri, setExtractedItemUri] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
@@ -393,6 +397,7 @@ export default function AddItemScreen() {
     setMaterial(item.material);
     setFabricWeight(item.fabricWeight ?? "medium");
     setTags(item.tags);
+    setBrandLogo(item.brandLogo ?? null);
     setScanDone(true);
     scanCardOpacity.value = withTiming(1, { duration: 400 });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -423,6 +428,7 @@ export default function AddItemScreen() {
           isWorkwear: false,
           tags: item.tags.length > 0 ? item.tags : [item.category],
           imageUri: item._extractedUri ?? undefined,
+          brandLogo: item.brandLogo ?? undefined,
         };
       })
     );
@@ -468,7 +474,7 @@ export default function AddItemScreen() {
 
       taggedItems.forEach((item, idx) => {
         const color = resolveColor(item.colorName, item.colorHex);
-        removeBg(item.name, item.category, color.name, color.hex, item.material).then((cleanUri) => {
+        removeBg(item.name, item.category, color.name, color.hex, item.material, item.brandLogo).then((cleanUri) => {
           if (!cleanUri) return;
           setDetectedItems((prev) => {
             const next = [...prev];
@@ -551,7 +557,7 @@ export default function AddItemScreen() {
 
     allItems.forEach((item, idx) => {
       const color = resolveColor(item.colorName, item.colorHex);
-      removeBg(item.name, item.category, color.name, color.hex, item.material).then((cleanUri) => {
+      removeBg(item.name, item.category, color.name, color.hex, item.material, item.brandLogo).then((cleanUri) => {
         if (!cleanUri) return;
         setDetectedItems((prev) => {
           const next = [...prev];
@@ -601,6 +607,7 @@ export default function AddItemScreen() {
       purchasePrice: !isNaN(price) && price > 0 ? price : undefined,
       tags: tags.length > 0 ? tags : [category],
       imageUri: extractedItemUri ?? undefined,
+      brandLogo: brandLogo ?? undefined,
     });
     router.back();
   };

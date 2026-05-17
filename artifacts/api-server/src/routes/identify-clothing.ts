@@ -15,6 +15,7 @@ Return a JSON object with a single key "items" containing an array. Each element
 - seasons: array of suitable seasons from ["spring", "summer", "fall", "winter"] (can include multiple)
 - tags: array of 2-4 style descriptors (e.g. ["casual", "workwear", "minimal", "streetwear", "formal", "boho", "sporty"])
 - locationHint: a short phrase saying where in the image this item is (e.g. "worn on top", "bottom half", "left shoe", "hanging on rack", "folded on left").
+- brandLogo: null if no brand mark, logo, wordmark, emblem, or graphic is clearly visible on the item. If one IS visible: { "brand": "brand/label name if legible, otherwise 'Unknown'", "description": "concise visual description of the mark e.g. 'white embroidered swoosh', 'raised rubber three-stripe detail', 'embossed interlocking CC monogram', 'red Levi tab on back pocket'", "position": "location on the item e.g. 'left chest', 'center front', 'right sleeve', 'back upper center', 'left hip'", "size": "small | medium | large — proportion relative to the garment surface: small = subtle detail <5%, medium = noticeable 5-20%, large = dominant >20%" }
 
 STRICT VISIBILITY RULES — follow these absolutely:
 - ONLY include an item if at least 70% of it is clearly visible in the frame. If it is cut off, partially hidden, or only implied, DO NOT include it.
@@ -67,6 +68,13 @@ router.post("/identify-clothing", async (req, res) => {
 
   const raw = response.choices[0]?.message?.content ?? "";
 
+  interface RawBrandLogo {
+    brand?: string;
+    description?: string;
+    position?: string;
+    size?: string;
+  }
+
   let parsed: {
     items: {
       name: string;
@@ -78,6 +86,7 @@ router.post("/identify-clothing", async (req, res) => {
       seasons: string[];
       tags: string[];
       locationHint: string;
+      brandLogo?: RawBrandLogo | null;
     }[];
   };
 
@@ -95,17 +104,30 @@ router.post("/identify-clothing", async (req, res) => {
   const items = Array.isArray(parsed.items) ? parsed.items : [];
 
   res.json({
-    items: items.map((item) => ({
-      name: item.name ?? "",
-      category: item.category ?? "tops",
-      colorName: item.colorName ?? "Black",
-      colorHex: item.colorHex ?? "#1C1512",
-      material: item.material ?? "Unknown",
-      fabricWeight: item.fabricWeight ?? "medium",
-      seasons: Array.isArray(item.seasons) ? item.seasons : [],
-      tags: Array.isArray(item.tags) ? item.tags : [],
-      locationHint: item.locationHint ?? "",
-    })),
+    items: items.map((item) => {
+      const logo = item.brandLogo;
+      const validSizes = ["small", "medium", "large"];
+      return {
+        name: item.name ?? "",
+        category: item.category ?? "tops",
+        colorName: item.colorName ?? "Black",
+        colorHex: item.colorHex ?? "#1C1512",
+        material: item.material ?? "Unknown",
+        fabricWeight: item.fabricWeight ?? "medium",
+        seasons: Array.isArray(item.seasons) ? item.seasons : [],
+        tags: Array.isArray(item.tags) ? item.tags : [],
+        locationHint: item.locationHint ?? "",
+        brandLogo:
+          logo && logo.brand && logo.description && logo.position && logo.size
+            ? {
+                brand: logo.brand,
+                description: logo.description,
+                position: logo.position,
+                size: validSizes.includes(logo.size) ? logo.size : "small",
+              }
+            : null,
+      };
+    }),
   });
 });
 

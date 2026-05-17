@@ -27,17 +27,31 @@ async function describePersonFromPhoto(base64: string, mime: string): Promise<st
   return res.choices[0]?.message?.content?.trim() ?? "a stylish young adult";
 }
 
+interface BrandLogo {
+  brand: string;
+  description: string;
+  position: string;
+  size: "small" | "medium" | "large";
+}
+
 function buildPrompt(
-  items: { name: string; color: string; category: string }[],
+  items: { name: string; color: string; category: string; brandLogo?: BrandLogo | null }[],
   weather: string,
   temperature: number,
   personDescription: string
 ): string {
   const pieces = items
-    .map(
-      (i) =>
-        `  - ${i.color} ${i.name} (${i.category}): RENDER AS COMPLETELY PLAIN SOLID ${i.color.toUpperCase()} — ZERO logos, ZERO text, ZERO graphics, ZERO patterns, ZERO prints, ZERO decorations of any kind`
-    )
+    .map((i) => {
+      const base = `  - ${i.color} ${i.name} (${i.category})`;
+      if (i.brandLogo) {
+        return (
+          `${base}: plain solid ${i.color.toUpperCase()} fabric.` +
+          ` HAS a ${i.brandLogo.size} ${i.brandLogo.description} (${i.brandLogo.brand}) at the ${i.brandLogo.position} —` +
+          ` render this logo/mark faithfully at exactly that position and proportional scale. NO other logos, text, or graphics anywhere else.`
+        );
+      }
+      return `${base}: RENDER AS COMPLETELY PLAIN SOLID ${i.color.toUpperCase()} — ZERO logos, ZERO text, ZERO graphics, ZERO patterns, ZERO prints, ZERO decorations of any kind`;
+    })
     .join("\n");
 
   const tempDesc =
@@ -55,8 +69,8 @@ function buildPrompt(
     `This person is wearing EXACTLY the following items — render each item faithfully:\n` +
     `${pieces}\n\n` +
     `ABSOLUTE RULES — violating any of these is unacceptable:\n` +
-    `1. Every clothing item must be PLAIN SOLID COLOR. NO logos, NO brand marks, NO text, NO graphics, NO prints, NO patterns, NO embroidery, NO badges, NO buttons, NO stripes unless explicitly described above.\n` +
-    `2. A white t-shirt must be COMPLETELY PLAIN WHITE with NOTHING printed on it.\n` +
+    `1. Every clothing item must be PLAIN SOLID COLOR except where a logo/mark is explicitly listed above. Only items that explicitly mention a logo/mark may have one — all other items must have ZERO logos, ZERO brand marks, ZERO text, ZERO graphics, ZERO prints, ZERO patterns.\n` +
+    `2. A white t-shirt must be COMPLETELY PLAIN WHITE with NOTHING printed on it unless its logo is explicitly described above.\n` +
     `3. Do NOT invent any design elements, textures, or details not described above.\n` +
     `4. Render ONLY the items listed — do NOT add extra clothing, accessories, or props.\n` +
     `5. Keep the person's face, hair, and body exactly as described.\n\n` +
@@ -73,7 +87,7 @@ router.post("/outfit-preview", async (req, res) => {
     userBodyPhotoBase64,
     userBodyPhotoMime,
   } = req.body as {
-    items: { name: string; color: string; colorHex: string; category: string }[];
+    items: { name: string; color: string; colorHex: string; category: string; brandLogo?: BrandLogo | null }[];
     weather: string;
     temperature: number;
     userBodyPhotoBase64?: string;

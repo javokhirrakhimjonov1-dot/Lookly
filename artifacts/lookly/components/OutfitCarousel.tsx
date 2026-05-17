@@ -81,6 +81,7 @@ function OutfitCard({
       color: i.color,
       colorHex: i.colorHex,
       category: i.category,
+      ...(i.brandLogo ? { brandLogo: i.brandLogo } : {}),
     }));
 
     fetch(`${API_BASE}/outfit-preview`, {
