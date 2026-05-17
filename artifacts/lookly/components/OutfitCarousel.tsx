@@ -16,19 +16,11 @@ import {
 import { useColors } from "@/hooks/useColors";
 import { useWardrobe, type ClothingItem } from "@/contexts/WardrobeContext";
 import { useWeather } from "@/contexts/WeatherContext";
+import { useUserProfile } from "@/contexts/UserProfileContext";
 
 const SCREEN_W = Dimensions.get("window").width;
-const CARD_H = 340;
+const CARD_H = 400;
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
-
-const CATEGORY_ICONS: Record<string, React.ComponentProps<typeof Feather>["name"]> = {
-  tops: "wind",
-  bottoms: "minus",
-  dresses: "star",
-  outerwear: "layers",
-  shoes: "chevrons-up",
-  accessories: "circle",
-};
 
 const MOOD_COLORS: Record<string, string> = {
   casual: "#C8906A",
@@ -51,101 +43,119 @@ interface Outfit {
   items: OutfitItem[];
 }
 
-function isLight(hex: string): boolean {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return (r * 299 + g * 587 + b * 114) / 1000 > 128;
-}
-
-function ItemTile({ item }: { item: ClothingItem }) {
-  const colors = useColors();
-  return (
-    <View style={[styles.itemTile, { backgroundColor: item.colorHex }]}>
-      {item.imageUri ? (
-        <Image
-          source={{ uri: item.imageUri }}
-          style={StyleSheet.absoluteFillObject}
-          contentFit="cover"
-          transition={150}
-        />
-      ) : (
-        <Feather
-          name={CATEGORY_ICONS[item.category] ?? "circle"}
-          size={20}
-          color={isLight(item.colorHex) ? "rgba(28,21,18,0.45)" : "rgba(250,248,245,0.55)"}
-        />
-      )}
-      <View style={styles.tileLabelWrap}>
-        <Text style={styles.tileLabel} numberOfLines={1}>
-          {item.name}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-function GenericTile({ role, colors }: { role: string; colors: ReturnType<typeof useColors> }) {
-  const icon: React.ComponentProps<typeof Feather>["name"] =
-    role === "top" ? "wind"
-    : role === "bottom" ? "minus"
-    : role === "outerwear" ? "layers"
-    : role === "shoes" ? "chevrons-up"
-    : role === "dress" ? "star"
-    : "circle";
-  return (
-    <View style={[styles.itemTile, { backgroundColor: colors.secondary }]}>
-      <Feather name={icon} size={20} color={colors.mutedForeground} />
-      <View style={styles.tileLabelWrap}>
-        <Text style={[styles.tileLabel, { color: colors.mutedForeground }]} numberOfLines={1}>
-          {role}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
 function OutfitCard({
   outfit,
   wardrobeMap,
   temperature,
   weatherDesc,
   cardWidth,
+  userBodyPhotoBase64,
+  userBodyPhotoMime,
 }: {
   outfit: Outfit;
   wardrobeMap: Map<string, ClothingItem>;
   temperature: number;
   weatherDesc: string;
   cardWidth: number;
+  userBodyPhotoBase64: string | null;
+  userBodyPhotoMime: string;
 }) {
   const colors = useColors();
   const moodColor = MOOD_COLORS[outfit.mood] ?? colors.accent;
-  const resolvedItems = outfit.items
-    .map((oi) => ({ wardrobeItem: wardrobeMap.get(oi.itemId), role: oi.role }))
-    .slice(0, 4);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [genFailed, setGenFailed] = useState(false);
+  const generated = useRef(false);
 
-  const gridItems = resolvedItems.slice(0, 4);
-  while (gridItems.length < 2) gridItems.push({ wardrobeItem: undefined, role: "accessory" });
+  const resolvedItems = outfit.items
+    .map((oi) => wardrobeMap.get(oi.itemId))
+    .filter((i): i is ClothingItem => !!i);
+
+  useEffect(() => {
+    if (generated.current || resolvedItems.length === 0) return;
+    generated.current = true;
+    setIsGenerating(true);
+
+    const itemsForApi = resolvedItems.map((i) => ({
+      name: i.name,
+      color: i.color,
+      colorHex: i.colorHex,
+      category: i.category,
+    }));
+
+    fetch(`${API_BASE}/outfit-preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: itemsForApi,
+        weather: weatherDesc,
+        temperature,
+        ...(userBodyPhotoBase64
+          ? { userBodyPhotoBase64, userBodyPhotoMime }
+          : {}),
+      }),
+    })
+      .then((r) => r.json())
+      .then((data: { image?: string }) => {
+        if (data.image) {
+          setPreviewImage(`data:image/png;base64,${data.image}`);
+        } else {
+          setGenFailed(true);
+        }
+      })
+      .catch(() => setGenFailed(true))
+      .finally(() => setIsGenerating(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const imageAreaH = CARD_H - 72;
 
   return (
-    <View style={[styles.card, { width: cardWidth, backgroundColor: colors.card, borderColor: colors.border }]}>
-      <View style={[styles.collage, { backgroundColor: colors.secondary }]}>
-        <View style={styles.collageGrid}>
-          {gridItems.slice(0, 4).map((gi, idx) =>
-            gi.wardrobeItem ? (
-              <ItemTile key={idx} item={gi.wardrobeItem} />
-            ) : (
-              <GenericTile key={idx} role={gi.role} colors={colors} />
-            )
-          )}
-          {gridItems.length === 1 && <View style={styles.itemTilePlaceholder} />}
-        </View>
+    <View
+      style={[
+        styles.card,
+        { width: cardWidth, backgroundColor: colors.card, borderColor: colors.border },
+      ]}
+    >
+      {/* Image / loading area */}
+      <View style={[styles.imageArea, { height: imageAreaH, backgroundColor: colors.secondary }]}>
+        {previewImage ? (
+          <Image
+            source={{ uri: previewImage }}
+            style={StyleSheet.absoluteFillObject}
+            contentFit="cover"
+            transition={400}
+          />
+        ) : isGenerating ? (
+          <View style={styles.generatingOverlay}>
+            <ActivityIndicator size="large" color={colors.accent} />
+            <Text style={[styles.generatingText, { color: colors.mutedForeground }]}>
+              Styling your look…
+            </Text>
+          </View>
+        ) : genFailed || resolvedItems.length === 0 ? (
+          <View style={styles.generatingOverlay}>
+            <Feather name="image" size={32} color={colors.border} />
+            <Text style={[styles.generatingText, { color: colors.mutedForeground }]}>
+              {resolvedItems.length === 0
+                ? "Add items to your wardrobe\nto see a styled look"
+                : "Preview unavailable"}
+            </Text>
+          </View>
+        ) : null}
 
+        {/* Mood pill always visible over image */}
         <View style={[styles.moodPill, { backgroundColor: moodColor }]}>
           <Text style={styles.moodText}>{outfit.mood.toUpperCase()}</Text>
         </View>
+
+        {/* Gradient scrim at bottom of image for readability */}
+        {previewImage && (
+          <View style={styles.imageScrim} pointerEvents="none" />
+        )}
       </View>
 
+      {/* Card footer */}
       <View style={styles.cardBody}>
         <View style={styles.cardInfo}>
           <Text style={[styles.outfitName, { color: colors.foreground }]} numberOfLines={1}>
@@ -160,7 +170,9 @@ function OutfitCard({
           style={[styles.buildBtn, { backgroundColor: colors.primary }]}
         >
           <Feather name="scissors" size={13} color={colors.primaryForeground} />
-          <Text style={[styles.buildBtnText, { color: colors.primaryForeground }]}>Build look</Text>
+          <Text style={[styles.buildBtnText, { color: colors.primaryForeground }]}>
+            Build look
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -171,14 +183,14 @@ export default function OutfitCarousel() {
   const colors = useColors();
   const { items } = useWardrobe();
   const { temperature, weatherCode, isLoading: weatherLoading } = useWeather();
+  const { bodyPhotoBase64, bodyPhotoMime } = useUserProfile();
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
 
   const cardWidth = SCREEN_W - 36;
-
-  const wDesc = weatherDesc(temperature, weatherCode);
+  const wDesc = weatherDescLabel(temperature, weatherCode);
 
   const fetchOutfits = useCallback(async () => {
     if (weatherLoading) return;
@@ -189,7 +201,7 @@ export default function OutfitCarousel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items, temperature, weatherCode }),
       });
-      const data = await res.json() as { outfits: Outfit[] };
+      const data = (await res.json()) as { outfits: Outfit[] };
       setOutfits(data.outfits ?? []);
     } catch {
       setOutfits([]);
@@ -199,9 +211,7 @@ export default function OutfitCarousel() {
   }, [items.length, temperature, weatherCode, weatherLoading]);
 
   useEffect(() => {
-    if (!weatherLoading) {
-      void fetchOutfits();
-    }
+    if (!weatherLoading) void fetchOutfits();
   }, [weatherLoading, fetchOutfits]);
 
   const wardrobeMap = new Map(items.map((i) => [i.id, i]));
@@ -215,7 +225,9 @@ export default function OutfitCarousel() {
     <View style={styles.wrapper}>
       <View style={styles.sectionHeader}>
         <View>
-          <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>TODAY'S LOOKS</Text>
+          <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
+            TODAY'S LOOKS
+          </Text>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Outfit Ideas</Text>
         </View>
         <TouchableOpacity onPress={fetchOutfits} disabled={loading} style={styles.refreshBtn}>
@@ -228,21 +240,36 @@ export default function OutfitCarousel() {
       </View>
 
       {loading && outfits.length === 0 ? (
-        <View style={[styles.skeleton, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View
+          style={[
+            styles.skeleton,
+            { backgroundColor: colors.card, borderColor: colors.border, height: CARD_H },
+          ]}
+        >
           <ActivityIndicator size="large" color={colors.accent} />
           <Text style={[styles.skeletonText, { color: colors.mutedForeground }]}>
             Styling your looks…
           </Text>
         </View>
       ) : outfits.length === 0 ? (
-        <View style={[styles.skeleton, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View
+          style={[
+            styles.skeleton,
+            { backgroundColor: colors.card, borderColor: colors.border, height: CARD_H },
+          ]}
+        >
           <Feather name="layers" size={28} color={colors.border} />
           <Text style={[styles.skeletonText, { color: colors.mutedForeground }]}>
             Add items to your wardrobe to get outfit ideas
           </Text>
-          <TouchableOpacity onPress={() => router.push("/add-item")} style={[styles.addBtn, { backgroundColor: colors.primary }]}>
+          <TouchableOpacity
+            onPress={() => router.push("/add-item")}
+            style={[styles.addBtn, { backgroundColor: colors.primary }]}
+          >
             <Feather name="plus" size={14} color={colors.primaryForeground} />
-            <Text style={[styles.addBtnText, { color: colors.primaryForeground }]}>Add first item</Text>
+            <Text style={[styles.addBtnText, { color: colors.primaryForeground }]}>
+              Add first item
+            </Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -266,6 +293,8 @@ export default function OutfitCarousel() {
                 temperature={temperature}
                 weatherDesc={wDesc}
                 cardWidth={cardWidth}
+                userBodyPhotoBase64={bodyPhotoBase64}
+                userBodyPhotoMime={bodyPhotoMime}
               />
             ))}
           </ScrollView>
@@ -289,7 +318,7 @@ export default function OutfitCarousel() {
   );
 }
 
-function weatherDesc(temp: number, code: number): string {
+function weatherDescLabel(temp: number, code: number): string {
   if (code >= 71 && code <= 77) return "snowy";
   if (code >= 61 && code <= 67) return "rainy";
   if (code >= 51 && code <= 57) return "drizzly";
@@ -312,10 +341,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     marginBottom: 2,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-  },
+  sectionTitle: { fontSize: 20, fontWeight: "700" },
   refreshBtn: {
     width: 36,
     height: 36,
@@ -324,7 +350,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   skeleton: {
-    height: CARD_H,
     borderRadius: 20,
     borderWidth: 1,
     alignItems: "center",
@@ -354,39 +379,30 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     height: CARD_H,
   },
-  collage: {
-    flex: 1,
+  imageArea: {
     overflow: "hidden",
+    position: "relative",
   },
-  collageGrid: {
+  generatingOverlay: {
     flex: 1,
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  itemTile: {
-    width: "50%",
-    height: "50%",
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
+    gap: 12,
+    padding: 24,
   },
-  itemTilePlaceholder: {
-    width: "50%",
-    height: "50%",
+  generatingText: {
+    fontSize: 13,
+    fontWeight: "500",
+    textAlign: "center",
+    lineHeight: 18,
   },
-  tileLabelWrap: {
+  imageScrim: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: "rgba(28,21,18,0.52)",
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-  },
-  tileLabel: {
-    color: "#FAF8F5",
-    fontSize: 10,
-    fontWeight: "600",
+    height: 60,
+    backgroundColor: "rgba(28,21,18,0.25)",
   },
   moodPill: {
     position: "absolute",
@@ -395,6 +411,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 20,
+    zIndex: 1,
   },
   moodText: {
     color: "#FAF8F5",
@@ -409,6 +426,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     gap: 12,
+    height: 72,
   },
   cardInfo: { flex: 1 },
   outfitName: { fontSize: 16, fontWeight: "700", marginBottom: 3 },
@@ -429,8 +447,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 5,
   },
-  dot: {
-    height: 6,
-    borderRadius: 3,
-  },
+  dot: { height: 6, borderRadius: 3 },
 });
