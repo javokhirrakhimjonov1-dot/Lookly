@@ -98,6 +98,7 @@ interface DetectedItem {
   tags: string[];
   locationHint: string;
   _photoUri?: string;
+  _extractedUri?: string;
 }
 
 async function scanClothingItems(base64: string, mimeType: string): Promise<DetectedItem[]> {
@@ -356,6 +357,7 @@ export default function AddItemScreen() {
   const [isSaving, setIsSaving] = useState(false);
 
   const [scannedImage, setScannedImage] = useState<string | null>(null);
+  const [extractedItemUri, setExtractedItemUri] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [scanDone, setScanDone] = useState(false);
   const [scanPhotoIndex, setScanPhotoIndex] = useState(0);
@@ -420,7 +422,7 @@ export default function AddItemScreen() {
           fabricWeight: item.fabricWeight ?? "medium",
           isWorkwear: false,
           tags: item.tags.length > 0 ? item.tags : [item.category],
-          imageUri: item._photoUri ?? scannedImage ?? undefined,
+          imageUri: item._extractedUri ?? undefined,
         };
       })
     );
@@ -438,6 +440,7 @@ export default function AddItemScreen() {
   const runScan = async (base64: string, mimeType: string) => {
     const dataUri = `data:${mimeType};base64,${base64}`;
     setScannedImage(dataUri);
+    setExtractedItemUri(null);
     setIsScanning(true);
     setScanDone(false);
     scanScale.value = withSpring(0.97, { damping: 12 }, () => {
@@ -469,10 +472,13 @@ export default function AddItemScreen() {
           if (!cleanUri) return;
           setDetectedItems((prev) => {
             const next = [...prev];
-            if (next[idx]) next[idx] = { ...next[idx]!, _photoUri: cleanUri };
+            if (next[idx]) next[idx] = { ...next[idx]!, _extractedUri: cleanUri };
             return next;
           });
-          if (idx === 0) setScannedImage(cleanUri);
+          if (idx === 0) {
+            setScannedImage(cleanUri);
+            setExtractedItemUri(cleanUri);
+          }
         });
       });
     } catch {
@@ -542,6 +548,22 @@ export default function AddItemScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowPicker(true);
     }
+
+    allItems.forEach((item, idx) => {
+      const color = resolveColor(item.colorName, item.colorHex);
+      removeBg(item.name, item.category, color.name, color.hex, item.material).then((cleanUri) => {
+        if (!cleanUri) return;
+        setDetectedItems((prev) => {
+          const next = [...prev];
+          if (next[idx]) next[idx] = { ...next[idx]!, _extractedUri: cleanUri };
+          return next;
+        });
+        if (idx === 0) {
+          setScannedImage(cleanUri);
+          setExtractedItemUri(cleanUri);
+        }
+      });
+    });
   };
 
   const handleCameraCapture = async () => {
@@ -557,7 +579,8 @@ export default function AddItemScreen() {
     });
     if (result.canceled || !result.assets[0] || !result.assets[0].base64) return;
     const asset = result.assets[0];
-    await runScan(asset.base64, asset.mimeType ?? "image/jpeg");
+    const b64 = asset.base64!;
+    await runScan(b64, asset.mimeType ?? "image/jpeg");
   };
 
   const canSave = !!name.trim() && !!category && !!selectedColor && seasons.length > 0;
@@ -577,7 +600,7 @@ export default function AddItemScreen() {
       isWorkwear,
       purchasePrice: !isNaN(price) && price > 0 ? price : undefined,
       tags: tags.length > 0 ? tags : [category],
-      imageUri: scannedImage ?? undefined,
+      imageUri: extractedItemUri ?? undefined,
     });
     router.back();
   };
