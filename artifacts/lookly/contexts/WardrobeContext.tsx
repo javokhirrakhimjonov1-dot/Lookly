@@ -69,9 +69,23 @@ const WardrobeContext = createContext<WardrobeContextValue | null>(null);
 const ITEMS_KEY = "@lookly_wardrobe_v2";
 const OUTFITS_KEY = "@lookly_saved_outfits";
 const imageKey = (id: string) => `@lookly_img_${id}`;
+const outfitImageKey = (id: string) => `@lookly_outfit_img_${id}`;
 
 function stripImages(items: ClothingItem[]): Omit<ClothingItem, "imageUri">[] {
   return items.map(({ imageUri: _img, ...rest }) => rest);
+}
+
+// Strip both previewImage and any imageUri from embedded items before persisting
+function stripOutfitForStorage(outfit: SavedOutfit) {
+  const { previewImage: _preview, items, ...rest } = outfit;
+  const strippedItems = Object.fromEntries(
+    Object.entries(items).map(([cat, item]) => {
+      if (!item) return [cat, item];
+      const { imageUri: _img, ...itemRest } = item;
+      return [cat, itemRest];
+    })
+  ) as Partial<Record<ClothingCategory, ClothingItem>>;
+  return { ...rest, items: strippedItems };
 }
 
 export function WardrobeProvider({ children }: { children: React.ReactNode }) {
@@ -111,8 +125,15 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
 
         if (storedOutfits) {
           const parsed = JSON.parse(storedOutfits) as SavedOutfit[];
-          setSavedOutfits(parsed);
-          outfitsRef.current = parsed;
+          // Re-hydrate preview images stored separately
+          const withPreviews = await Promise.all(
+            parsed.map(async (outfit) => {
+              const preview = await AsyncStorage.getItem(outfitImageKey(outfit.id));
+              return preview ? { ...outfit, previewImage: preview } : outfit;
+            })
+          );
+          setSavedOutfits(withPreviews);
+          outfitsRef.current = withPreviews;
         }
       } catch {
       } finally {
@@ -122,19 +143,46 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const persistItems = useCallback(async (next: ClothingItem[]) => {
-    await AsyncStorage.setItem(ITEMS_KEY, JSON.stringify(stripImages(next)));
+    try {
+      await AsyncStorage.setItem(ITEMS_KEY, JSON.stringify(stripImages(next)));
+    } catch {
+      // Storage full — items remain in memory for this session
+    }
   }, []);
 
   const persistImage = useCallback(async (id: string, uri: string | undefined) => {
-    if (uri) {
-      await AsyncStorage.setItem(imageKey(id), uri);
-    } else {
-      await AsyncStorage.removeItem(imageKey(id));
+    try {
+      if (uri) {
+        await AsyncStorage.setItem(imageKey(id), uri);
+      } else {
+        await AsyncStorage.removeItem(imageKey(id));
+      }
+    } catch {
+      // Image too large to cache — non-fatal, will show placeholder
     }
   }, []);
 
   const persistOutfits = useCallback(async (next: SavedOutfit[]) => {
-    await AsyncStorage.setItem(OUTFITS_KEY, JSON.stringify(next));
+    try {
+      // Store outfit metadata without images (keeps the JSON small)
+      await AsyncStorage.setItem(OUTFITS_KEY, JSON.stringify(next.map(stripOutfitForStorage)));
+      // Save each outfit's preview image under its own key
+      await Promise.all(
+        next.map(async (outfit) => {
+          try {
+            if (outfit.previewImage) {
+              await AsyncStorage.setItem(outfitImageKey(outfit.id), outfit.previewImage);
+            } else {
+              await AsyncStorage.removeItem(outfitImageKey(outfit.id));
+            }
+          } catch {
+            // Preview image too large — will be missing after reload but non-fatal
+          }
+        })
+      );
+    } catch {
+      // Storage full — outfits remain in memory for this session
+    }
   }, []);
 
   const addItem = useCallback(
@@ -262,6 +310,12 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
       outfitsRef.current = next;
       setSavedOutfits(next);
       await persistOutfits(next);
+      // Clean up the separately-stored preview image
+      try {
+        await AsyncStorage.removeItem(outfitImageKey(id));
+      } catch {
+        // Non-fatal
+      }
     },
     [persistOutfits]
   );
