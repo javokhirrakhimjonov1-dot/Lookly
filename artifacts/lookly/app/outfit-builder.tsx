@@ -302,6 +302,8 @@ export default function OutfitBuilderScreen() {
   const [outfitName, setOutfitName] = useState("");
 
   const [showSavedOutfits, setShowSavedOutfits] = useState(false);
+  const [isAutoLoading, setIsAutoLoading] = useState(false);
+  const [autoWeatherNote, setAutoWeatherNote] = useState<string | null>(null);
 
   const assignItem = useCallback((item: ClothingItem) => {
     const slotKey = categoryToSlotKey(item.category);
@@ -329,42 +331,82 @@ export default function OutfitBuilderScreen() {
     setLockedSlots((ls) => { const n = new Set(ls); n.delete(slotKey); return n; });
   }, []);
 
-  const handleAutoSuggest = () => {
-    const season = getCurrentSeason();
-    const next = { ...assigned };
-    const newAutoIds = new Set<string>();
+  const handleAutoSuggest = async () => {
+    if (isAutoLoading) return;
+    setIsAutoLoading(true);
+    setAutoWeatherNote(null);
+    try {
+      const res = await fetch(`${API_BASE}/suggest-outfits`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.map((i) => ({
+            id: i.id,
+            name: i.name,
+            color: i.color,
+            colorHex: i.colorHex,
+            category: i.category,
+            seasons: i.seasons,
+            tags: i.tags ?? [],
+            fabricWeight: i.fabricWeight,
+          })),
+          weather: condition,
+          temperature,
+        }),
+      });
 
-    for (const cat of [
-      "tops",
-      "bottoms",
-      "outerwear",
-      "shoes",
-      "accessories",
-      "dresses",
-    ] as ClothingCategory[]) {
-      const slotKey = categoryToSlotKey(cat);
-      if (lockedSlots.has(slotKey)) {
-        if (next[slotKey]) newAutoIds.delete(next[slotKey]!.id);
-        continue;
+      const data = await res.json() as { outfits: { name: string; mood: string; weatherNote?: string | null; items: { itemId: string; role: string }[] }[] };
+      const outfitList = data.outfits ?? [];
+
+      if (outfitList.length === 0) throw new Error("no outfits");
+
+      const alreadyUsedName = Object.values(assigned).length > 0
+        ? outfitList.find((o) => o.items.some((x) => lastAutoIds.has(x.itemId)))?.name
+        : undefined;
+      const fresh = outfitList.filter((o) => o.name !== alreadyUsedName);
+      const outfit = fresh.length > 0 ? fresh[0]! : outfitList[0]!;
+
+      const itemMap = new Map(items.map((i) => [i.id, i]));
+      const next = { ...assigned };
+      const newAutoIds = new Set<string>();
+
+      for (const slot of outfit.items) {
+        const item = itemMap.get(slot.itemId);
+        if (!item) continue;
+        const slotKey = categoryToSlotKey(item.category);
+        if (lockedSlots.has(slotKey)) continue;
+        next[slotKey] = item;
+        newAutoIds.add(item.id);
       }
 
-      const all = items.filter((i) => i.category === cat);
-      if (all.length === 0) continue;
-
-      const seasonFresh = all.filter((i) => i.seasons.includes(season) && !lastAutoIds.has(i.id));
-      const allFresh = all.filter((i) => !lastAutoIds.has(i.id));
-      const pool = seasonFresh.length > 0 ? seasonFresh : allFresh.length > 0 ? allFresh : all;
-
-      const pick = pool[Math.floor(Math.random() * pool.length)]!;
-      next[slotKey] = pick;
-      newAutoIds.add(pick.id);
+      setLastAutoIds(newAutoIds);
+      setHasDoneAuto(true);
+      setPreviewImage(null);
+      setAssigned(next);
+      if (outfit.weatherNote) setAutoWeatherNote(outfit.weatherNote);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      const season = getCurrentSeason();
+      const next = { ...assigned };
+      const newAutoIds = new Set<string>();
+      for (const cat of ["tops", "bottoms", "outerwear", "shoes", "accessories", "dresses"] as ClothingCategory[]) {
+        const slotKey = categoryToSlotKey(cat);
+        if (lockedSlots.has(slotKey)) continue;
+        const all = items.filter((i) => i.category === cat);
+        if (all.length === 0) continue;
+        const pool = all.filter((i) => i.seasons.includes(season) && !lastAutoIds.has(i.id));
+        const pick = (pool.length > 0 ? pool : all)[Math.floor(Math.random() * (pool.length > 0 ? pool.length : all.length))]!;
+        next[slotKey] = pick;
+        newAutoIds.add(pick.id);
+      }
+      setLastAutoIds(newAutoIds);
+      setHasDoneAuto(true);
+      setPreviewImage(null);
+      setAssigned(next);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } finally {
+      setIsAutoLoading(false);
     }
-
-    setLastAutoIds(newAutoIds);
-    setHasDoneAuto(true);
-    setPreviewImage(null);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setAssigned(next);
   };
 
   const handleClearAll = () => {
@@ -486,11 +528,16 @@ export default function OutfitBuilderScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           onPress={handleAutoSuggest}
-          style={[styles.autoBtn, { backgroundColor: colors.secondary, marginLeft: 8 }]}
+          disabled={isAutoLoading}
+          style={[styles.autoBtn, { backgroundColor: colors.secondary, marginLeft: 8, opacity: isAutoLoading ? 0.6 : 1 }]}
         >
-          <Feather name={hasDoneAuto ? "refresh-cw" : "zap"} size={14} color={colors.accent} />
+          {isAutoLoading ? (
+            <ActivityIndicator size="small" color={colors.accent} style={{ width: 14, height: 14 }} />
+          ) : (
+            <Feather name={hasDoneAuto ? "refresh-cw" : "zap"} size={14} color={colors.accent} />
+          )}
           <Text style={[styles.autoBtnText, { color: colors.accent }]}>
-            {hasDoneAuto ? "Reshuffle" : "Auto"}
+            {isAutoLoading ? "Styling…" : hasDoneAuto ? "Reshuffle" : "Auto"}
           </Text>
         </TouchableOpacity>
       </View>
@@ -504,9 +551,24 @@ export default function OutfitBuilderScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.canvas}>
-          <Text style={[styles.canvasLabel, { color: colors.mutedForeground }]}>
-            OUTFIT CANVAS
-          </Text>
+          <View style={styles.canvasLabelRow}>
+            <Text style={[styles.canvasLabel, { color: colors.mutedForeground }]}>
+              OUTFIT CANVAS
+            </Text>
+            <View style={[styles.weatherChip, { backgroundColor: colors.secondary }]}>
+              <Text style={[styles.weatherChipText, { color: colors.mutedForeground }]}>
+                {temperature}°C · {condition}
+              </Text>
+            </View>
+          </View>
+          {autoWeatherNote ? (
+            <View style={[styles.weatherNoteRow, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+              <Feather name="cloud" size={12} color={colors.accent} />
+              <Text style={[styles.weatherNoteText, { color: colors.foreground }]} numberOfLines={2}>
+                {autoWeatherNote}
+              </Text>
+            </View>
+          ) : null}
 
           <View style={styles.canvasRow}>
             <SlotCard
@@ -1032,7 +1094,12 @@ const styles = StyleSheet.create({
   autoBtnText: { fontSize: 13, fontWeight: "600" },
   scrollContent: { paddingTop: 18, gap: 0 },
   canvas: { paddingHorizontal: 18, gap: 10 },
-  canvasLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 1.2, marginBottom: 4 },
+  canvasLabelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
+  canvasLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 1.2 },
+  weatherChip: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
+  weatherChipText: { fontSize: 11, fontWeight: "500" },
+  weatherNoteRow: { flexDirection: "row", alignItems: "flex-start", gap: 6, padding: 10, borderRadius: 10, borderWidth: 1, marginBottom: 12 },
+  weatherNoteText: { fontSize: 12, fontWeight: "500", flex: 1, lineHeight: 17 },
   canvasRow: { flexDirection: "row", gap: 10, minHeight: SLOT_HEIGHT },
   slot: {
     borderRadius: 16,
