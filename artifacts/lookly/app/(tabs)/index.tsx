@@ -49,7 +49,7 @@ export default function HomeScreen() {
   const { items } = useWardrobe();
   const { looks } = useSocial();
   const { deals } = useDeals();
-  const { weatherAlert, dismissAlert } = useWeather();
+  const { weatherAlert, dismissAlert, condition, temperature } = useWeather();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const today = new Date().toLocaleDateString("en-US", {
@@ -131,6 +131,24 @@ export default function HomeScreen() {
       )}
 
       <WeatherWidget />
+
+      <TouchableOpacity
+        onPress={() => router.push("/outfit-builder?autoStart=true")}
+        style={[styles.weatherLookCard, { backgroundColor: colors.accent }]}
+        activeOpacity={0.88}
+      >
+        <View style={styles.weatherLookLeft}>
+          <Text style={styles.weatherLookLabel}>TODAY'S WEATHER</Text>
+          <Text style={styles.weatherLookTitle}>Make Your Look</Text>
+          <Text style={styles.weatherLookSub}>
+            AI picks the perfect outfit for {temperature}°C · {condition}
+          </Text>
+        </View>
+        <View style={styles.weatherLookIconWrap}>
+          <Feather name="cloud" size={22} color="rgba(250,248,245,0.7)" />
+          <Feather name="arrow-right" size={20} color="#FAF8F5" style={{ marginTop: 6 }} />
+        </View>
+      </TouchableOpacity>
 
       <OutfitCarousel />
 
@@ -336,6 +354,18 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     opacity: 0.85,
   },
+  weatherLookCard: {
+    borderRadius: 20,
+    padding: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  weatherLookLeft: { gap: 4, flex: 1 },
+  weatherLookLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 1.2, color: "rgba(250,248,245,0.7)" },
+  weatherLookTitle: { fontSize: 22, fontWeight: "800", color: "#FAF8F5" },
+  weatherLookSub: { fontSize: 12, fontWeight: "400", color: "rgba(250,248,245,0.8)", lineHeight: 17 },
+  weatherLookIconWrap: { alignItems: "center", justifyContent: "center", paddingLeft: 16 },
   shuffleCard: {
     borderRadius: 20,
     padding: 20,

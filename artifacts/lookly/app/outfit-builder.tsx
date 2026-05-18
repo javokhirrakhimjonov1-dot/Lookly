@@ -1,8 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
-import { router } from "expo-router";
-import React, { useCallback, useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -304,6 +304,16 @@ export default function OutfitBuilderScreen() {
   const [showSavedOutfits, setShowSavedOutfits] = useState(false);
   const [isAutoLoading, setIsAutoLoading] = useState(false);
   const [autoWeatherNote, setAutoWeatherNote] = useState<string | null>(null);
+
+  const { autoStart } = useLocalSearchParams<{ autoStart?: string }>();
+  const autoStartFired = useRef(false);
+
+  useEffect(() => {
+    if (autoStart === "true" && !autoStartFired.current && items.length > 0) {
+      autoStartFired.current = true;
+      void handleAutoSuggest();
+    }
+  });
 
   const assignItem = useCallback((item: ClothingItem) => {
     const slotKey = categoryToSlotKey(item.category);
