@@ -40,6 +40,7 @@ interface OutfitItem {
 interface Outfit {
   name: string;
   mood: string;
+  weatherNote?: string | null;
   items: OutfitItem[];
 }
 
@@ -162,8 +163,8 @@ function OutfitCard({
           <Text style={[styles.outfitName, { color: colors.foreground }]} numberOfLines={1}>
             {outfit.name}
           </Text>
-          <Text style={[styles.weatherNote, { color: colors.mutedForeground }]}>
-            {temperature}°C · {weatherDesc}
+          <Text style={[styles.weatherNote, { color: colors.mutedForeground }]} numberOfLines={2}>
+            {outfit.weatherNote ?? `${temperature}°C · ${weatherDesc}`}
           </Text>
         </View>
         <TouchableOpacity

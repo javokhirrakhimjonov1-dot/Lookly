@@ -24,10 +24,47 @@ function weatherDesc(temp: number, code: number): string {
   return "variable";
 }
 
+function weatherTierInstructions(temp: number, code: number): string {
+  const isRain = code >= 51 && code <= 82;
+  const isSnow = code >= 71 && code <= 77;
+
+  if (isSnow || temp <= 0) return (
+    `FREEZING (${temp}°C). MANDATORY: heavy outerwear (coat/puffer) is REQUIRED in every outfit. ` +
+    `ONLY use heavy or medium fabric items. NEVER suggest light fabrics or shorts. ` +
+    `Prioritise warmth — layer tops, use boots, avoid exposed skin.`
+  );
+  if (temp <= 10) return (
+    `COLD (${temp}°C). Outerwear (jacket/coat) is REQUIRED in every outfit. ` +
+    `Prefer heavy or medium fabrics. Avoid light fabrics and bare legs. ` +
+    `Closed shoes preferred.`
+  );
+  if (temp <= 17) return (
+    `COOL (${temp}°C). A light jacket, blazer, or cardigan should be included where available. ` +
+    `Medium fabrics work well. Avoid very heavy coats — they are too warm. ` +
+    isRain ? "Rain expected — include waterproof or water-resistant outerwear if available." : ""
+  );
+  if (temp <= 24) return (
+    `MILD / WARM (${temp}°C). No outerwear needed unless it's raining. ` +
+    `Light to medium fabrics are ideal. Jeans, chinos, midi skirts all work. ` +
+    isRain ? "Rain expected — suggest a light raincoat or water-resistant layer if available." : ""
+  );
+  if (temp <= 30) return (
+    `HOT (${temp}°C). NEVER include heavy coats, puffers, or heavy-fabric outerwear. ` +
+    `STRONGLY prefer light-fabric items (linen, cotton, etc.). Shorts, light trousers, and breathable tops. ` +
+    `Minimal layering. Sandals or light shoes preferred.`
+  );
+  return (
+    `VERY HOT / SCORCHING (${temp}°C — Tashkent summer heat). ` +
+    `ONLY light-fabric items are acceptable — linen, cotton, breathable synthetics. ` +
+    `NEVER suggest outerwear, heavy fabrics, or anything that traps heat. ` +
+    `Maximise breathability: loose fits, open weaves, sandals. Keep it minimal.`
+  );
+}
+
 const GENERIC_OUTFITS = [
-  { name: "Effortless daytime", mood: "casual", items: [] as { itemId: string; role: string }[] },
-  { name: "Polished minimalist", mood: "minimal", items: [] as { itemId: string; role: string }[] },
-  { name: "Street casual", mood: "streetwear", items: [] as { itemId: string; role: string }[] },
+  { name: "Effortless daytime", mood: "casual", weatherNote: "General everyday look", items: [] as { itemId: string; role: string }[] },
+  { name: "Polished minimalist", mood: "minimal", weatherNote: "Clean, simple fit", items: [] as { itemId: string; role: string }[] },
+  { name: "Street casual", mood: "streetwear", weatherNote: "Casual street style", items: [] as { itemId: string; role: string }[] },
 ];
 
 router.post("/suggest-outfits", async (req, res) => {
@@ -47,22 +84,24 @@ router.post("/suggest-outfits", async (req, res) => {
   }
 
   const wDesc = weatherDesc(temperature, weatherCode);
-  const needsOuterwear = temperature < 20 || (weatherCode >= 51 && weatherCode <= 82);
+  const tierInstructions = weatherTierInstructions(temperature, weatherCode);
 
   const itemList = items
     .slice(0, 40)
-    .map((i) => `${i.id}|${i.name}|${i.category}|${i.color}|${i.seasons.join(",")}`)
+    .map((i) => `${i.id}|${i.name}|${i.category}|${i.color}|${i.fabricWeight ?? "medium"}|${i.seasons.join(",")}`)
     .join("\n");
 
   const prompt = `You are a fashion stylist for a Tashkent-based wardrobe app.
 
-Weather today in Tashkent: ${temperature}°C, ${wDesc}. Needs outerwear: ${needsOuterwear}.
+CURRENT WEATHER IN TASHKENT: ${temperature}°C, ${wDesc}.
+WEATHER RULE FOR TODAY: ${tierInstructions}
 
-Available wardrobe items (id|name|category|color|seasons):
+Available wardrobe items (id|name|category|color|fabricWeight|seasons):
 ${itemList}
 
 Create exactly 3 to 5 distinct outfit combinations using ONLY the item IDs listed above.
-Each outfit should suit today's weather and have a different vibe/mood from the others.
+Each outfit MUST strictly follow the weather rule above — this is the top priority.
+Each outfit should also have a different vibe/mood from the others.
 
 Return ONLY valid JSON with this exact structure:
 {
@@ -70,6 +109,7 @@ Return ONLY valid JSON with this exact structure:
     {
       "name": "Short evocative outfit name (2-4 words)",
       "mood": "one of: casual, minimal, streetwear, formal, sporty, boho, chic",
+      "weatherNote": "One short sentence explaining why this outfit suits today's weather (e.g. 'Light linen keeps you cool in the 31°C heat')",
       "items": [
         { "itemId": "exact item id from list", "role": "top|bottom|outerwear|shoes|accessory|dress" }
       ]
@@ -79,7 +119,9 @@ Return ONLY valid JSON with this exact structure:
 
 Rules:
 - Use ONLY item IDs from the list — no made-up IDs
-- Each outfit: 2 to 5 items. Include outerwear when weather requires it.
+- Each outfit: 2 to 5 items
+- WEATHER RULES ARE ABSOLUTE — ignore them and the outfit is wrong
+- Prefer items whose fabricWeight matches the temperature tier (light for hot, heavy for cold)
 - Make outfits clearly distinct (different categories of items or different vibes)
 - No explanation, no markdown — pure JSON only`;
 
@@ -92,7 +134,7 @@ Rules:
 
     const raw = response.choices[0]?.message?.content ?? "";
 
-    let parsed: { outfits: { name: string; mood: string; items: { itemId: string; role: string }[] }[] };
+    let parsed: { outfits: { name: string; mood: string; weatherNote?: string; items: { itemId: string; role: string }[] }[] };
     try {
       parsed = JSON.parse(raw);
     } catch {
@@ -108,6 +150,7 @@ Rules:
     const outfits = (parsed.outfits ?? []).map((o) => ({
       name: o.name ?? "Today's Look",
       mood: o.mood ?? "casual",
+      weatherNote: o.weatherNote ?? null,
       items: (o.items ?? []).filter((x) => validIds.has(x.itemId)),
     })).filter((o) => o.items.length >= 1);
 
