@@ -78,24 +78,33 @@ function buildPersonalisation(
 
   if (styleAesthetic) {
     const aestheticLabel =
-      styleAesthetic === "minimalist" ? "Minimalist (clean lines, neutral tones, understated)"
-      : styleAesthetic === "streetwear" ? "Streetwear (bold, urban, expressive, layered)"
-      : "Smart Casual (polished yet relaxed, office-ready but not formal)";
+      styleAesthetic === "minimalist" ? "Minimalist (clean lines, neutral tones, understated elegance)"
+      : styleAesthetic === "streetwear" ? "Streetwear (bold, urban, expressive, layered graphics)"
+      : styleAesthetic === "smart_casual" ? "Smart Casual (polished yet relaxed, office-ready but not formal)"
+      : styleAesthetic === "boho" ? "Boho / Free Spirit (flowy fabrics, earthy textures, relaxed patterns)"
+      : styleAesthetic === "classic" ? "Classic / Preppy (timeless tailored basics, clean silhouettes)"
+      : styleAesthetic === "sporty" ? "Sport & Active (functional, clean, athleisure-influenced)"
+      : styleAesthetic;
     parts.push(`Style aesthetic: ${aestheticLabel}`);
   }
 
   if (heatAdaptation) {
-    const heatLabel = heatAdaptation === "light_linen"
-      ? "Prefers light, breathable fabrics (linen, cotton voile) in hot weather"
-      : "Prefers classic cotton/denim in hot weather";
+    const heatLabel =
+      heatAdaptation === "light_linen" ? "In hot weather prefers loose linen and breathable open-weave fabrics"
+      : heatAdaptation === "shorts_casual" ? "In hot weather prefers casual shorts and light cotton t-shirts"
+      : heatAdaptation === "sport_active" ? "In hot weather prefers moisture-wicking sport/athletic wear and shorts"
+      : "In hot weather prefers cotton basics and comfortable casual pieces";
     parts.push(heatLabel);
   }
 
   if (colorPalette) {
     const paletteLabel =
       colorPalette === "earthy_neutrals" ? "Colour preference: earthy neutrals (camel, beige, terracotta, olive)"
-      : colorPalette === "monochrome" ? "Colour preference: monochrome (black, white, grey tones)"
-      : "Colour preference: vivid colours (bold, saturated pops of colour)";
+      : colorPalette === "monochrome" ? "Colour preference: monochrome (black, white, grey — minimal colour)"
+      : colorPalette === "vivid_colors" ? "Colour preference: vivid colours (bold, saturated pops of colour)"
+      : colorPalette === "pastels" ? "Colour preference: soft pastels (muted lavender, blush, sage, sky blue)"
+      : colorPalette === "desert_sand" ? "Colour preference: desert/sand palette (warm sand, clay, rust, nude)"
+      : `Colour preference: ${colorPalette}`;
     parts.push(paletteLabel);
   }
 

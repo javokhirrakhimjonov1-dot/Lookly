@@ -67,20 +67,44 @@ const AESTHETICS: { label: string; value: StyleAesthetic; desc: string; imageUri
     desc: "Polished yet relaxed",
     imageUri: "https://images.unsplash.com/photo-1617137984095-74e4e5e3613f?w=400&h=620&fit=crop&auto=format&q=80",
   },
+  {
+    label: "Boho",
+    value: "boho",
+    desc: "Flowy, textured, earthy",
+    imageUri: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=400&h=620&fit=crop&auto=format&q=80",
+  },
+  {
+    label: "Classic",
+    value: "classic",
+    desc: "Timeless tailored basics",
+    imageUri: "https://images.unsplash.com/photo-1490114538077-0a7f8cb49891?w=400&h=620&fit=crop&auto=format&q=80",
+  },
+  {
+    label: "Sporty",
+    value: "sporty",
+    desc: "Functional, clean, active",
+    imageUri: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400&h=620&fit=crop&auto=format&q=80",
+  },
 ];
 
 const HEATS: { label: string; value: HeatAdaptation; desc: string; imageUri: string }[] = [
   {
-    label: "Light Linen",
+    label: "Linen & Loose",
     value: "light_linen",
-    desc: "Breathable & breezy",
-    imageUri: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=400&h=620&fit=crop&auto=format&q=80",
+    desc: "Breathable fabrics, loose fit",
+    imageUri: "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=400&h=620&fit=crop&auto=format&q=80",
   },
   {
-    label: "Cotton / Denim",
-    value: "cotton_denim",
-    desc: "Classic everyday staples",
-    imageUri: "https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=400&h=620&fit=crop&auto=format&q=80",
+    label: "Shorts & Tee",
+    value: "shorts_casual",
+    desc: "Casual cool, easy summer",
+    imageUri: "https://images.unsplash.com/photo-1530521954074-e0a103ceff5c?w=400&h=620&fit=crop&auto=format&q=80",
+  },
+  {
+    label: "Sport & Active",
+    value: "sport_active",
+    desc: "Moisture-wicking, on-the-go",
+    imageUri: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400&h=620&fit=crop&auto=format&q=80",
   },
 ];
 
@@ -88,7 +112,7 @@ const PALETTES: { label: string; value: ColorPalette; desc: string; imageUri: st
   {
     label: "Earthy Neutrals",
     value: "earthy_neutrals",
-    desc: "Warm tones, natural hues",
+    desc: "Camel, beige, terracotta",
     imageUri: "https://images.unsplash.com/photo-1445205170230-053b83016050?w=400&h=620&fit=crop&auto=format&q=80",
   },
   {
@@ -102,6 +126,18 @@ const PALETTES: { label: string; value: ColorPalette; desc: string; imageUri: st
     value: "vivid_colors",
     desc: "Bold, saturated pops",
     imageUri: "https://images.unsplash.com/photo-1523381294911-8d3cead13475?w=400&h=620&fit=crop&auto=format&q=80",
+  },
+  {
+    label: "Soft Pastels",
+    value: "pastels",
+    desc: "Muted lavender, blush, sage",
+    imageUri: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=400&h=620&fit=crop&auto=format&q=80",
+  },
+  {
+    label: "Sand & Clay",
+    value: "desert_sand",
+    desc: "Warm desert hues, nude tones",
+    imageUri: "https://images.unsplash.com/photo-1551803091-e20673f15770?w=400&h=620&fit=crop&auto=format&q=80",
   },
 ];
 

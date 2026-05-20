@@ -12,9 +12,9 @@ import React, {
 import { Alert } from "react-native";
 
 export type Gender = "male" | "female" | "non-binary" | "prefer_not_to_say";
-export type StyleAesthetic = "minimalist" | "streetwear" | "smart_casual";
-export type HeatAdaptation = "light_linen" | "cotton_denim";
-export type ColorPalette = "earthy_neutrals" | "monochrome" | "vivid_colors";
+export type StyleAesthetic = "minimalist" | "streetwear" | "smart_casual" | "boho" | "classic" | "sporty";
+export type HeatAdaptation = "light_linen" | "shorts_casual" | "sport_active" | "cotton_denim";
+export type ColorPalette = "earthy_neutrals" | "monochrome" | "vivid_colors" | "pastels" | "desert_sand";
 
 interface UserProfile {
   fullName: string;
