@@ -164,7 +164,7 @@ export default function HomeScreen() {
             Lucky Shuffle
           </Text>
           <Text style={[styles.shuffleSub, { color: "rgba(250,248,245,0.7)" }]}>
-            Lock favourites · AI picks the rest
+            Lock items you love · shuffle the rest
           </Text>
         </View>
         <View style={[styles.shuffleIconWrap, { backgroundColor: "rgba(250,248,245,0.15)" }]}>

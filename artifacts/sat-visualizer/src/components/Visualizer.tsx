@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   AlertCircle,
   BookOpen,
+  Download,
   Film,
   Loader2,
   Sparkles,
@@ -25,6 +26,19 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useQueryClient } from "@tanstack/react-query";
 
 type InputMode = "text" | "image";
+
+function passageToFilename(passage: string): string {
+  return passage
+    .trim()
+    .split(/\s+/)
+    .slice(0, 6)
+    .join("_")
+    .replace(/[^a-z0-9_]/gi, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "")
+    .toLowerCase()
+    .slice(0, 60) || "visualization";
+}
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -229,17 +243,36 @@ export function Visualizer() {
                 </Button>
               </div>
             ) : isDone ? (
-              <div className="bg-black aspect-video w-full relative flex items-center justify-center">
-                <video
-                  className="w-full h-full object-contain"
-                  controls
-                  autoPlay
-                  src={`/api/sat-visualizer/video/${jobId}`}
-                  data-testid="video-player"
-                >
-                  Your browser does not support the video tag.
-                </video>
-              </div>
+              <>
+                <div className="bg-black aspect-video w-full relative flex items-center justify-center">
+                  <video
+                    className="w-full h-full object-contain"
+                    controls
+                    autoPlay
+                    src={`/api/sat-visualizer/video/${jobId}`}
+                    data-testid="video-player"
+                  >
+                    Your browser does not support the video tag.
+                  </video>
+                </div>
+                <div className="flex justify-center py-4 border-t bg-muted/10">
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="lg"
+                    className="gap-2"
+                  >
+                    <a
+                      href={`/api/sat-visualizer/video/${jobId}?download=true&filename=${encodeURIComponent(passageToFilename(passage))}`}
+                      download
+                      data-testid="button-download-video"
+                    >
+                      <Download className="w-4 h-4" />
+                      Download Video
+                    </a>
+                  </Button>
+                </div>
+              </>
             ) : (
               <div className="bg-muted/10 p-6 md:p-8">
                 <h3 className="text-lg font-bold mb-6 font-sans text-muted-foreground flex items-center gap-2">

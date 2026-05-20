@@ -541,6 +541,14 @@ router.get("/sat-visualizer/status/:jobId", async (req, res) => {
 
 router.get("/sat-visualizer/video/:jobId", async (req, res) => {
   const { jobId } = req.params;
+  const download = req.query.download === "true" || req.query.download === "1";
+  const rawFilename = typeof req.query.filename === "string" ? req.query.filename : "";
+  const safeFilename = rawFilename
+    .replace(/[^a-z0-9_\-]/gi, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "")
+    .slice(0, 80) || "visualization";
+  const filename = `${safeFilename}.mp4`;
 
   const [job] = await db
     .select()
@@ -556,7 +564,10 @@ router.get("/sat-visualizer/video/:jobId", async (req, res) => {
     const videoBuffer = await serverDownloadFile(job.videoObjectPath);
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Length", videoBuffer.length);
-    res.setHeader("Content-Disposition", `inline; filename="visualization.mp4"`);
+    res.setHeader(
+      "Content-Disposition",
+      `${download ? "attachment" : "inline"}; filename="${filename}"`
+    );
     res.setHeader("Cache-Control", "public, max-age=86400");
     res.send(videoBuffer);
   } catch {

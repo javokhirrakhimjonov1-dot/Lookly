@@ -1127,6 +1127,7 @@ const styles = StyleSheet.create({
   },
   slotLabel: { fontSize: 11, fontWeight: "600", textAlign: "center" },
   slotFilledContent: { flex: 1, padding: 10, justifyContent: "flex-end" },
+  slotFilledOverlay: { backgroundColor: "transparent" },
   slotFilledName: { fontSize: 13, fontWeight: "700", lineHeight: 16 },
   slotFilledSub: { fontSize: 10, fontWeight: "500", marginTop: 2 },
   lockBadge: {

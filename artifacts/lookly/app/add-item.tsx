@@ -488,9 +488,11 @@ export default function AddItemScreen() {
     }
   };
 
-  const runScan = async (base64: string, mimeType: string) => {
-    const dataUri = `data:${mimeType};base64,${base64}`;
-    setScannedImage(dataUri);
+  const runScan = async (base64: string, mimeType: string, localUri?: string) => {
+    // Prefer the local file URI for storage — it's tiny and reliable.
+    // The data URI is only used for sending to the scan API, never stored in AsyncStorage.
+    const photoRef = localUri ?? `data:${mimeType};base64,${base64}`;
+    setScannedImage(photoRef);
     setExtractedItemUri(null);
     setIsScanning(true);
     setScanDone(false);
@@ -511,7 +513,7 @@ export default function AddItemScreen() {
         const existingMatch = wardrobeItems.find((w) => isSimilarToWardrobe(item, w));
         return {
           ...item,
-          _photoUri: dataUri,
+          _photoUri: photoRef,
           _isDuplicate: !!existingMatch,
           _duplicateOf: existingMatch
             ? { name: existingMatch.name, color: existingMatch.color, category: existingMatch.category, fabricWeight: existingMatch.fabricWeight }
@@ -527,6 +529,9 @@ export default function AddItemScreen() {
         setShowPicker(true);
       }
 
+      // Kick off AI-generated product images in the background.
+      // If they succeed, they upgrade the stored imageUri; if they fail,
+      // the local photo URI is already saved and will be used instead.
       taggedItems.forEach((item, idx) => {
         const color = resolveColor(item.colorName, item.colorHex);
         removeBg(item.name, item.category, color.name, color.hex, item.material, item.brandLogo).then((cleanUri) => {
@@ -568,7 +573,7 @@ export default function AddItemScreen() {
     if (result.assets.length === 1) {
       const asset = result.assets[0]!;
       if (!asset.base64) return;
-      await runScan(asset.base64, asset.mimeType ?? "image/jpeg");
+      await runScan(asset.base64, asset.mimeType ?? "image/jpeg", asset.uri);
       return;
     }
 
@@ -577,17 +582,15 @@ export default function AddItemScreen() {
     setScanPhotoTotal(result.assets.length);
     setScanPhotoIndex(1);
     const firstAsset = result.assets[0]!;
-    const firstDataUri = `data:${firstAsset.mimeType ?? "image/jpeg"};base64,${firstAsset.base64 ?? ""}`;
-    setScannedImage(firstDataUri);
+    setScannedImage(firstAsset.uri);
 
     const allItems: DetectedItem[] = [];
     for (let idx = 0; idx < result.assets.length; idx++) {
       const asset = result.assets[idx]!;
       if (!asset.base64) continue;
       const mime = asset.mimeType ?? "image/jpeg";
-      const photoDataUri = `data:${mime};base64,${asset.base64}`;
       setScanPhotoIndex(idx + 1);
-      setScannedImage(photoDataUri);
+      setScannedImage(asset.uri);
       try {
         const found = await scanClothingItems(asset.base64, mime);
         for (const item of found) {
@@ -596,7 +599,7 @@ export default function AddItemScreen() {
           const wardrobeDup = wardrobeItems.find((w) => isSimilarToWardrobe(item, w));
           allItems.push({
             ...item,
-            _photoUri: photoDataUri,
+            _photoUri: asset.uri,
             _isDuplicate: !!wardrobeDup,
             _duplicateOf: wardrobeDup
               ? { name: wardrobeDup.name, color: wardrobeDup.color, category: wardrobeDup.category, fabricWeight: wardrobeDup.fabricWeight }
@@ -652,8 +655,7 @@ export default function AddItemScreen() {
     });
     if (result.canceled || !result.assets[0] || !result.assets[0].base64) return;
     const asset = result.assets[0];
-    const b64 = asset.base64!;
-    await runScan(b64, asset.mimeType ?? "image/jpeg");
+    await runScan(asset.base64!, asset.mimeType ?? "image/jpeg", asset.uri);
   };
 
   const canSave = !!name.trim() && !!category && !!selectedColor && seasons.length > 0;

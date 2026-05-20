@@ -42,12 +42,12 @@ export default function ClothingItemCard({ item, onPress, onDelete }: Props) {
         },
       ]}
     >
-      <View style={[styles.colorBlock, { backgroundColor: item.colorHex }]}>
+      <View style={[styles.colorBlock, { backgroundColor: item.imageUri ? "#F5F3F0" : item.colorHex }]}>
         {item.imageUri ? (
           <Image
             source={{ uri: item.imageUri }}
             style={StyleSheet.absoluteFillObject}
-            contentFit="cover"
+            contentFit="contain"
             transition={200}
           />
         ) : (

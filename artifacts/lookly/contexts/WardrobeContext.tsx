@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { Alert } from "react-native";
 
 export type ClothingCategory =
   | "tops"
@@ -83,7 +84,6 @@ function stripImages(items: ClothingItem[]): Omit<ClothingItem, "imageUri">[] {
   return items.map(({ imageUri: _img, ...rest }) => rest);
 }
 
-// Strip both previewImage and any imageUri from embedded items before persisting
 function stripOutfitForStorage(outfit: SavedOutfit) {
   const { previewImage: _preview, items, ...rest } = outfit;
   const strippedItems = Object.fromEntries(
@@ -96,20 +96,40 @@ function stripOutfitForStorage(outfit: SavedOutfit) {
   return { ...rest, items: strippedItems };
 }
 
+/**
+ * Evicts regeneratable large blobs (outfit preview images) to reclaim quota.
+ * Returns true if any space was freed.
+ */
+async function freeStorageSpace(outfitIds: string[]): Promise<boolean> {
+  let freed = false;
+  for (const id of outfitIds) {
+    try {
+      const key = outfitImageKey(id);
+      const val = await AsyncStorage.getItem(key);
+      if (val) {
+        await AsyncStorage.removeItem(key);
+        freed = true;
+      }
+    } catch {}
+  }
+  // Also clear any stale old profile key
+  try {
+    await AsyncStorage.removeItem("@lookly_user_profile");
+    freed = true;
+  } catch {}
+  return freed;
+}
+
 export function WardrobeProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<ClothingItem[]>([]);
   const [savedOutfits, setSavedOutfits] = useState<SavedOutfit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const itemsRef = useRef<ClothingItem[]>([]);
-  useEffect(() => {
-    itemsRef.current = items;
-  }, [items]);
+  useEffect(() => { itemsRef.current = items; }, [items]);
 
   const outfitsRef = useRef<SavedOutfit[]>([]);
-  useEffect(() => {
-    outfitsRef.current = savedOutfits;
-  }, [savedOutfits]);
+  useEffect(() => { outfitsRef.current = savedOutfits; }, [savedOutfits]);
 
   useEffect(() => {
     (async () => {
@@ -133,7 +153,6 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
 
         if (storedOutfits) {
           const parsed = JSON.parse(storedOutfits) as SavedOutfit[];
-          // Re-hydrate preview images stored separately
           const withPreviews = await Promise.all(
             parsed.map(async (outfit) => {
               const preview = await AsyncStorage.getItem(outfitImageKey(outfit.id));
@@ -150,11 +169,31 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
+  /**
+   * Saves items to AsyncStorage. If quota is exceeded, evicts outfit preview
+   * images (which are large but regeneratable) and retries once. If it still
+   * fails, alerts the user so data loss is never silent.
+   */
   const persistItems = useCallback(async (next: ClothingItem[]) => {
+    const payload = JSON.stringify(stripImages(next));
     try {
-      await AsyncStorage.setItem(ITEMS_KEY, JSON.stringify(stripImages(next)));
+      await AsyncStorage.setItem(ITEMS_KEY, payload);
     } catch {
-      // Storage full — items remain in memory for this session
+      // Storage full — try freeing space by evicting outfit preview images
+      const currentOutfitIds = outfitsRef.current.map((o) => o.id);
+      const freed = await freeStorageSpace(currentOutfitIds);
+      if (freed) {
+        try {
+          await AsyncStorage.setItem(ITEMS_KEY, payload);
+          return; // Succeeded after freeing space
+        } catch {}
+      }
+      // Truly out of space — warn the user so they know
+      Alert.alert(
+        "Storage full",
+        "Your wardrobe couldn't be saved to disk — your device storage is full. Please free up some space and re-add your items.",
+        [{ text: "OK" }]
+      );
     }
   }, []);
 
@@ -166,15 +205,13 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
         await AsyncStorage.removeItem(imageKey(id));
       }
     } catch {
-      // Image too large to cache — non-fatal, will show placeholder
+      // Image URI too large — item will show colour swatch instead
     }
   }, []);
 
   const persistOutfits = useCallback(async (next: SavedOutfit[]) => {
     try {
-      // Store outfit metadata without images (keeps the JSON small)
       await AsyncStorage.setItem(OUTFITS_KEY, JSON.stringify(next.map(stripOutfitForStorage)));
-      // Save each outfit's preview image under its own key
       await Promise.all(
         next.map(async (outfit) => {
           try {
@@ -184,12 +221,12 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
               await AsyncStorage.removeItem(outfitImageKey(outfit.id));
             }
           } catch {
-            // Preview image too large — will be missing after reload but non-fatal
+            // Preview image too large — will regenerate on next open
           }
         })
       );
     } catch {
-      // Storage full — outfits remain in memory for this session
+      // Outfit metadata save failed — non-fatal, outfits stay in memory
     }
   }, []);
 
@@ -318,12 +355,9 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
       outfitsRef.current = next;
       setSavedOutfits(next);
       await persistOutfits(next);
-      // Clean up the separately-stored preview image
       try {
         await AsyncStorage.removeItem(outfitImageKey(id));
-      } catch {
-        // Non-fatal
-      }
+      } catch {}
     },
     [persistOutfits]
   );

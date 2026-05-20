@@ -274,7 +274,7 @@ export default function ShuffleScreen() {
         ) : (
           <>
             <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-              Lock items you want to keep, then hit Shuffle
+              Each shuffle picks random items from your wardrobe that match today's weather and season. Lock any item you want to keep, then shuffle the rest.
             </Text>
 
             {SHUFFLE_SLOTS.map((slot) => {
@@ -299,12 +299,12 @@ export default function ShuffleScreen() {
                     },
                   ]}
                 >
-                  <View style={[styles.slotIcon, { backgroundColor: item ? item.colorHex : colors.secondary }]}>
+                  <View style={[styles.slotIcon, { backgroundColor: item?.imageUri ? "#F5F3F0" : item ? item.colorHex : colors.secondary }]}>
                     {item?.imageUri ? (
                       <Image
                         source={{ uri: item.imageUri }}
                         style={StyleSheet.absoluteFillObject}
-                        contentFit="cover"
+                        contentFit="contain"
                       />
                     ) : (
                       <Feather

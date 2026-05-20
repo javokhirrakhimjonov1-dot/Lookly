@@ -91,7 +91,22 @@ router.post("/suggest-outfits", async (req, res) => {
     .map((i) => `${i.id}|${i.name}|${i.category}|${i.color}|${i.fabricWeight ?? "medium"}|${i.seasons.join(",")}`)
     .join("\n");
 
-  const prompt = `You are a fashion stylist for a Tashkent-based wardrobe app.
+  const MOODS = ["casual", "minimal", "streetwear", "formal", "sporty", "boho", "chic"];
+  const shuffledMoods = [...MOODS].sort(() => Math.random() - 0.5).slice(0, 4);
+  const variationSeed = Math.floor(Math.random() * 10000);
+  const STYLE_DIRECTIVES = [
+    "Lean into bold colour contrasts this round.",
+    "Focus on monochrome or tonal dressing this time.",
+    "Mix textures — pair lightweight with structured pieces.",
+    "Go for the most unexpected combinations that still work.",
+    "Prioritise comfort-first looks with a polished finish.",
+    "Think editorial — what would look good in a magazine spread?",
+    "Emphasise layering and dimension.",
+    "Go minimal: fewer pieces, maximum impact.",
+  ];
+  const styleDirective = STYLE_DIRECTIVES[variationSeed % STYLE_DIRECTIVES.length];
+
+  const prompt = `You are a fashion stylist for a Tashkent-based wardrobe app. Variation seed: ${variationSeed}.
 
 CURRENT WEATHER IN TASHKENT: ${temperature}°C, ${wDesc}.
 WEATHER RULE FOR TODAY: ${tierInstructions}
@@ -99,9 +114,13 @@ WEATHER RULE FOR TODAY: ${tierInstructions}
 Available wardrobe items (id|name|category|color|fabricWeight|seasons):
 ${itemList}
 
-Create exactly 3 to 5 distinct outfit combinations using ONLY the item IDs listed above.
+Create exactly 3 to 5 FRESH, UNIQUE outfit combinations using ONLY the item IDs listed above.
 Each outfit MUST strictly follow the weather rule above — this is the top priority.
-Each outfit should also have a different vibe/mood from the others.
+Style directive for this session: ${styleDirective}
+Prioritise these moods (but use your judgment): ${shuffledMoods.join(", ")}.
+
+CRITICAL: Generate genuinely different outfit combinations every time. Mix items in new ways.
+Do not default to the same "safe" combinations — explore what the wardrobe can do.
 
 Return ONLY valid JSON with this exact structure:
 {
@@ -129,6 +148,7 @@ Rules:
     const response = await openai.chat.completions.create({
       model: "gpt-5.1",
       max_completion_tokens: 800,
+      temperature: 1.2,
       messages: [{ role: "user", content: prompt }],
     });
 

@@ -40,6 +40,8 @@ function buildPrompt(
   temperature: number,
   personDescription: string
 ): string {
+  const hasShoes = items.some((i) => i.category === "shoes");
+
   const pieces = items
     .map((i) => {
       const base = `  - ${i.color} ${i.name} (${i.category})`;
@@ -63,8 +65,13 @@ function buildPrompt(
       ? "cool autumn day"
       : "cold winter day";
 
+  const shoesRule = hasShoes
+    ? `6. SHOES ARE MANDATORY: The feet and shoes listed above MUST be fully visible at the very bottom of the frame. Do NOT cut off at the ankles. The shot must show the complete body from crown of head down to the soles of the shoes, with a small strip of floor visible beneath.\n`
+    : `6. Show the complete figure from head to toe. Feet must be visible at the bottom of the frame.\n`;
+
   return (
-    `Fashion editorial full-body portrait photograph.\n` +
+    `Fashion editorial FULL-BODY portrait photograph — PORTRAIT orientation.\n` +
+    `CRITICAL COMPOSITION RULE: The entire body MUST be visible from the very top of the head to the tips of the feet/shoes. Frame the shot so the subject fills roughly 85% of the image height with a small gap at top and bottom. DO NOT crop or cut off any body part.\n\n` +
     `Subject: ${personDescription}\n\n` +
     `This person is wearing EXACTLY the following items — render each item faithfully:\n` +
     `${pieces}\n\n` +
@@ -73,9 +80,10 @@ function buildPrompt(
     `2. A white t-shirt must be COMPLETELY PLAIN WHITE with NOTHING printed on it unless its logo is explicitly described above.\n` +
     `3. Do NOT invent any design elements, textures, or details not described above.\n` +
     `4. Render ONLY the items listed — do NOT add extra clothing, accessories, or props.\n` +
-    `5. Keep the person's face, hair, and body exactly as described.\n\n` +
-    `Setting: ${weather} weather, ${tempDesc} (${temperature}°C), Tashkent.\n` +
-    `Style: Clean minimal studio background, soft diffused lighting. High-end fashion magazine aesthetic. Confident, natural pose.`
+    `5. Keep the person's face, hair, and body exactly as described.\n` +
+    shoesRule +
+    `\nSetting: ${weather} weather, ${tempDesc} (${temperature}°C), Tashkent.\n` +
+    `Style: Clean minimal studio background, soft diffused lighting. High-end fashion magazine aesthetic. Confident, natural standing pose. Camera angle: straight-on at chest height so the full body fits in frame.`
   );
 }
 
@@ -116,7 +124,7 @@ router.post("/outfit-preview", async (req, res) => {
 
   let buffer: Buffer;
   try {
-    buffer = await generateImageBuffer(prompt, "1024x1024");
+    buffer = await generateImageBuffer(prompt, "1024x1536");
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     const isQuota =

@@ -166,12 +166,12 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.itemHero, { backgroundColor: item.colorHex }]}>
+          <View style={[styles.itemHero, { backgroundColor: item.imageUri ? "#F5F3F0" : item.colorHex }]}>
             {item.imageUri ? (
               <Image
                 source={{ uri: item.imageUri }}
                 style={styles.itemImage}
-                contentFit="cover"
+                contentFit="contain"
               />
             ) : (
               <Feather
@@ -275,14 +275,14 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
                     <View
                       style={[
                         styles.suggestionColorBlock,
-                        { backgroundColor: match.colorHex },
+                        { backgroundColor: match.imageUri ? "#F5F3F0" : match.colorHex },
                       ]}
                     >
                       {match.imageUri ? (
                         <Image
                           source={{ uri: match.imageUri }}
                           style={StyleSheet.absoluteFillObject}
-                          contentFit="cover"
+                          contentFit="contain"
                         />
                       ) : (
                         <Feather

@@ -19,7 +19,7 @@ import { useWeather } from "@/contexts/WeatherContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 
 const SCREEN_W = Dimensions.get("window").width;
-const CARD_H = 400;
+const CARD_H = 500;
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
 const MOOD_COLORS: Record<string, string> = {
@@ -125,7 +125,7 @@ function OutfitCard({
           <Image
             source={{ uri: previewImage }}
             style={StyleSheet.absoluteFillObject}
-            contentFit="cover"
+            contentFit="contain"
             transition={400}
           />
         ) : isGenerating ? (
@@ -289,7 +289,7 @@ export default function OutfitCarousel() {
           >
             {outfits.map((outfit, i) => (
               <OutfitCard
-                key={i}
+                key={`${outfit.name}-${outfit.mood}-${outfit.items.map((x) => x.itemId).join("-")}`}
                 outfit={outfit}
                 wardrobeMap={wardrobeMap}
                 temperature={temperature}
