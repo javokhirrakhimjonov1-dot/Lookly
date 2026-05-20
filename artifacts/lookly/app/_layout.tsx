@@ -19,6 +19,7 @@ import { WeatherProvider } from "@/contexts/WeatherContext";
 import { SocialProvider } from "@/contexts/SocialContext";
 import { DealsProvider } from "@/contexts/DealsContext";
 import { UserProfileProvider } from "@/contexts/UserProfileContext";
+import { CalendarProvider } from "@/contexts/CalendarContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -34,6 +35,8 @@ function RootLayoutNav() {
       />
       <Stack.Screen name="profile" options={{ headerShown: false }} />
       <Stack.Screen name="outfit-builder" options={{ headerShown: false }} />
+      <Stack.Screen name="calendar" options={{ headerShown: false }} />
+      <Stack.Screen name="pack-trip" options={{ headerShown: false }} />
       <Stack.Screen name="shuffle" options={{ headerShown: false }} />
     </Stack>
   );
@@ -62,6 +65,7 @@ export default function RootLayout() {
           <UserProfileProvider>
             <WeatherProvider>
               <WardrobeProvider>
+                <CalendarProvider>
                 <SocialProvider>
                   <DealsProvider>
                     <GestureHandlerRootView>
@@ -71,6 +75,7 @@ export default function RootLayout() {
                     </GestureHandlerRootView>
                   </DealsProvider>
                 </SocialProvider>
+                </CalendarProvider>
               </WardrobeProvider>
             </WeatherProvider>
           </UserProfileProvider>

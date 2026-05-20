@@ -123,6 +123,12 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
     setTimeout(() => router.push("/outfit-builder"), 300);
   };
 
+  const handleStyleThisItem = () => {
+    if (!item) return;
+    onClose();
+    setTimeout(() => router.push(`/outfit-builder?anchorItemId=${item.id}`), 300);
+  };
+
   const resolvedItem = (id: string) => items.find((i) => i.id === id);
 
   if (!item) return null;
@@ -218,11 +224,11 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
 
           <View style={styles.actions}>
             <TouchableOpacity
-              onPress={handleBuildLook}
-              style={[styles.actionBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+              onPress={handleStyleThisItem}
+              style={[styles.actionBtn, { backgroundColor: colors.accent }]}
             >
-              <Feather name="scissors" size={16} color={colors.accent} />
-              <Text style={[styles.actionBtnText, { color: colors.accent }]}>Build a look</Text>
+              <Feather name="zap" size={15} color="#FAF8F5" />
+              <Text style={[styles.actionBtnText, { color: "#FAF8F5" }]}>Style This Item</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => handleFindMatches(hasFetched ? seenIds : [])}
@@ -230,20 +236,20 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
               style={[
                 styles.actionBtn,
                 styles.matchBtn,
-                { backgroundColor: colors.primary },
+                { backgroundColor: colors.secondary, borderColor: colors.border },
               ]}
             >
               {isLoading ? (
-                <ActivityIndicator size="small" color="#FAF8F5" />
+                <ActivityIndicator size="small" color={colors.accent} />
               ) : (
                 <Feather
-                  name={hasFetched ? "refresh-cw" : "zap"}
+                  name={hasFetched ? "refresh-cw" : "scissors"}
                   size={15}
-                  color={colors.primaryForeground}
+                  color={colors.accent}
                 />
               )}
-              <Text style={[styles.actionBtnText, { color: colors.primaryForeground }]}>
-                {isLoading ? "Styling…" : hasFetched ? "Different look" : "Style this with…"}
+              <Text style={[styles.actionBtnText, { color: colors.accent }]}>
+                {isLoading ? "Pairing…" : hasFetched ? "More pairings" : "Find pairings"}
               </Text>
             </TouchableOpacity>
           </View>

@@ -309,13 +309,27 @@ export default function OutfitBuilderScreen() {
   const [isAutoLoading, setIsAutoLoading] = useState(false);
   const [autoWeatherNote, setAutoWeatherNote] = useState<string | null>(null);
 
-  const { autoStart } = useLocalSearchParams<{ autoStart?: string }>();
+  const { autoStart, anchorItemId } = useLocalSearchParams<{ autoStart?: string; anchorItemId?: string }>();
   const autoStartFired = useRef(false);
+  const anchorFired = useRef(false);
 
   useEffect(() => {
     if (autoStart === "true" && !autoStartFired.current && items.length > 0) {
       autoStartFired.current = true;
       void handleAutoSuggest();
+    }
+  });
+
+  useEffect(() => {
+    if (anchorItemId && !anchorFired.current && items.length > 0) {
+      anchorFired.current = true;
+      const anchor = items.find((i) => i.id === anchorItemId);
+      if (anchor) {
+        const slotKey = categoryToSlotKey(anchor.category);
+        setAssigned({ [slotKey]: anchor });
+        setLockedSlots(new Set([slotKey]));
+        setTimeout(() => void handleAutoSuggest(), 100);
+      }
     }
   });
 
@@ -690,6 +704,27 @@ export default function OutfitBuilderScreen() {
             <TouchableOpacity
               onPress={() => {
                 if (pieceCount === 0) return;
+                const ids = (Object.values(assigned).filter(Boolean) as ClothingItem[]).map((i) => i.id);
+                router.push(
+                  `/calendar?itemIds=${encodeURIComponent(JSON.stringify(ids))}${previewImage ? `&previewImage=${encodeURIComponent(previewImage)}` : ""}`
+                );
+              }}
+              style={[
+                styles.actionBtn,
+                {
+                  borderColor: pieceCount > 0 ? "#3B82F6" : colors.border,
+                  backgroundColor: pieceCount > 0 ? "#EFF6FF" : "transparent",
+                },
+              ]}
+            >
+              <Feather name="calendar" size={14} color={pieceCount > 0 ? "#3B82F6" : colors.mutedForeground} />
+              <Text style={[styles.actionBtnText, { color: pieceCount > 0 ? "#3B82F6" : colors.mutedForeground }]}>
+                Log
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                if (pieceCount === 0) return;
                 setShowSaveModal(true);
               }}
               style={[
@@ -700,18 +735,9 @@ export default function OutfitBuilderScreen() {
                 },
               ]}
             >
-              <Feather
-                name="bookmark"
-                size={14}
-                color={pieceCount > 0 ? colors.accent : colors.mutedForeground}
-              />
-              <Text
-                style={[
-                  styles.actionBtnText,
-                  { color: pieceCount > 0 ? colors.accent : colors.mutedForeground },
-                ]}
-              >
-                Save Template
+              <Feather name="bookmark" size={14} color={pieceCount > 0 ? colors.accent : colors.mutedForeground} />
+              <Text style={[styles.actionBtnText, { color: pieceCount > 0 ? colors.accent : colors.mutedForeground }]}>
+                Save
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -725,17 +751,8 @@ export default function OutfitBuilderScreen() {
                 },
               ]}
             >
-              <Feather
-                name="camera"
-                size={14}
-                color={pieceCount > 0 ? colors.primaryForeground : colors.mutedForeground}
-              />
-              <Text
-                style={[
-                  styles.actionBtnText,
-                  { color: pieceCount > 0 ? colors.primaryForeground : colors.mutedForeground },
-                ]}
-              >
+              <Feather name="camera" size={14} color={pieceCount > 0 ? colors.primaryForeground : colors.mutedForeground} />
+              <Text style={[styles.actionBtnText, { color: pieceCount > 0 ? colors.primaryForeground : colors.mutedForeground }]}>
                 Post Look
               </Text>
             </TouchableOpacity>

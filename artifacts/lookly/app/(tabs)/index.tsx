@@ -236,6 +236,30 @@ export default function HomeScreen() {
         </View>
       )}
 
+      {/* Utility quick actions */}
+      <View style={styles.utilRow}>
+        <TouchableOpacity
+          onPress={() => router.push("/calendar")}
+          style={[styles.utilCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <View style={[styles.utilIcon, { backgroundColor: "#EFF6FF" }]}>
+            <Feather name="calendar" size={18} color="#3B82F6" />
+          </View>
+          <Text style={[styles.utilTitle, { color: colors.foreground }]}>Outfit Calendar</Text>
+          <Text style={[styles.utilSub, { color: colors.mutedForeground }]}>Track what you wore</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.push("/pack-trip")}
+          style={[styles.utilCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <View style={[styles.utilIcon, { backgroundColor: colors.accent + "22" }]}>
+            <Feather name="briefcase" size={18} color={colors.accent} />
+          </View>
+          <Text style={[styles.utilTitle, { color: colors.foreground }]}>Pack for Trip</Text>
+          <Text style={[styles.utilSub, { color: colors.mutedForeground }]}>AI travel packing list</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
           Friends' Looks
@@ -423,6 +447,33 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 11,
     fontWeight: "500",
+  },
+  utilRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  utilCard: {
+    flex: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    gap: 6,
+  },
+  utilIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 2,
+  },
+  utilTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  utilSub: {
+    fontSize: 11,
+    lineHeight: 15,
   },
   dealsAlert: {
     borderRadius: 14,
