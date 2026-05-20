@@ -1,0 +1,38 @@
+Please build the complete MVP for Lookly, a premium, hyper-personalized local fashion-tech app for Tashkent. Build the frontend using Expo React Native and the backend using Express 5, persisting all user assets and collections locally via AsyncStorage.
+
+Design System Palette:
+- Background: Warm Cream (#FAF8F5)
+- Primary Text & Structural UI: Espresso (#1C1512)
+- Accent Highlight Elements: Caramel (#C8906A)
+
+Implement the following core application modules exactly per the specification:
+
+1. ONBOARDING & PERSONALIZATION PROFILE:
+- Guard State: Check AsyncStorage for '@lookly_user_profile'. If absent, force route to an elegant multi-step onboarding screen before allowing entry to the app.
+- Step 1 (Demographics): Form requesting Name (TextInput), Age (Numeric Picker), and Gender Selection (Male / Female).
+- Step 2 (Visual 3-Step Style Quiz): Present options as full outfit cards. Crucially, filter the quiz asset imagery to match the selected Gender input:
+  * Quiz Card 1 (Aesthetics): Horizontal swiper featuring 6 styles (Minimalist, Streetwear, Smart Casual, Boho, Classic, Sporty). Allow multi-selection.
+  * Quiz Card 2 (Summer Heat): Choice of how they handle Tashkent 30°C+ summers (Light Linen, Casual Shorts & Tee, or Sport/Activewear).
+  * Quiz Card 3 (Color Palette): Choice of Earthy Neutrals, Monochrome, Vivid Colors, Soft Pastels, or Sand & Clay.
+- Persistence: Pack demographics and quiz selections into a single profile object and commit it to AsyncStorage under '@lookly_user_profile'.
+
+2. WEATHER-INTEGRATED HOME SCREEN & AI CAROUSEL:
+- Weather Hook: On application mount, fetch live weather from the Open-Meteo API using fixed Tashkent coordinates: Latitude 41.2995, Longitude 69.2401. 
+- Render a live weather widget detailing current temperature, conditions, and a custom text fabric hint.
+- AI Suggestions Carousel: Mock an API call to `/api/suggest-outfits` passing the wardrobe collection and user profile data. Render 3-4 outfit suggestions tailored to their age, gender, and onboarding aesthetics.
+- Strict Temperature Rules: The suggestion generator must enforce hard-coded bounds: No heavy outerwear in hot weather (>30°C defaults strictly to lightweight linen/cotton, sandals, and zero layering); heavy coats mandatory below 0°C.
+- Outfit Cards: Render an AI-simulated full-body preview image (using <Image> with no background placeholders), outfit name, layered item instructions (e.g., "base layer"), a contextual weather note, and an instant "Refresh" button.
+
+3. DIGITAL WARDROBE ORGANIZER:
+- Inventory Grid: Display Category Pills (All, Tops, Bottoms, Dresses, Outerwear, Shoes, Accessories) tracking live item counts.
+- Clothing Cards: Render actual uploaded clothing pictures using <Image source={{ uri: item.imageUri }} resizeMode="contain" />. Every card must showcase a clear color swatch, item name, category, and seasonal tags. Save metadata records in '@lookly_wardrobe_v2'.
+
+4. LOCAL DEALS & AUTHENTIC DAILY LOOKS FEED:
+- Deals Tab: Curate flash discount card items from real Tashkent mall brands: Zara, Mango, H&M, Gloria Jeans, Reserved, Bershka, Massimo Dutti. Apply a prominent red banner alert ("Ending today", "2 days left") if the mock expiration timestamp is under 48 hours out.
+- Looks Feed: Display a social styling timeline populated with local Uzbek names/handles. Each post card must show an outfit display photo, style tags, a like button interaction, and the precise weather conditions tracked at the time of posting.
+
+5. PROFILE & IDENTITY SYSTEM:
+- Provide fields to read and edit name, gender, and age profiles.
+- Body Reference Slot: Allow uploading/clearing a personal figure reference image path. Detail that when active, this asset acts as the visual canvas target for personalized outfit modeling.
+
+Ensure all layout transitions use buttery smooth animations, views map perfectly to the espresso/caramel design guidelines, and components render with high-performance layouts. Do not substitute working code blocks with summary comments.
