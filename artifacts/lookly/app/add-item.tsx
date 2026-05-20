@@ -29,6 +29,7 @@ import { useColors } from "@/hooks/useColors";
 import {
   type BrandLogo,
   type ClothingCategory,
+  type ClothingItem,
   type FabricWeight,
   type Season,
   useWardrobe,
@@ -101,6 +102,33 @@ interface DetectedItem {
   brandLogo?: BrandLogo | null;
   _photoUri?: string;
   _extractedUri?: string;
+  _isDuplicate?: boolean;
+  _duplicateOf?: { name: string; color: string; category: string; fabricWeight: string };
+}
+
+function nameWords(n: string): Set<string> {
+  return new Set(n.toLowerCase().split(/\s+/).filter((w) => w.length > 2));
+}
+
+function isSimilarToWardrobe(
+  detected: DetectedItem,
+  existing: ClothingItem
+): boolean {
+  if (detected.category !== existing.category) return false;
+  if (detected.colorName.toLowerCase() !== existing.color.toLowerCase()) return false;
+  const da = nameWords(detected.name);
+  const db = nameWords(existing.name);
+  const shared = [...da].filter((w) => db.has(w));
+  return shared.length >= Math.max(1, Math.min(2, Math.floor(Math.min(da.size, db.size) * 0.5)));
+}
+
+function isSimilarToDetected(a: DetectedItem, b: DetectedItem): boolean {
+  if (a.category !== b.category) return false;
+  if (a.colorName.toLowerCase() !== b.colorName.toLowerCase()) return false;
+  const wa = nameWords(a.name);
+  const wb = nameWords(b.name);
+  const shared = [...wa].filter((w) => wb.has(w));
+  return shared.length >= Math.max(1, Math.min(2, Math.floor(Math.min(wa.size, wb.size) * 0.5)));
 }
 
 async function scanClothingItems(base64: string, mimeType: string): Promise<DetectedItem[]> {
@@ -158,7 +186,9 @@ interface ItemPickerProps {
 function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss }: ItemPickerProps) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const [selected, setSelected] = useState<Set<number>>(new Set(items.map((_, i) => i)));
+  const [selected, setSelected] = useState<Set<number>>(
+    new Set(items.map((_, i) => i).filter((i) => !items[i]?._isDuplicate))
+  );
 
   const toggleSelect = (idx: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -192,7 +222,9 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
                 {items.length} items detected
               </Text>
               <Text style={[styles.pickerSubtitle, { color: colors.mutedForeground }]}>
-                Select which ones to add to your wardrobe
+                {items.filter((i) => i._isDuplicate).length > 0
+                  ? `${items.filter((i) => i._isDuplicate).length} already in wardrobe · deselected`
+                  : "Select which ones to add to your wardrobe"}
               </Text>
             </View>
             <TouchableOpacity onPress={onDismiss}>
@@ -268,7 +300,20 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
                         {item.material}
                       </Text>
                     </View>
-                    {item.locationHint ? (
+                    {item._isDuplicate && item._duplicateOf ? (
+                      <View style={[styles.dupeBadge, { backgroundColor: "#FEF9EC", borderColor: "#FDE68A" }]}>
+                        <Feather name="alert-circle" size={11} color="#D97706" />
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.dupeBadgeTitle, { color: "#92400E" }]}>
+                            Already in your wardrobe
+                          </Text>
+                          <Text style={[styles.dupeBadgeDesc, { color: "#78350F" }]} numberOfLines={2}>
+                            {item._duplicateOf.name} · {item._duplicateOf.color} {item._duplicateOf.category} · {item._duplicateOf.fabricWeight} fabric
+                          </Text>
+                        </View>
+                      </View>
+                    ) : null}
+                    {!item._isDuplicate && item.locationHint ? (
                       <Text style={[styles.pickerItemHint, { color: colors.mutedForeground }]}>
                         {item.locationHint}
                       </Text>
@@ -346,7 +391,7 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
 export default function AddItemScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { addItem, addBulkItems } = useWardrobe();
+  const { addItem, addBulkItems, items: wardrobeItems } = useWardrobe();
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState<ClothingCategory | null>(null);
@@ -462,7 +507,17 @@ export default function AddItemScreen() {
         return;
       }
 
-      const taggedItems = items.map((i) => ({ ...i, _photoUri: dataUri }));
+      const taggedItems = items.map((item) => {
+        const existingMatch = wardrobeItems.find((w) => isSimilarToWardrobe(item, w));
+        return {
+          ...item,
+          _photoUri: dataUri,
+          _isDuplicate: !!existingMatch,
+          _duplicateOf: existingMatch
+            ? { name: existingMatch.name, color: existingMatch.color, category: existingMatch.category, fabricWeight: existingMatch.fabricWeight }
+            : undefined,
+        };
+      });
       setDetectedItems(taggedItems);
 
       if (taggedItems.length === 1) {
@@ -535,7 +590,19 @@ export default function AddItemScreen() {
       setScannedImage(photoDataUri);
       try {
         const found = await scanClothingItems(asset.base64, mime);
-        allItems.push(...found.map((i) => ({ ...i, _photoUri: photoDataUri })));
+        for (const item of found) {
+          const crossPhotoDup = allItems.find((prev) => isSimilarToDetected(prev, item));
+          if (crossPhotoDup) continue;
+          const wardrobeDup = wardrobeItems.find((w) => isSimilarToWardrobe(item, w));
+          allItems.push({
+            ...item,
+            _photoUri: photoDataUri,
+            _isDuplicate: !!wardrobeDup,
+            _duplicateOf: wardrobeDup
+              ? { name: wardrobeDup.name, color: wardrobeDup.color, category: wardrobeDup.category, fabricWeight: wardrobeDup.fabricWeight }
+              : undefined,
+          });
+        }
       } catch {}
     }
     setIsScanning(false);
@@ -1163,6 +1230,9 @@ const styles = StyleSheet.create({
   pickerItemTags: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
   pickerTag: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 100 },
   pickerTagText: { fontSize: 10, fontWeight: "500" },
+  dupeBadge: { flexDirection: "row", alignItems: "flex-start", gap: 6, padding: 8, borderRadius: 8, borderWidth: 1 },
+  dupeBadgeTitle: { fontSize: 11, fontWeight: "700", marginBottom: 1 },
+  dupeBadgeDesc: { fontSize: 11, fontWeight: "400", lineHeight: 15 },
   pickerCheckbox: {
     width: 24,
     height: 24,
