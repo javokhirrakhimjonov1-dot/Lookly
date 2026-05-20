@@ -52,6 +52,8 @@ function OutfitCard({
   cardWidth,
   userBodyPhotoBase64,
   userBodyPhotoMime,
+  userGender,
+  userAge,
 }: {
   outfit: Outfit;
   wardrobeMap: Map<string, ClothingItem>;
@@ -60,6 +62,8 @@ function OutfitCard({
   cardWidth: number;
   userBodyPhotoBase64: string | null;
   userBodyPhotoMime: string;
+  userGender?: string | null;
+  userAge?: number | null;
 }) {
   const colors = useColors();
   const moodColor = MOOD_COLORS[outfit.mood] ?? colors.accent;
@@ -92,9 +96,9 @@ function OutfitCard({
         items: itemsForApi,
         weather: weatherDesc,
         temperature,
-        ...(userBodyPhotoBase64
-          ? { userBodyPhotoBase64, userBodyPhotoMime }
-          : {}),
+        ...(userBodyPhotoBase64 ? { userBodyPhotoBase64, userBodyPhotoMime } : {}),
+        ...(userGender ? { userGender } : {}),
+        ...(userAge != null ? { userAge } : {}),
       }),
     })
       .then((r) => r.json())
@@ -185,7 +189,7 @@ export default function OutfitCarousel() {
   const colors = useColors();
   const { items } = useWardrobe();
   const { temperature, weatherCode, isLoading: weatherLoading } = useWeather();
-  const { bodyPhotoBase64, bodyPhotoMime } = useUserProfile();
+  const { bodyPhotoBase64, bodyPhotoMime, gender, age } = useUserProfile();
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -297,6 +301,8 @@ export default function OutfitCarousel() {
                 cardWidth={cardWidth}
                 userBodyPhotoBase64={bodyPhotoBase64}
                 userBodyPhotoMime={bodyPhotoMime}
+                userGender={gender}
+                userAge={age}
               />
             ))}
           </ScrollView>

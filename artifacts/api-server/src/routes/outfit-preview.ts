@@ -94,12 +94,16 @@ router.post("/outfit-preview", async (req, res) => {
     temperature,
     userBodyPhotoBase64,
     userBodyPhotoMime,
+    userGender,
+    userAge,
   } = req.body as {
     items: { name: string; color: string; colorHex: string; category: string; brandLogo?: BrandLogo | null }[];
     weather: string;
     temperature: number;
     userBodyPhotoBase64?: string;
     userBodyPhotoMime?: string;
+    userGender?: string;
+    userAge?: number;
   };
 
   if (!items || !Array.isArray(items) || items.length === 0) {
@@ -107,7 +111,17 @@ router.post("/outfit-preview", async (req, res) => {
     return;
   }
 
-  let personDescription = "a stylish young adult with a confident stance";
+  function buildFallbackDescription(): string {
+    const genderLabel =
+      userGender === "male" ? "man"
+      : userGender === "female" ? "woman"
+      : userGender === "non-binary" ? "non-binary person"
+      : "person";
+    const ageLabel = userAge ? ` in their ${Math.floor(userAge / 10) * 10}s` : "";
+    return `a stylish ${genderLabel}${ageLabel} with a confident stance`;
+  }
+
+  let personDescription = buildFallbackDescription();
 
   if (userBodyPhotoBase64) {
     try {
@@ -116,7 +130,7 @@ router.post("/outfit-preview", async (req, res) => {
         userBodyPhotoMime ?? "image/jpeg"
       );
     } catch {
-      personDescription = "a stylish young adult with a confident stance";
+      personDescription = buildFallbackDescription();
     }
   }
 

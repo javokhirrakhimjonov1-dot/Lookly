@@ -17,6 +17,7 @@ import { useSocial } from "@/contexts/SocialContext";
 import { useWardrobe } from "@/contexts/WardrobeContext";
 import { useDeals } from "@/contexts/DealsContext";
 import { useWeather } from "@/contexts/WeatherContext";
+import { useUserProfile } from "@/contexts/UserProfileContext";
 
 const ALERT_BG: Record<string, string> = {
   temperature_drop: "#EFF6FF",
@@ -43,6 +44,20 @@ const ALERT_ICON: Record<string, React.ComponentProps<typeof Feather>["name"]> =
   snow_incoming: "cloud-snow",
 };
 
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
+}
+
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
+
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -50,6 +65,7 @@ export default function HomeScreen() {
   const { looks } = useSocial();
   const { deals } = useDeals();
   const { weatherAlert, dismissAlert, condition, temperature } = useWeather();
+  const { fullName } = useUserProfile();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const today = new Date().toLocaleDateString("en-US", {
@@ -57,6 +73,10 @@ export default function HomeScreen() {
     month: "long",
     day: "numeric",
   });
+  const firstName = fullName ? fullName.trim().split(/\s+/)[0] : null;
+  const greeting = firstName ? `${getGreeting()}, ${firstName}` : getGreeting();
+  const avatarInitials = fullName ? getInitials(fullName) : "?";
+
 
   const urgentDeals = deals.filter(
     (d) =>
@@ -81,7 +101,7 @@ export default function HomeScreen() {
             {today}
           </Text>
           <Text style={[styles.title, { color: colors.foreground }]}>
-            Good morning
+            {greeting}
           </Text>
         </View>
         <TouchableOpacity
@@ -89,7 +109,7 @@ export default function HomeScreen() {
           style={[styles.avatarBtn, { backgroundColor: colors.primary }]}
         >
           <Text style={[styles.avatarText, { color: colors.primaryForeground }]}>
-            Y
+            {avatarInitials}
           </Text>
         </TouchableOpacity>
       </View>

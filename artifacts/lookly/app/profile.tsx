@@ -9,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -16,7 +17,21 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useWardrobe } from "@/contexts/WardrobeContext";
 import { useSocial } from "@/contexts/SocialContext";
-import { useUserProfile } from "@/contexts/UserProfileContext";
+import { type Gender, useUserProfile } from "@/contexts/UserProfileContext";
+
+const GENDER_OPTIONS: { key: Gender; label: string }[] = [
+  { key: "male", label: "Male" },
+  { key: "female", label: "Female" },
+  { key: "non-binary", label: "Non-binary" },
+  { key: "prefer_not_to_say", label: "Prefer not to say" },
+];
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
+}
 
 export default function ProfileScreen() {
   const colors = useColors();
@@ -24,16 +39,39 @@ export default function ProfileScreen() {
   const { items } = useWardrobe();
   const { looks } = useSocial();
   const {
+    fullName,
+    gender,
+    age,
     bodyPhotoUri,
+    setFullName,
+    setGender,
+    setAge,
     uploadBodyPhoto,
     captureBodyPhoto,
     clearBodyPhoto,
   } = useUserProfile();
 
   const [photoLoading, setPhotoLoading] = useState(false);
+  const [localName, setLocalName] = useState(fullName);
+  const [localAge, setLocalAge] = useState(age != null ? String(age) : "");
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const myLooks = looks.filter((l) => l.isOwn);
+  const initials = fullName ? getInitials(fullName) : "?";
+  const displayName = fullName || "Your Profile";
+  const firstName = fullName ? fullName.trim().split(/\s+/)[0] : null;
+
+  const handleNameBlur = async () => {
+    if (localName !== fullName) await setFullName(localName.trim());
+  };
+
+  const handleAgeBlur = async () => {
+    const parsed = parseInt(localAge, 10);
+    const valid = !isNaN(parsed) && parsed >= 13 && parsed <= 99;
+    const newAge = valid ? parsed : null;
+    if (newAge !== age) await setAge(newAge);
+    if (!valid) setLocalAge(age != null ? String(age) : "");
+  };
 
   const handleUpload = async () => {
     setPhotoLoading(true);
@@ -57,26 +95,10 @@ export default function ProfileScreen() {
   };
 
   const rows = [
-    {
-      icon: "bell" as const,
-      label: "Deal notifications",
-      description: "Get alerts for new Tashkent discounts",
-    },
-    {
-      icon: "cloud" as const,
-      label: "Weather location",
-      description: "Auto-detected · fallback to Tashkent",
-    },
-    {
-      icon: "shield" as const,
-      label: "Privacy",
-      description: "Manage who sees your looks",
-    },
-    {
-      icon: "info" as const,
-      label: "About Lookly",
-      description: "Version 1.0.0",
-    },
+    { icon: "bell" as const, label: "Deal notifications", description: "Get alerts for new Tashkent discounts" },
+    { icon: "cloud" as const, label: "Weather location", description: "Auto-detected · fallback to Tashkent" },
+    { icon: "shield" as const, label: "Privacy", description: "Manage who sees your looks" },
+    { icon: "info" as const, label: "About Lookly", description: "Version 1.0.0" },
   ];
 
   return (
@@ -84,10 +106,7 @@ export default function ProfileScreen() {
       style={{ flex: 1, backgroundColor: colors.background }}
       contentContainerStyle={[
         styles.content,
-        {
-          paddingTop: topPad + 16,
-          paddingBottom: Platform.OS === "web" ? 60 : insets.bottom + 40,
-        },
+        { paddingTop: topPad + 16, paddingBottom: Platform.OS === "web" ? 60 : insets.bottom + 40 },
       ]}
       showsVerticalScrollIndicator={false}
     >
@@ -95,14 +114,23 @@ export default function ProfileScreen() {
         <Feather name="arrow-left" size={22} color={colors.foreground} />
       </TouchableOpacity>
 
+      {/* Profile card */}
       <View style={styles.profileCard}>
         <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-          <Text style={[styles.avatarText, { color: colors.primaryForeground }]}>Y</Text>
+          <Text style={[styles.avatarText, { color: colors.primaryForeground }]}>{initials}</Text>
         </View>
-        <Text style={[styles.name, { color: colors.foreground }]}>Your Profile</Text>
-        <Text style={[styles.location, { color: colors.mutedForeground }]}>
-          Tashkent, Uzbekistan
-        </Text>
+        <Text style={[styles.name, { color: colors.foreground }]}>{displayName}</Text>
+        {(gender || age) ? (
+          <Text style={[styles.profileMeta, { color: colors.mutedForeground }]}>
+            {[
+              gender && gender !== "prefer_not_to_say"
+                ? GENDER_OPTIONS.find((g) => g.key === gender)?.label
+                : null,
+              age ? `${age} yrs` : null,
+            ].filter(Boolean).join(" · ")}
+          </Text>
+        ) : null}
+        <Text style={[styles.location, { color: colors.mutedForeground }]}>Tashkent, Uzbekistan</Text>
         <View style={styles.statsRow}>
           <View style={styles.stat}>
             <Text style={[styles.statNumber, { color: colors.foreground }]}>{items.length}</Text>
@@ -116,10 +144,109 @@ export default function ProfileScreen() {
         </View>
       </View>
 
+      {/* About You section */}
       <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View style={styles.sectionHeader}>
           <View style={[styles.sectionIconWrap, { backgroundColor: colors.accent + "22" }]}>
             <Feather name="user" size={16} color={colors.accent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>About You</Text>
+            <Text style={[styles.sectionSub, { color: colors.mutedForeground }]}>
+              Helps personalise outfit suggestions and AI model previews
+            </Text>
+          </View>
+        </View>
+
+        {/* Full name */}
+        <View style={styles.fieldGroup}>
+          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>FULL NAME</Text>
+          <TextInput
+            style={[styles.textInput, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
+            value={localName}
+            onChangeText={setLocalName}
+            onBlur={handleNameBlur}
+            placeholder="e.g. Dilnoza Yusupova"
+            placeholderTextColor={colors.mutedForeground}
+            autoCorrect={false}
+            returnKeyType="done"
+          />
+        </View>
+
+        {/* Gender */}
+        <View style={styles.fieldGroup}>
+          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>GENDER</Text>
+          <View style={styles.genderRow}>
+            {GENDER_OPTIONS.map((opt) => {
+              const active = gender === opt.key;
+              return (
+                <TouchableOpacity
+                  key={opt.key}
+                  onPress={() => setGender(active ? null : opt.key)}
+                  style={[
+                    styles.genderPill,
+                    {
+                      backgroundColor: active ? colors.primary : colors.secondary,
+                      borderColor: active ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.genderPillText,
+                      { color: active ? colors.primaryForeground : colors.mutedForeground },
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Age */}
+        <View style={styles.fieldGroup}>
+          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>AGE</Text>
+          <View style={styles.ageRow}>
+            <TextInput
+              style={[styles.ageInput, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
+              value={localAge}
+              onChangeText={setLocalAge}
+              onBlur={handleAgeBlur}
+              placeholder="e.g. 24"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="number-pad"
+              maxLength={3}
+              returnKeyType="done"
+            />
+            <Text style={[styles.ageHint, { color: colors.mutedForeground }]}>years old · ages 13–99</Text>
+          </View>
+        </View>
+
+        {(fullName || gender || age) ? (
+          <View style={[styles.profileTip, { backgroundColor: "#F0FDF4", borderColor: "#BBF7D0" }]}>
+            <Feather name="check-circle" size={13} color="#059669" />
+            <Text style={[styles.profileTipText, { color: "#065F46" }]}>
+              AI outfit previews will be tailored for{" "}
+              {[firstName, gender && gender !== "prefer_not_to_say" ? GENDER_OPTIONS.find((g) => g.key === gender)?.label.toLowerCase() : null, age ? `age ${age}` : null].filter(Boolean).join(", ")}
+            </Text>
+          </View>
+        ) : (
+          <View style={[styles.profileTip, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+            <Feather name="info" size={13} color={colors.mutedForeground} />
+            <Text style={[styles.profileTipText, { color: colors.mutedForeground }]}>
+              Fill in your details so the AI can generate outfit previews that look right for you
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* Body Reference Photo */}
+      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={styles.sectionHeader}>
+          <View style={[styles.sectionIconWrap, { backgroundColor: colors.accent + "22" }]}>
+            <Feather name="camera" size={16} color={colors.accent} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Body Reference Photo</Text>
@@ -198,6 +325,7 @@ export default function ProfileScreen() {
         )}
       </View>
 
+      {/* Settings */}
       <View style={[styles.settingsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
         {rows.map((row, i) => (
           <TouchableOpacity
@@ -225,22 +353,21 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 18, gap: 16 },
   backBtn: { alignSelf: "flex-start", marginBottom: 8 },
-  profileCard: { alignItems: "center", gap: 6, paddingVertical: 12 },
+  profileCard: { alignItems: "center", gap: 4, paddingVertical: 12 },
   avatar: {
     width: 80, height: 80, borderRadius: 40,
     alignItems: "center", justifyContent: "center", marginBottom: 4,
   },
-  avatarText: { fontSize: 32, fontWeight: "700" },
+  avatarText: { fontSize: 28, fontWeight: "700" },
   name: { fontSize: 22, fontWeight: "700" },
-  location: { fontSize: 14 },
-  statsRow: { flexDirection: "row", alignItems: "center", gap: 24, marginTop: 8 },
+  profileMeta: { fontSize: 13, fontWeight: "500", marginTop: 1 },
+  location: { fontSize: 13 },
+  statsRow: { flexDirection: "row", alignItems: "center", gap: 24, marginTop: 10 },
   stat: { alignItems: "center", gap: 2 },
   statNumber: { fontSize: 24, fontWeight: "800" },
   statLabel: { fontSize: 12, fontWeight: "500" },
   dividerV: { width: 1, height: 32 },
-  section: {
-    borderRadius: 18, borderWidth: 1, padding: 16, gap: 14,
-  },
+  section: { borderRadius: 18, borderWidth: 1, padding: 16, gap: 14 },
   sectionHeader: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
   sectionIconWrap: {
     width: 36, height: 36, borderRadius: 10,
@@ -248,6 +375,28 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { fontSize: 15, fontWeight: "700" },
   sectionSub: { fontSize: 12, lineHeight: 17, marginTop: 2 },
+  fieldGroup: { gap: 7 },
+  fieldLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.8 },
+  textInput: {
+    borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11,
+    fontSize: 15, fontWeight: "500",
+  },
+  genderRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  genderPill: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 100, borderWidth: 1,
+  },
+  genderPillText: { fontSize: 13, fontWeight: "600" },
+  ageRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  ageInput: {
+    borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11,
+    fontSize: 15, fontWeight: "500", width: 80, textAlign: "center",
+  },
+  ageHint: { fontSize: 12 },
+  profileTip: {
+    flexDirection: "row", alignItems: "flex-start", gap: 8,
+    padding: 10, borderRadius: 10, borderWidth: 1,
+  },
+  profileTipText: { flex: 1, fontSize: 12, lineHeight: 17 },
   bodyPhotoTip: {
     flexDirection: "row", alignItems: "flex-start", gap: 10,
     padding: 12, borderRadius: 12,
@@ -262,9 +411,7 @@ const styles = StyleSheet.create({
   photoLoadingRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8 },
   photoLoadingText: { fontSize: 14 },
   photoPreviewRow: { flexDirection: "row", gap: 14, alignItems: "flex-start" },
-  bodyThumb: {
-    width: 80, height: 120, borderRadius: 14, borderWidth: 2, flexShrink: 0,
-  },
+  bodyThumb: { width: 80, height: 120, borderRadius: 14, borderWidth: 2, flexShrink: 0 },
   photoInfo: { flex: 1, gap: 8 },
   photoBadge: {
     flexDirection: "row", alignItems: "center", gap: 6,
@@ -280,13 +427,8 @@ const styles = StyleSheet.create({
   },
   photoActionText: { fontSize: 12, fontWeight: "600" },
   settingsCard: { borderRadius: 18, borderWidth: 1, overflow: "hidden" },
-  settingsRow: {
-    flexDirection: "row", alignItems: "center", gap: 12, padding: 16,
-  },
-  rowIcon: {
-    width: 36, height: 36, borderRadius: 10,
-    alignItems: "center", justifyContent: "center",
-  },
+  settingsRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16 },
+  rowIcon: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   rowLabel: { fontSize: 14, fontWeight: "600", marginBottom: 1 },
   rowDesc: { fontSize: 12 },
 });

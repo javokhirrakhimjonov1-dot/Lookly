@@ -62,7 +62,9 @@ async function generateOutfitPreview(
   weather: string,
   temperature: number,
   userBodyPhotoBase64?: string | null,
-  userBodyPhotoMime?: string
+  userBodyPhotoMime?: string,
+  userGender?: string | null,
+  userAge?: number | null
 ): Promise<string> {
   const body = {
     items: items.map((i) => ({
@@ -75,6 +77,8 @@ async function generateOutfitPreview(
     temperature,
     userBodyPhotoBase64: userBodyPhotoBase64 ?? undefined,
     userBodyPhotoMime: userBodyPhotoBase64 ? (userBodyPhotoMime ?? "image/jpeg") : undefined,
+    userGender: userGender ?? undefined,
+    userAge: userAge ?? undefined,
   };
 
   const res = await fetch(`${API_BASE}/outfit-preview`, {
@@ -284,7 +288,7 @@ export default function OutfitBuilderScreen() {
   const { items, saveOutfit, savedOutfits } = useWardrobe();
   const { addLook } = useSocial();
   const { condition, temperature } = useWeather();
-  const { bodyPhotoBase64, bodyPhotoMime } = useUserProfile();
+  const { bodyPhotoBase64, bodyPhotoMime, gender, age } = useUserProfile();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -440,7 +444,7 @@ export default function OutfitBuilderScreen() {
     setIsGenerating(true);
     setShowPreview(true);
     try {
-      const img = await generateOutfitPreview(pieces, condition, temperature, bodyPhotoBase64, bodyPhotoMime);
+      const img = await generateOutfitPreview(pieces, condition, temperature, bodyPhotoBase64, bodyPhotoMime, gender, age);
       setPreviewImage(img);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: unknown) {

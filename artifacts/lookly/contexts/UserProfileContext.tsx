@@ -11,26 +11,33 @@ import React, {
 } from "react";
 import { Alert } from "react-native";
 
+export type Gender = "male" | "female" | "non-binary" | "prefer_not_to_say";
+
 interface UserProfile {
-  name: string;
+  fullName: string;
+  gender: Gender | null;
+  age: number | null;
   bodyPhotoUri: string | null;
   bodyPhotoMime: string;
 }
 
 interface UserProfileContextValue {
-  name: string;
+  fullName: string;
+  gender: Gender | null;
+  age: number | null;
   bodyPhotoUri: string | null;
   bodyPhotoBase64: string | null;
   bodyPhotoMime: string;
   isLoading: boolean;
-  setName: (name: string) => Promise<void>;
+  setFullName: (name: string) => Promise<void>;
+  setGender: (gender: Gender | null) => Promise<void>;
+  setAge: (age: number | null) => Promise<void>;
   uploadBodyPhoto: () => Promise<void>;
   captureBodyPhoto: () => Promise<void>;
   clearBodyPhoto: () => Promise<void>;
 }
 
-const PROFILE_KEY = "@lookly_user_profile_v2";
-const OLD_PROFILE_KEY = "@lookly_user_profile";
+const PROFILE_KEY = "@lookly_user_profile_v3";
 
 const UserProfileContext = createContext<UserProfileContextValue | null>(null);
 
@@ -46,7 +53,9 @@ async function readBase64FromUri(uri: string): Promise<string | null> {
 }
 
 export function UserProfileProvider({ children }: { children: React.ReactNode }) {
-  const [name, setNameState] = useState("You");
+  const [fullName, setFullNameState] = useState("");
+  const [gender, setGenderState] = useState<Gender | null>(null);
+  const [age, setAgeState] = useState<number | null>(null);
   const [bodyPhotoUri, setBodyPhotoUri] = useState<string | null>(null);
   const [bodyPhotoBase64, setBodyPhotoBase64] = useState<string | null>(null);
   const [bodyPhotoMime, setBodyPhotoMime] = useState("image/jpeg");
@@ -55,15 +64,19 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
   useEffect(() => {
     (async () => {
       try {
-        // Purge old key that stored large base64 blobs — frees AsyncStorage quota
-        await AsyncStorage.removeItem(OLD_PROFILE_KEY);
+        await AsyncStorage.multiRemove([
+          "@lookly_user_profile",
+          "@lookly_user_profile_v2",
+        ]);
       } catch {}
 
       try {
         const raw = await AsyncStorage.getItem(PROFILE_KEY);
         if (raw) {
           const stored = JSON.parse(raw) as Partial<UserProfile>;
-          if (stored.name) setNameState(stored.name);
+          if (stored.fullName) setFullNameState(stored.fullName);
+          if (stored.gender) setGenderState(stored.gender);
+          if (stored.age != null) setAgeState(stored.age);
           if (stored.bodyPhotoMime) setBodyPhotoMime(stored.bodyPhotoMime);
           if (stored.bodyPhotoUri) {
             setBodyPhotoUri(stored.bodyPhotoUri);
@@ -78,28 +91,33 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
 
   const persist = useCallback(async (updates: Partial<UserProfile>) => {
     try {
-      const current: UserProfile = { name, bodyPhotoUri, bodyPhotoMime };
+      const current: UserProfile = { fullName, gender, age, bodyPhotoUri, bodyPhotoMime };
       await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify({ ...current, ...updates }));
-    } catch {
-      // Storage full — profile changes remain in memory for this session
-    }
-  }, [name, bodyPhotoUri, bodyPhotoMime]);
+    } catch {}
+  }, [fullName, gender, age, bodyPhotoUri, bodyPhotoMime]);
 
-  const setName = useCallback(async (newName: string) => {
-    setNameState(newName);
-    await persist({ name: newName });
+  const setFullName = useCallback(async (name: string) => {
+    setFullNameState(name);
+    await persist({ fullName: name });
+  }, [persist]);
+
+  const setGender = useCallback(async (g: Gender | null) => {
+    setGenderState(g);
+    await persist({ gender: g });
+  }, [persist]);
+
+  const setAge = useCallback(async (a: number | null) => {
+    setAgeState(a);
+    await persist({ age: a });
   }, [persist]);
 
   const applyPickerAsset = useCallback(async (asset: ImagePicker.ImagePickerAsset) => {
     const mime = asset.mimeType ?? "image/jpeg";
     const uri = asset.uri;
-
     setBodyPhotoUri(uri);
     setBodyPhotoMime(mime);
-
     const b64 = asset.base64 ?? await readBase64FromUri(uri);
     setBodyPhotoBase64(b64);
-
     await persist({ bodyPhotoUri: uri, bodyPhotoMime: mime });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [persist]);
@@ -146,12 +164,16 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
   return (
     <UserProfileContext.Provider
       value={{
-        name,
+        fullName,
+        gender,
+        age,
         bodyPhotoUri,
         bodyPhotoBase64,
         bodyPhotoMime,
         isLoading,
-        setName,
+        setFullName,
+        setGender,
+        setAge,
         uploadBodyPhoto,
         captureBodyPhoto,
         clearBodyPhoto,

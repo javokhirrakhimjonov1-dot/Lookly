@@ -1,0 +1,40 @@
+Please build the complete MVP for Lookly, a premium local fashion-tech app for Tashkent, utilizing Expo React Native for the frontend, Express 5 for the backend, and local AsyncStorage for all device data persistence.
+
+Design System Palette:
+- Background: Warm Cream (#FAF8F5)
+- Primary/Text: Espresso (#1C1512)
+- Accent UI Components: Caramel (#C8906A)
+
+Implement the following core modules exactly per the specification:
+
+1. WEATHER ENGINE (Tashkent Fixed Link):
+- On application mount, make an API call to Open-Meteo using fixed coordinates: Latitude 41.2995, Longitude 69.2401. 
+- Calculate temperature, condition, humidity, and wind speed. 
+- Implement a real-time smart fabric recommendation label on the Home Screen based on the current live temperature (e.g., at 31°C display: "Only light linen/cotton recommended today").
+- Scan the 48-hour forecast array for abrupt variances (changes >= 5°C or sudden precipitation). If found, display the dismissible Home Screen Weather Alert Banner.
+
+2. SMART WARDROBE GRID & IMAGE RENDERING FIX:
+- CRITICAL: Never use generic vector icon badges or placeholders for clothing slots. Render the actual clothing item image using <Image source={{ uri: item.imageUri }} resizeMode="contain" />.
+- Implement Category Pills (All, Tops, Bottoms, Dresses, Outerwear, Shoes, Accessories) with dynamic item counts.
+- Add Item Flow: Create a multi-item selection sheet simulating a GPT-5.1 Vision/gpt-image-1 photo scan. 
+- Implement Duplicate Detection Logic: Before saving a scanned item to AsyncStorage (@lookly_wardrobe_v2), check against existing items. If an item matches an existing record's category + color + name similarity, display a yellow "Already in your wardrobe" badge and pre-deselect its checkbox in the multi-item picker.
+
+3. GAMIFIED "MAKE YOUR LOOK" CANVAS WITH ANCHOR LOCKS:
+- Build a layout canvas header featuring a live weather chip.
+- Create vertical drag-and-drop or selectable layout slots for: Outerwear, Top, Bottom, Shoes, and Accessory.
+- Implement an explicit "Lock/Anchor" button on every card slot. 
+- When "AI Auto/Reshuffle" is pressed, show a "Styling..." spinner. The backend orchestration algorithm must hold all locked slots completely constant, and fill remaining slots using the strict temperature tier array:
+  - <= 0°C: Heavy coat mandatory, no light fabrics.
+  - <= 10°C: Outerwear mandatory, heavy/medium weights only.
+  - <= 17°C: Light jacket recommended.
+  - <= 24°C: No outerwear permitted.
+  - <= 30°C: Light fabrics preferred, no heavy outerwear.
+  - > 30°C (Tashkent Summer): Only linen/cotton allowed, zero layering, shoes filter to sandals/light footwear.
+- Include a "Preview on Model" button generating full-body renders using the profile body reference photo, prioritizing the preservation of discovered brand logos.
+- Continuously save the canvas layout state via AsyncStorage to protect against data loss on crash.
+
+4. LOCAL DEALS & SOCIAL CONTEXT:
+- Deals Tab: Pre-populate with curated Tashkent mall brands: Zara, Mango, H&M, Gloria Jeans, Reserved, Bershka, Pull&Bear, LC Waikiki. Include red countdown banners ("Ending today", "2 days left") if the mock expiry date is under 48 hours.
+- Daily Looks Social Feed: Generate authentic local mock data using Uzbek names/handles showcasing their outfits alongside the specific temperature and weather conditions at their time of posting.
+
+Ensure all database structures, data arrays, and asset pathways match this architectural breakdown. Use AsyncStorage keys: '@lookly_wardrobe_v2', '@lookly_img_', '@lookly_outfit_img_', and '@lookly_saved_outfits'.
