@@ -6,7 +6,7 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { router, Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -18,27 +18,43 @@ import { WardrobeProvider } from "@/contexts/WardrobeContext";
 import { WeatherProvider } from "@/contexts/WeatherContext";
 import { SocialProvider } from "@/contexts/SocialContext";
 import { DealsProvider } from "@/contexts/DealsContext";
-import { UserProfileProvider } from "@/contexts/UserProfileContext";
+import { UserProfileProvider, useUserProfile } from "@/contexts/UserProfileContext";
 import { CalendarProvider } from "@/contexts/CalendarContext";
 
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
+function OnboardingGuard() {
+  const { onboardingComplete, isLoading } = useUserProfile();
+
+  useEffect(() => {
+    if (!isLoading && !onboardingComplete) {
+      router.replace("/onboarding");
+    }
+  }, [isLoading, onboardingComplete]);
+
+  return null;
+}
+
 function RootLayoutNav() {
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen
-        name="add-item"
-        options={{ headerShown: false, presentation: "modal" }}
-      />
-      <Stack.Screen name="profile" options={{ headerShown: false }} />
-      <Stack.Screen name="outfit-builder" options={{ headerShown: false }} />
-      <Stack.Screen name="calendar" options={{ headerShown: false }} />
-      <Stack.Screen name="pack-trip" options={{ headerShown: false }} />
-      <Stack.Screen name="shuffle" options={{ headerShown: false }} />
-    </Stack>
+    <>
+      <OnboardingGuard />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
+        <Stack.Screen
+          name="add-item"
+          options={{ headerShown: false, presentation: "modal" }}
+        />
+        <Stack.Screen name="profile" options={{ headerShown: false }} />
+        <Stack.Screen name="outfit-builder" options={{ headerShown: false }} />
+        <Stack.Screen name="calendar" options={{ headerShown: false }} />
+        <Stack.Screen name="pack-trip" options={{ headerShown: false }} />
+        <Stack.Screen name="shuffle" options={{ headerShown: false }} />
+      </Stack>
+    </>
   );
 }
 
@@ -66,15 +82,15 @@ export default function RootLayout() {
             <WeatherProvider>
               <WardrobeProvider>
                 <CalendarProvider>
-                <SocialProvider>
-                  <DealsProvider>
-                    <GestureHandlerRootView>
-                      <KeyboardProvider>
-                        <RootLayoutNav />
-                      </KeyboardProvider>
-                    </GestureHandlerRootView>
-                  </DealsProvider>
-                </SocialProvider>
+                  <SocialProvider>
+                    <DealsProvider>
+                      <GestureHandlerRootView>
+                        <KeyboardProvider>
+                          <RootLayoutNav />
+                        </KeyboardProvider>
+                      </GestureHandlerRootView>
+                    </DealsProvider>
+                  </SocialProvider>
                 </CalendarProvider>
               </WardrobeProvider>
             </WeatherProvider>

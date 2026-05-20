@@ -189,7 +189,7 @@ export default function OutfitCarousel() {
   const colors = useColors();
   const { items } = useWardrobe();
   const { temperature, weatherCode, isLoading: weatherLoading } = useWeather();
-  const { bodyPhotoBase64, bodyPhotoMime, gender, age } = useUserProfile();
+  const { bodyPhotoBase64, bodyPhotoMime, gender, age, styleAesthetic, heatAdaptation, colorPalette } = useUserProfile();
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -205,7 +205,16 @@ export default function OutfitCarousel() {
       const res = await fetch(`${API_BASE}/suggest-outfits`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items, temperature, weatherCode }),
+        body: JSON.stringify({
+          items,
+          temperature,
+          weatherCode,
+          ...(gender ? { userGender: gender } : {}),
+          ...(age != null ? { userAge: age } : {}),
+          ...(styleAesthetic ? { styleAesthetic } : {}),
+          ...(heatAdaptation ? { heatAdaptation } : {}),
+          ...(colorPalette ? { colorPalette } : {}),
+        }),
       });
       const data = (await res.json()) as { outfits: Outfit[] };
       setOutfits(data.outfits ?? []);

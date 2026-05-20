@@ -1,0 +1,25 @@
+Please build a unified User Onboarding & Personalization Flow for Lookly.
+
+Implementation Steps:
+
+1. Onboarding Guard:
+   - Check AsyncStorage for a '@lookly_user_profile' key on app launch. If it does not exist, intercept the main navigation and display the initialization flow using the app's palette (Warm Cream background #FAF8F5, Espresso text #1C1512, Caramel accents #C8906A).
+
+2. Screen 1: Basic Demographics (Form Input):
+   - Create a clean form layout asking for: Name (TextInput), Age (Numeric Input/Picker), and Gender (Selection Buttons).
+   - Include a validation safeguard ensuring these fields are filled before allowing the user to tap "Next".
+
+3. Screen 2: "This or That" Visual Style Quiz:
+   - Transition smoothly into a 3-step visual style quiz card interface:
+     - Step 1 (Casual Baseline Aesthetic): "Choose your casual baseline" with selectable cards for Minimalist, Streetwear, or Smart Casual.
+     - Step 2 (Tashkent Summer Heat Adaptation): "Your preference for scorching 30°C+ summer days" with selections for Light Linen or Classic Cotton/Denim.
+     - Step 3 (Color Palette Preference): "Your preferred tone palette" with options for Earthy Neutrals, Monochrome Black/White, or Vivid Colors.
+
+4. Profile Storage & State Persistence:
+   - Upon clicking "Complete", bundle the demographics (name, age, gender) and style quiz results into a single profile object. Save it to AsyncStorage under '@lookly_user_profile'.
+
+5. AI Engine Personalization:
+   - Update the outfit generation logic (/api/suggest-outfits) and the Home Screen greeting. The greeting must read "Good morning/afternoon, [Name]". 
+   - The AI carousel recommendation engine must accept the age, gender, style aesthetic, and color choices from the profile, using them to prioritize look compositions that perfectly match the user's personal profile while strictly maintaining the hard temperature-tier weather logic.
+
+Ensure all layout transitions use clean, smooth animations and instantly grant access to the main Home Screen upon completion.

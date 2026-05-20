@@ -41,12 +41,12 @@ function weatherTierInstructions(temp: number, code: number): string {
   if (temp <= 17) return (
     `COOL (${temp}°C). A light jacket, blazer, or cardigan should be included where available. ` +
     `Medium fabrics work well. Avoid very heavy coats — they are too warm. ` +
-    isRain ? "Rain expected — include waterproof or water-resistant outerwear if available." : ""
+    (isRain ? "Rain expected — include waterproof or water-resistant outerwear if available." : "")
   );
   if (temp <= 24) return (
     `MILD / WARM (${temp}°C). No outerwear needed unless it's raining. ` +
     `Light to medium fabrics are ideal. Jeans, chinos, midi skirts all work. ` +
-    isRain ? "Rain expected — suggest a light raincoat or water-resistant layer if available." : ""
+    (isRain ? "Rain expected — suggest a light raincoat or water-resistant layer if available." : "")
   );
   if (temp <= 30) return (
     `HOT (${temp}°C). NEVER include heavy coats, puffers, or heavy-fabric outerwear. ` +
@@ -61,6 +61,48 @@ function weatherTierInstructions(temp: number, code: number): string {
   );
 }
 
+function buildPersonalisation(
+  gender?: string,
+  age?: number,
+  styleAesthetic?: string,
+  heatAdaptation?: string,
+  colorPalette?: string
+): string {
+  const parts: string[] = [];
+
+  if (gender && gender !== "prefer_not_to_say") {
+    const g = gender === "male" ? "male" : gender === "female" ? "female" : "non-binary";
+    parts.push(`Gender: ${g}`);
+  }
+  if (age) parts.push(`Age: ${age} years old`);
+
+  if (styleAesthetic) {
+    const aestheticLabel =
+      styleAesthetic === "minimalist" ? "Minimalist (clean lines, neutral tones, understated)"
+      : styleAesthetic === "streetwear" ? "Streetwear (bold, urban, expressive, layered)"
+      : "Smart Casual (polished yet relaxed, office-ready but not formal)";
+    parts.push(`Style aesthetic: ${aestheticLabel}`);
+  }
+
+  if (heatAdaptation) {
+    const heatLabel = heatAdaptation === "light_linen"
+      ? "Prefers light, breathable fabrics (linen, cotton voile) in hot weather"
+      : "Prefers classic cotton/denim in hot weather";
+    parts.push(heatLabel);
+  }
+
+  if (colorPalette) {
+    const paletteLabel =
+      colorPalette === "earthy_neutrals" ? "Colour preference: earthy neutrals (camel, beige, terracotta, olive)"
+      : colorPalette === "monochrome" ? "Colour preference: monochrome (black, white, grey tones)"
+      : "Colour preference: vivid colours (bold, saturated pops of colour)";
+    parts.push(paletteLabel);
+  }
+
+  if (parts.length === 0) return "";
+  return `\nUSER PROFILE:\n${parts.map((p) => `- ${p}`).join("\n")}\nUse this profile to prioritise outfit compositions, moods, and colour combinations that suit this person. WEATHER RULES still override all style preferences.\n`;
+}
+
 const GENERIC_OUTFITS = [
   { name: "Effortless daytime", mood: "casual", weatherNote: "General everyday look", items: [] as { itemId: string; role: string }[] },
   { name: "Polished minimalist", mood: "minimal", weatherNote: "Clean, simple fit", items: [] as { itemId: string; role: string }[] },
@@ -72,10 +114,20 @@ router.post("/suggest-outfits", async (req, res) => {
     items,
     temperature,
     weatherCode,
+    userGender,
+    userAge,
+    styleAesthetic,
+    heatAdaptation,
+    colorPalette,
   } = req.body as {
     items: WardrobeItem[];
     temperature: number;
     weatherCode: number;
+    userGender?: string;
+    userAge?: number;
+    styleAesthetic?: string;
+    heatAdaptation?: string;
+    colorPalette?: string;
   };
 
   if (!items || items.length < 2) {
@@ -85,6 +137,7 @@ router.post("/suggest-outfits", async (req, res) => {
 
   const wDesc = weatherDesc(temperature, weatherCode);
   const tierInstructions = weatherTierInstructions(temperature, weatherCode);
+  const personalisationBlock = buildPersonalisation(userGender, userAge, styleAesthetic, heatAdaptation, colorPalette);
 
   const itemList = items
     .slice(0, 40)
@@ -92,8 +145,16 @@ router.post("/suggest-outfits", async (req, res) => {
     .join("\n");
 
   const MOODS = ["casual", "minimal", "streetwear", "formal", "sporty", "boho", "chic"];
-  const shuffledMoods = [...MOODS].sort(() => Math.random() - 0.5).slice(0, 4);
+
+  // Bias mood selection toward the user's aesthetic
+  let moodPool = [...MOODS];
+  if (styleAesthetic === "minimalist") moodPool = ["minimal", "chic", "casual", "formal", "boho", "sporty", "streetwear"];
+  else if (styleAesthetic === "streetwear") moodPool = ["streetwear", "casual", "sporty", "minimal", "chic", "boho", "formal"];
+  else if (styleAesthetic === "smart_casual") moodPool = ["chic", "minimal", "casual", "formal", "sporty", "boho", "streetwear"];
+
+  const shuffledMoods = [...moodPool].sort(() => Math.random() - 0.5).slice(0, 4);
   const variationSeed = Math.floor(Math.random() * 10000);
+
   const STYLE_DIRECTIVES = [
     "Lean into bold colour contrasts this round.",
     "Focus on monochrome or tonal dressing this time.",
@@ -109,8 +170,8 @@ router.post("/suggest-outfits", async (req, res) => {
   const prompt = `You are a fashion stylist for a Tashkent-based wardrobe app. Variation seed: ${variationSeed}.
 
 CURRENT WEATHER IN TASHKENT: ${temperature}°C, ${wDesc}.
-WEATHER RULE FOR TODAY: ${tierInstructions}
-
+WEATHER RULE FOR TODAY (ABSOLUTE — overrides everything else): ${tierInstructions}
+${personalisationBlock}
 Available wardrobe items (id|name|category|color|fabricWeight|seasons):
 ${itemList}
 

@@ -12,6 +12,9 @@ import React, {
 import { Alert } from "react-native";
 
 export type Gender = "male" | "female" | "non-binary" | "prefer_not_to_say";
+export type StyleAesthetic = "minimalist" | "streetwear" | "smart_casual";
+export type HeatAdaptation = "light_linen" | "cotton_denim";
+export type ColorPalette = "earthy_neutrals" | "monochrome" | "vivid_colors";
 
 interface UserProfile {
   fullName: string;
@@ -19,6 +22,10 @@ interface UserProfile {
   age: number | null;
   bodyPhotoUri: string | null;
   bodyPhotoMime: string;
+  onboardingComplete: boolean;
+  styleAesthetic: StyleAesthetic | null;
+  heatAdaptation: HeatAdaptation | null;
+  colorPalette: ColorPalette | null;
 }
 
 interface UserProfileContextValue {
@@ -28,16 +35,32 @@ interface UserProfileContextValue {
   bodyPhotoUri: string | null;
   bodyPhotoBase64: string | null;
   bodyPhotoMime: string;
+  onboardingComplete: boolean;
+  styleAesthetic: StyleAesthetic | null;
+  heatAdaptation: HeatAdaptation | null;
+  colorPalette: ColorPalette | null;
   isLoading: boolean;
   setFullName: (name: string) => Promise<void>;
   setGender: (gender: Gender | null) => Promise<void>;
   setAge: (age: number | null) => Promise<void>;
+  setOnboardingComplete: (v: boolean) => Promise<void>;
+  setStyleAesthetic: (v: StyleAesthetic | null) => Promise<void>;
+  setHeatAdaptation: (v: HeatAdaptation | null) => Promise<void>;
+  setColorPalette: (v: ColorPalette | null) => Promise<void>;
+  completeOnboarding: (data: {
+    fullName: string;
+    gender: Gender | null;
+    age: number | null;
+    styleAesthetic: StyleAesthetic | null;
+    heatAdaptation: HeatAdaptation | null;
+    colorPalette: ColorPalette | null;
+  }) => Promise<void>;
   uploadBodyPhoto: () => Promise<void>;
   captureBodyPhoto: () => Promise<void>;
   clearBodyPhoto: () => Promise<void>;
 }
 
-const PROFILE_KEY = "@lookly_user_profile_v3";
+const PROFILE_KEY = "@lookly_user_profile_v4";
 
 const UserProfileContext = createContext<UserProfileContextValue | null>(null);
 
@@ -59,6 +82,10 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
   const [bodyPhotoUri, setBodyPhotoUri] = useState<string | null>(null);
   const [bodyPhotoBase64, setBodyPhotoBase64] = useState<string | null>(null);
   const [bodyPhotoMime, setBodyPhotoMime] = useState("image/jpeg");
+  const [onboardingComplete, setOnboardingCompleteState] = useState(false);
+  const [styleAesthetic, setStyleAestheticState] = useState<StyleAesthetic | null>(null);
+  const [heatAdaptation, setHeatAdaptationState] = useState<HeatAdaptation | null>(null);
+  const [colorPalette, setColorPaletteState] = useState<ColorPalette | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -67,6 +94,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
         await AsyncStorage.multiRemove([
           "@lookly_user_profile",
           "@lookly_user_profile_v2",
+          "@lookly_user_profile_v3",
         ]);
       } catch {}
 
@@ -78,6 +106,10 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
           if (stored.gender) setGenderState(stored.gender);
           if (stored.age != null) setAgeState(stored.age);
           if (stored.bodyPhotoMime) setBodyPhotoMime(stored.bodyPhotoMime);
+          if (stored.onboardingComplete) setOnboardingCompleteState(stored.onboardingComplete);
+          if (stored.styleAesthetic) setStyleAestheticState(stored.styleAesthetic);
+          if (stored.heatAdaptation) setHeatAdaptationState(stored.heatAdaptation);
+          if (stored.colorPalette) setColorPaletteState(stored.colorPalette);
           if (stored.bodyPhotoUri) {
             setBodyPhotoUri(stored.bodyPhotoUri);
             const b64 = await readBase64FromUri(stored.bodyPhotoUri);
@@ -89,12 +121,23 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     })();
   }, []);
 
+  const buildCurrent = useCallback((): UserProfile => ({
+    fullName,
+    gender,
+    age,
+    bodyPhotoUri,
+    bodyPhotoMime,
+    onboardingComplete,
+    styleAesthetic,
+    heatAdaptation,
+    colorPalette,
+  }), [fullName, gender, age, bodyPhotoUri, bodyPhotoMime, onboardingComplete, styleAesthetic, heatAdaptation, colorPalette]);
+
   const persist = useCallback(async (updates: Partial<UserProfile>) => {
     try {
-      const current: UserProfile = { fullName, gender, age, bodyPhotoUri, bodyPhotoMime };
-      await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify({ ...current, ...updates }));
+      await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify({ ...buildCurrent(), ...updates }));
     } catch {}
-  }, [fullName, gender, age, bodyPhotoUri, bodyPhotoMime]);
+  }, [buildCurrent]);
 
   const setFullName = useCallback(async (name: string) => {
     setFullNameState(name);
@@ -111,11 +154,58 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     await persist({ age: a });
   }, [persist]);
 
+  const setOnboardingComplete = useCallback(async (v: boolean) => {
+    setOnboardingCompleteState(v);
+    await persist({ onboardingComplete: v });
+  }, [persist]);
+
+  const setStyleAesthetic = useCallback(async (v: StyleAesthetic | null) => {
+    setStyleAestheticState(v);
+    await persist({ styleAesthetic: v });
+  }, [persist]);
+
+  const setHeatAdaptation = useCallback(async (v: HeatAdaptation | null) => {
+    setHeatAdaptationState(v);
+    await persist({ heatAdaptation: v });
+  }, [persist]);
+
+  const setColorPalette = useCallback(async (v: ColorPalette | null) => {
+    setColorPaletteState(v);
+    await persist({ colorPalette: v });
+  }, [persist]);
+
+  const completeOnboarding = useCallback(async (data: {
+    fullName: string;
+    gender: Gender | null;
+    age: number | null;
+    styleAesthetic: StyleAesthetic | null;
+    heatAdaptation: HeatAdaptation | null;
+    colorPalette: ColorPalette | null;
+  }) => {
+    setFullNameState(data.fullName);
+    setGenderState(data.gender);
+    setAgeState(data.age);
+    setStyleAestheticState(data.styleAesthetic);
+    setHeatAdaptationState(data.heatAdaptation);
+    setColorPaletteState(data.colorPalette);
+    setOnboardingCompleteState(true);
+    const profile: UserProfile = {
+      ...buildCurrent(),
+      ...data,
+      onboardingComplete: true,
+    };
+    try {
+      await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+    } catch {}
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [buildCurrent]);
+
   const applyPickerAsset = useCallback(async (asset: ImagePicker.ImagePickerAsset) => {
     const mime = asset.mimeType ?? "image/jpeg";
     const uri = asset.uri;
     setBodyPhotoUri(uri);
     setBodyPhotoMime(mime);
+    // Prefer base64 from picker (works on all platforms including web)
     const b64 = asset.base64 ?? await readBase64FromUri(uri);
     setBodyPhotoBase64(b64);
     await persist({ bodyPhotoUri: uri, bodyPhotoMime: mime });
@@ -130,8 +220,8 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: "images",
-      quality: 0.6,
-      base64: false,
+      quality: 0.7,
+      base64: true,          // always request base64 for cross-platform reliability
       allowsEditing: true,
       aspect: [3, 5],
     });
@@ -146,8 +236,8 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
-      quality: 0.6,
-      base64: false,
+      quality: 0.7,
+      base64: true,          // always request base64 for cross-platform reliability
       allowsEditing: true,
       aspect: [3, 5],
     });
@@ -170,10 +260,19 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
         bodyPhotoUri,
         bodyPhotoBase64,
         bodyPhotoMime,
+        onboardingComplete,
+        styleAesthetic,
+        heatAdaptation,
+        colorPalette,
         isLoading,
         setFullName,
         setGender,
         setAge,
+        setOnboardingComplete,
+        setStyleAesthetic,
+        setHeatAdaptation,
+        setColorPalette,
+        completeOnboarding,
         uploadBodyPhoto,
         captureBodyPhoto,
         clearBodyPhoto,
