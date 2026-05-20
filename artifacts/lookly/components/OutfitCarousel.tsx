@@ -189,7 +189,7 @@ export default function OutfitCarousel() {
   const colors = useColors();
   const { items } = useWardrobe();
   const { temperature, weatherCode, isLoading: weatherLoading } = useWeather();
-  const { bodyPhotoBase64, bodyPhotoMime, gender, age, styleAesthetic, heatAdaptation, colorPalette } = useUserProfile();
+  const { bodyPhotoBase64, bodyPhotoMime, gender, age, styleAesthetics, heatAdaptation, colorPalette } = useUserProfile();
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -211,7 +211,7 @@ export default function OutfitCarousel() {
           weatherCode,
           ...(gender ? { userGender: gender } : {}),
           ...(age != null ? { userAge: age } : {}),
-          ...(styleAesthetic ? { styleAesthetic } : {}),
+          ...(styleAesthetics.length > 0 ? { styleAesthetics } : {}),
           ...(heatAdaptation ? { heatAdaptation } : {}),
           ...(colorPalette ? { colorPalette } : {}),
         }),

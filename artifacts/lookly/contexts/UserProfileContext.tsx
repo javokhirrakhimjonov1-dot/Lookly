@@ -23,7 +23,7 @@ interface UserProfile {
   bodyPhotoUri: string | null;
   bodyPhotoMime: string;
   onboardingComplete: boolean;
-  styleAesthetic: StyleAesthetic | null;
+  styleAesthetics: StyleAesthetic[];
   heatAdaptation: HeatAdaptation | null;
   colorPalette: ColorPalette | null;
 }
@@ -36,7 +36,7 @@ interface UserProfileContextValue {
   bodyPhotoBase64: string | null;
   bodyPhotoMime: string;
   onboardingComplete: boolean;
-  styleAesthetic: StyleAesthetic | null;
+  styleAesthetics: StyleAesthetic[];
   heatAdaptation: HeatAdaptation | null;
   colorPalette: ColorPalette | null;
   isLoading: boolean;
@@ -44,14 +44,14 @@ interface UserProfileContextValue {
   setGender: (gender: Gender | null) => Promise<void>;
   setAge: (age: number | null) => Promise<void>;
   setOnboardingComplete: (v: boolean) => Promise<void>;
-  setStyleAesthetic: (v: StyleAesthetic | null) => Promise<void>;
+  setStyleAesthetics: (v: StyleAesthetic[]) => Promise<void>;
   setHeatAdaptation: (v: HeatAdaptation | null) => Promise<void>;
   setColorPalette: (v: ColorPalette | null) => Promise<void>;
   completeOnboarding: (data: {
     fullName: string;
     gender: Gender | null;
     age: number | null;
-    styleAesthetic: StyleAesthetic | null;
+    styleAesthetics: StyleAesthetic[];
     heatAdaptation: HeatAdaptation | null;
     colorPalette: ColorPalette | null;
   }) => Promise<void>;
@@ -60,7 +60,7 @@ interface UserProfileContextValue {
   clearBodyPhoto: () => Promise<void>;
 }
 
-const PROFILE_KEY = "@lookly_user_profile_v4";
+const PROFILE_KEY = "@lookly_user_profile_v5";
 
 const UserProfileContext = createContext<UserProfileContextValue | null>(null);
 
@@ -83,7 +83,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
   const [bodyPhotoBase64, setBodyPhotoBase64] = useState<string | null>(null);
   const [bodyPhotoMime, setBodyPhotoMime] = useState("image/jpeg");
   const [onboardingComplete, setOnboardingCompleteState] = useState(false);
-  const [styleAesthetic, setStyleAestheticState] = useState<StyleAesthetic | null>(null);
+  const [styleAesthetics, setStyleAestheticsState] = useState<StyleAesthetic[]>([]);
   const [heatAdaptation, setHeatAdaptationState] = useState<HeatAdaptation | null>(null);
   const [colorPalette, setColorPaletteState] = useState<ColorPalette | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -95,6 +95,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
           "@lookly_user_profile",
           "@lookly_user_profile_v2",
           "@lookly_user_profile_v3",
+          "@lookly_user_profile_v4",
         ]);
       } catch {}
 
@@ -107,7 +108,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
           if (stored.age != null) setAgeState(stored.age);
           if (stored.bodyPhotoMime) setBodyPhotoMime(stored.bodyPhotoMime);
           if (stored.onboardingComplete) setOnboardingCompleteState(stored.onboardingComplete);
-          if (stored.styleAesthetic) setStyleAestheticState(stored.styleAesthetic);
+          if (Array.isArray(stored.styleAesthetics)) setStyleAestheticsState(stored.styleAesthetics);
           if (stored.heatAdaptation) setHeatAdaptationState(stored.heatAdaptation);
           if (stored.colorPalette) setColorPaletteState(stored.colorPalette);
           if (stored.bodyPhotoUri) {
@@ -128,10 +129,10 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     bodyPhotoUri,
     bodyPhotoMime,
     onboardingComplete,
-    styleAesthetic,
+    styleAesthetics,
     heatAdaptation,
     colorPalette,
-  }), [fullName, gender, age, bodyPhotoUri, bodyPhotoMime, onboardingComplete, styleAesthetic, heatAdaptation, colorPalette]);
+  }), [fullName, gender, age, bodyPhotoUri, bodyPhotoMime, onboardingComplete, styleAesthetics, heatAdaptation, colorPalette]);
 
   const persist = useCallback(async (updates: Partial<UserProfile>) => {
     try {
@@ -159,9 +160,9 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     await persist({ onboardingComplete: v });
   }, [persist]);
 
-  const setStyleAesthetic = useCallback(async (v: StyleAesthetic | null) => {
-    setStyleAestheticState(v);
-    await persist({ styleAesthetic: v });
+  const setStyleAesthetics = useCallback(async (v: StyleAesthetic[]) => {
+    setStyleAestheticsState(v);
+    await persist({ styleAesthetics: v });
   }, [persist]);
 
   const setHeatAdaptation = useCallback(async (v: HeatAdaptation | null) => {
@@ -178,14 +179,14 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     fullName: string;
     gender: Gender | null;
     age: number | null;
-    styleAesthetic: StyleAesthetic | null;
+    styleAesthetics: StyleAesthetic[];
     heatAdaptation: HeatAdaptation | null;
     colorPalette: ColorPalette | null;
   }) => {
     setFullNameState(data.fullName);
     setGenderState(data.gender);
     setAgeState(data.age);
-    setStyleAestheticState(data.styleAesthetic);
+    setStyleAestheticsState(data.styleAesthetics);
     setHeatAdaptationState(data.heatAdaptation);
     setColorPaletteState(data.colorPalette);
     setOnboardingCompleteState(true);
@@ -205,7 +206,6 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     const uri = asset.uri;
     setBodyPhotoUri(uri);
     setBodyPhotoMime(mime);
-    // Prefer base64 from picker (works on all platforms including web)
     const b64 = asset.base64 ?? await readBase64FromUri(uri);
     setBodyPhotoBase64(b64);
     await persist({ bodyPhotoUri: uri, bodyPhotoMime: mime });
@@ -221,7 +221,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: "images",
       quality: 0.7,
-      base64: true,          // always request base64 for cross-platform reliability
+      base64: true,
       allowsEditing: true,
       aspect: [3, 5],
     });
@@ -237,7 +237,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     }
     const result = await ImagePicker.launchCameraAsync({
       quality: 0.7,
-      base64: true,          // always request base64 for cross-platform reliability
+      base64: true,
       allowsEditing: true,
       aspect: [3, 5],
     });
@@ -261,7 +261,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
         bodyPhotoBase64,
         bodyPhotoMime,
         onboardingComplete,
-        styleAesthetic,
+        styleAesthetics,
         heatAdaptation,
         colorPalette,
         isLoading,
@@ -269,7 +269,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
         setGender,
         setAge,
         setOnboardingComplete,
-        setStyleAesthetic,
+        setStyleAesthetics,
         setHeatAdaptation,
         setColorPalette,
         completeOnboarding,

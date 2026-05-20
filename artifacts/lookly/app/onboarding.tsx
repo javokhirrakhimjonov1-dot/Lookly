@@ -48,98 +48,154 @@ const GENDERS: { label: string; value: Gender }[] = [
   { label: "Prefer not to say", value: "prefer_not_to_say" },
 ];
 
-const AESTHETICS: { label: string; value: StyleAesthetic; desc: string; imageUri: string }[] = [
+// Two separate image sets so quiz photos match the user's gender
+const AESTHETICS: {
+  label: string;
+  value: StyleAesthetic;
+  desc: string;
+  maleUri: string;
+  femaleUri: string;
+  neutralUri: string;
+}[] = [
   {
     label: "Minimalist",
     value: "minimalist",
     desc: "Clean lines, neutral tones",
-    imageUri: "https://images.unsplash.com/photo-1594938298603-c8148c4b4816?w=400&h=620&fit=crop&auto=format&q=80",
+    maleUri:   "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=400&h=620&fit=crop&auto=format&q=80",
+    femaleUri: "https://images.unsplash.com/photo-1594938298603-c8148c4b4816?w=400&h=620&fit=crop&auto=format&q=80",
+    neutralUri:"https://images.unsplash.com/photo-1594938298603-c8148c4b4816?w=400&h=620&fit=crop&auto=format&q=80",
   },
   {
     label: "Streetwear",
     value: "streetwear",
     desc: "Bold, urban, expressive",
-    imageUri: "https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?w=400&h=620&fit=crop&auto=format&q=80",
+    maleUri:   "https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?w=400&h=620&fit=crop&auto=format&q=80",
+    femaleUri: "https://images.unsplash.com/photo-1521133573892-e1be2b12c5a5?w=400&h=620&fit=crop&auto=format&q=80",
+    neutralUri:"https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?w=400&h=620&fit=crop&auto=format&q=80",
   },
   {
     label: "Smart Casual",
     value: "smart_casual",
     desc: "Polished yet relaxed",
-    imageUri: "https://images.unsplash.com/photo-1617137984095-74e4e5e3613f?w=400&h=620&fit=crop&auto=format&q=80",
+    maleUri:   "https://images.unsplash.com/photo-1617137984095-74e4e5e3613f?w=400&h=620&fit=crop&auto=format&q=80",
+    femaleUri: "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=400&h=620&fit=crop&auto=format&q=80",
+    neutralUri:"https://images.unsplash.com/photo-1617137984095-74e4e5e3613f?w=400&h=620&fit=crop&auto=format&q=80",
   },
   {
     label: "Boho",
     value: "boho",
     desc: "Flowy, textured, earthy",
-    imageUri: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=400&h=620&fit=crop&auto=format&q=80",
+    maleUri:   "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=400&h=620&fit=crop&auto=format&q=80",
+    femaleUri: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=400&h=620&fit=crop&auto=format&q=80",
+    neutralUri:"https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=400&h=620&fit=crop&auto=format&q=80",
   },
   {
     label: "Classic",
     value: "classic",
     desc: "Timeless tailored basics",
-    imageUri: "https://images.unsplash.com/photo-1490114538077-0a7f8cb49891?w=400&h=620&fit=crop&auto=format&q=80",
+    maleUri:   "https://images.unsplash.com/photo-1490114538077-0a7f8cb49891?w=400&h=620&fit=crop&auto=format&q=80",
+    femaleUri: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=620&fit=crop&auto=format&q=80",
+    neutralUri:"https://images.unsplash.com/photo-1490114538077-0a7f8cb49891?w=400&h=620&fit=crop&auto=format&q=80",
   },
   {
     label: "Sporty",
     value: "sporty",
     desc: "Functional, clean, active",
-    imageUri: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400&h=620&fit=crop&auto=format&q=80",
+    maleUri:   "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400&h=620&fit=crop&auto=format&q=80",
+    femaleUri: "https://images.unsplash.com/photo-1519669556870-42659c6da78c?w=400&h=620&fit=crop&auto=format&q=80",
+    neutralUri:"https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400&h=620&fit=crop&auto=format&q=80",
   },
 ];
 
-const HEATS: { label: string; value: HeatAdaptation; desc: string; imageUri: string }[] = [
+const HEATS: {
+  label: string;
+  value: HeatAdaptation;
+  desc: string;
+  maleUri: string;
+  femaleUri: string;
+  neutralUri: string;
+}[] = [
   {
     label: "Linen & Loose",
     value: "light_linen",
     desc: "Breathable fabrics, loose fit",
-    imageUri: "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=400&h=620&fit=crop&auto=format&q=80",
+    maleUri:   "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=400&h=620&fit=crop&auto=format&q=80",
+    femaleUri: "https://images.unsplash.com/photo-1623091410901-00e2d268901f?w=400&h=620&fit=crop&auto=format&q=80",
+    neutralUri:"https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=400&h=620&fit=crop&auto=format&q=80",
   },
   {
     label: "Shorts & Tee",
     value: "shorts_casual",
     desc: "Casual cool, easy summer",
-    imageUri: "https://images.unsplash.com/photo-1530521954074-e0a103ceff5c?w=400&h=620&fit=crop&auto=format&q=80",
+    maleUri:   "https://images.unsplash.com/photo-1527719327859-c6ce80353573?w=400&h=620&fit=crop&auto=format&q=80",
+    femaleUri: "https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=400&h=620&fit=crop&auto=format&q=80",
+    neutralUri:"https://images.unsplash.com/photo-1527719327859-c6ce80353573?w=400&h=620&fit=crop&auto=format&q=80",
   },
   {
     label: "Sport & Active",
     value: "sport_active",
     desc: "Moisture-wicking, on-the-go",
-    imageUri: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400&h=620&fit=crop&auto=format&q=80",
+    maleUri:   "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400&h=620&fit=crop&auto=format&q=80",
+    femaleUri: "https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=400&h=620&fit=crop&auto=format&q=80",
+    neutralUri:"https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400&h=620&fit=crop&auto=format&q=80",
   },
 ];
 
-const PALETTES: { label: string; value: ColorPalette; desc: string; imageUri: string }[] = [
+const PALETTES: {
+  label: string;
+  value: ColorPalette;
+  desc: string;
+  maleUri: string;
+  femaleUri: string;
+  neutralUri: string;
+}[] = [
   {
     label: "Earthy Neutrals",
     value: "earthy_neutrals",
     desc: "Camel, beige, terracotta",
-    imageUri: "https://images.unsplash.com/photo-1445205170230-053b83016050?w=400&h=620&fit=crop&auto=format&q=80",
+    maleUri:   "https://images.unsplash.com/photo-1607345366928-199ea26cfe3e?w=400&h=620&fit=crop&auto=format&q=80",
+    femaleUri: "https://images.unsplash.com/photo-1445205170230-053b83016050?w=400&h=620&fit=crop&auto=format&q=80",
+    neutralUri:"https://images.unsplash.com/photo-1445205170230-053b83016050?w=400&h=620&fit=crop&auto=format&q=80",
   },
   {
     label: "Monochrome",
     value: "monochrome",
     desc: "Black, white & grey",
-    imageUri: "https://images.unsplash.com/photo-1509631179647-0177331693ae?w=400&h=620&fit=crop&auto=format&q=80",
+    maleUri:   "https://images.unsplash.com/photo-1617196034183-421b4040ed20?w=400&h=620&fit=crop&auto=format&q=80",
+    femaleUri: "https://images.unsplash.com/photo-1509631179647-0177331693ae?w=400&h=620&fit=crop&auto=format&q=80",
+    neutralUri:"https://images.unsplash.com/photo-1509631179647-0177331693ae?w=400&h=620&fit=crop&auto=format&q=80",
   },
   {
     label: "Vivid Colors",
     value: "vivid_colors",
     desc: "Bold, saturated pops",
-    imageUri: "https://images.unsplash.com/photo-1523381294911-8d3cead13475?w=400&h=620&fit=crop&auto=format&q=80",
+    maleUri:   "https://images.unsplash.com/photo-1550995694-3b5b49089e5e?w=400&h=620&fit=crop&auto=format&q=80",
+    femaleUri: "https://images.unsplash.com/photo-1523381294911-8d3cead13475?w=400&h=620&fit=crop&auto=format&q=80",
+    neutralUri:"https://images.unsplash.com/photo-1523381294911-8d3cead13475?w=400&h=620&fit=crop&auto=format&q=80",
   },
   {
     label: "Soft Pastels",
     value: "pastels",
     desc: "Muted lavender, blush, sage",
-    imageUri: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=400&h=620&fit=crop&auto=format&q=80",
+    maleUri:   "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=400&h=620&fit=crop&auto=format&q=80",
+    femaleUri: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=400&h=620&fit=crop&auto=format&q=80",
+    neutralUri:"https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=400&h=620&fit=crop&auto=format&q=80",
   },
   {
     label: "Sand & Clay",
     value: "desert_sand",
     desc: "Warm desert hues, nude tones",
-    imageUri: "https://images.unsplash.com/photo-1551803091-e20673f15770?w=400&h=620&fit=crop&auto=format&q=80",
+    maleUri:   "https://images.unsplash.com/photo-1551803091-e20673f15770?w=400&h=620&fit=crop&auto=format&q=80",
+    femaleUri: "https://images.unsplash.com/photo-1551803091-e20673f15770?w=400&h=620&fit=crop&auto=format&q=80",
+    neutralUri:"https://images.unsplash.com/photo-1551803091-e20673f15770?w=400&h=620&fit=crop&auto=format&q=80",
   },
 ];
+
+function pickUri(item: { maleUri: string; femaleUri: string; neutralUri: string }, gender: Gender | null) {
+  if (gender === "male") return item.maleUri;
+  if (gender === "female") return item.femaleUri;
+  return item.neutralUri;
+}
 
 function StyleImageCard<T extends string>({
   label,
@@ -147,6 +203,7 @@ function StyleImageCard<T extends string>({
   value,
   imageUri,
   selected,
+  multiSelect,
   onPress,
 }: {
   label: string;
@@ -154,16 +211,14 @@ function StyleImageCard<T extends string>({
   value: T;
   imageUri: string;
   selected: boolean;
+  multiSelect?: boolean;
   onPress: (v: T) => void;
 }) {
   return (
     <TouchableOpacity
       onPress={() => onPress(value)}
       activeOpacity={0.88}
-      style={[
-        styles.imgCard,
-        selected && styles.imgCardSelected,
-      ]}
+      style={[styles.imgCard, selected && styles.imgCardSelected]}
     >
       <Image
         source={{ uri: imageUri }}
@@ -171,20 +226,16 @@ function StyleImageCard<T extends string>({
         contentFit="cover"
         transition={200}
       />
-      {/* dark gradient overlay always */}
       <LinearGradient
         colors={["transparent", "rgba(28,21,18,0.88)"]}
         style={styles.imgCardGradient}
       />
-      {/* selected overlay */}
       {selected && <View style={styles.imgCardSelectedOverlay} />}
-      {/* check badge */}
       {selected && (
         <View style={styles.imgCardCheckBadge}>
-          <Feather name="check" size={13} color={C.white} />
+          <Feather name={multiSelect ? "check" : "check"} size={13} color={C.white} />
         </View>
       )}
-      {/* label */}
       <View style={styles.imgCardLabel}>
         <Text style={styles.imgCardLabelText}>{label}</Text>
         <Text style={styles.imgCardDescText}>{desc}</Text>
@@ -206,11 +257,18 @@ export default function OnboardingScreen() {
   const [ageError, setAgeError] = useState(false);
   const [genderError, setGenderError] = useState(false);
 
-  const [aesthetic, setAesthetic] = useState<StyleAesthetic | null>(null);
+  // multi-select for style
+  const [aesthetics, setAesthetics] = useState<StyleAesthetic[]>([]);
   const [heat, setHeat] = useState<HeatAdaptation | null>(null);
   const [palette, setPalette] = useState<ColorPalette | null>(null);
 
   const [completing, setCompleting] = useState(false);
+
+  function toggleAesthetic(v: StyleAesthetic) {
+    setAesthetics((prev) =>
+      prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]
+    );
+  }
 
   function goToStep(next: number) {
     const dir = next > step ? 1 : -1;
@@ -243,7 +301,7 @@ export default function OnboardingScreen() {
       fullName: name.trim(),
       gender,
       age: parseInt(age, 10) || null,
-      styleAesthetic: aesthetic,
+      styleAesthetics: aesthetics,
       heatAdaptation: heat,
       colorPalette: palette,
     });
@@ -323,13 +381,15 @@ export default function OnboardingScreen() {
           </KeyboardAvoidingView>
         )}
 
-        {/* ── STEP 1: Aesthetic Quiz ── */}
+        {/* ── STEP 1: Style Aesthetic (multi-select) ── */}
         {step === 1 && (
           <View style={{ flex: 1 }}>
             <View style={styles.quizHeader}>
-              <Text style={styles.quizStep}>STEP 1 OF 3 · STYLE</Text>
-              <Text style={styles.quizTitle}>What's your vibe?</Text>
-              <Text style={styles.quizSub}>Choose the look that feels most like you.</Text>
+              <Text style={styles.quizStep}>STEP 1 OF 3 · YOUR STYLE</Text>
+              <Text style={styles.quizTitle}>How do you dress?</Text>
+              <Text style={styles.quizSub}>
+                Pick every style you wear — you can mix and match.
+              </Text>
             </View>
 
             <ScrollView
@@ -345,13 +405,23 @@ export default function OnboardingScreen() {
                   label={a.label}
                   desc={a.desc}
                   value={a.value}
-                  imageUri={a.imageUri}
-                  selected={aesthetic === a.value}
-                  onPress={(v) => setAesthetic(v)}
+                  imageUri={pickUri(a, gender)}
+                  selected={aesthetics.includes(a.value)}
+                  multiSelect
+                  onPress={toggleAesthetic}
                 />
               ))}
             </ScrollView>
-            <Text style={styles.swipeHint}>← Swipe to browse</Text>
+
+            <View style={styles.selectionRow}>
+              {aesthetics.length > 0 ? (
+                <Text style={styles.selectionLabel}>
+                  Selected: {aesthetics.map((a) => AESTHETICS.find((x) => x.value === a)?.label).join(", ")}
+                </Text>
+              ) : (
+                <Text style={styles.swipeHint}>← Swipe · tap to select</Text>
+              )}
+            </View>
 
             <View style={styles.navRow}>
               <TouchableOpacity onPress={() => goToStep(0)} style={styles.backBtn}>
@@ -359,8 +429,8 @@ export default function OnboardingScreen() {
                 <Text style={styles.backBtnText}>Back</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => aesthetic && goToStep(2)}
-                style={[styles.primaryBtn, styles.primaryBtnCompact, !aesthetic && styles.primaryBtnDisabled]}
+                onPress={() => aesthetics.length > 0 && goToStep(2)}
+                style={[styles.primaryBtn, styles.primaryBtnCompact, aesthetics.length === 0 && styles.primaryBtnDisabled]}
                 activeOpacity={0.85}
               >
                 <Text style={styles.primaryBtnText}>Next</Text>
@@ -375,8 +445,8 @@ export default function OnboardingScreen() {
           <View style={{ flex: 1 }}>
             <View style={styles.quizHeader}>
               <Text style={styles.quizStep}>STEP 2 OF 3 · SUMMER</Text>
-              <Text style={styles.quizTitle}>Tashkent summer days</Text>
-              <Text style={styles.quizSub}>Scorching 30°C+ — which outfit feels right?</Text>
+              <Text style={styles.quizTitle}>Tashkent summer heat</Text>
+              <Text style={styles.quizSub}>30°C+ outside — which look fits you best?</Text>
             </View>
 
             <ScrollView
@@ -392,7 +462,7 @@ export default function OnboardingScreen() {
                   label={h.label}
                   desc={h.desc}
                   value={h.value}
-                  imageUri={h.imageUri}
+                  imageUri={pickUri(h, gender)}
                   selected={heat === h.value}
                   onPress={(v) => setHeat(v)}
                 />
@@ -423,7 +493,7 @@ export default function OnboardingScreen() {
             <View style={styles.quizHeader}>
               <Text style={styles.quizStep}>STEP 3 OF 3 · COLOUR</Text>
               <Text style={styles.quizTitle}>Your colour palette</Text>
-              <Text style={styles.quizSub}>Pick the palette that speaks to you.</Text>
+              <Text style={styles.quizSub}>Pick the palette that feels most like you.</Text>
             </View>
 
             <ScrollView
@@ -439,7 +509,7 @@ export default function OnboardingScreen() {
                   label={p.label}
                   desc={p.desc}
                   value={p.value}
-                  imageUri={p.imageUri}
+                  imageUri={pickUri(p, gender)}
                   selected={palette === p.value}
                   onPress={(v) => setPalette(v)}
                 />
@@ -522,7 +592,7 @@ const styles = StyleSheet.create({
   quizHeader: {
     paddingHorizontal: 24,
     paddingTop: 28,
-    paddingBottom: 20,
+    paddingBottom: 18,
     gap: 5,
   },
   quizStep: { fontSize: 11, fontWeight: "700", letterSpacing: 2, color: C.accent },
@@ -546,9 +616,7 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
     position: "relative",
   },
-  imgCardSelected: {
-    borderColor: C.accent,
-  },
+  imgCardSelected: { borderColor: C.accent },
   imgCardPhoto: {
     width: "100%",
     height: "100%",
@@ -602,6 +670,18 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 
+  selectionRow: {
+    minHeight: 26,
+    paddingHorizontal: 24,
+    marginTop: 10,
+    justifyContent: "center",
+  },
+  selectionLabel: {
+    fontSize: 12,
+    color: C.accent,
+    fontWeight: "600",
+    textAlign: "center",
+  },
   swipeHint: {
     textAlign: "center",
     fontSize: 11,
@@ -617,7 +697,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
     paddingHorizontal: 24,
-    paddingTop: 16,
+    paddingTop: 14,
     paddingBottom: 24,
   },
   backBtn: {

@@ -61,10 +61,19 @@ function weatherTierInstructions(temp: number, code: number): string {
   );
 }
 
+const AESTHETIC_LABELS: Record<string, string> = {
+  minimalist: "Minimalist (clean lines, neutral tones, understated elegance)",
+  streetwear: "Streetwear (bold, urban, expressive, layered graphics)",
+  smart_casual: "Smart Casual (polished yet relaxed, office-ready but not formal)",
+  boho: "Boho / Free Spirit (flowy fabrics, earthy textures, relaxed patterns)",
+  classic: "Classic / Preppy (timeless tailored basics, clean silhouettes)",
+  sporty: "Sport & Active (functional, clean, athleisure-influenced)",
+};
+
 function buildPersonalisation(
   gender?: string,
   age?: number,
-  styleAesthetic?: string,
+  styleAesthetics?: string[],
   heatAdaptation?: string,
   colorPalette?: string
 ): string {
@@ -72,20 +81,17 @@ function buildPersonalisation(
 
   if (gender && gender !== "prefer_not_to_say") {
     const g = gender === "male" ? "male" : gender === "female" ? "female" : "non-binary";
-    parts.push(`Gender: ${g}`);
+    parts.push(`Gender: ${g} — only suggest outfits appropriate for this gender`);
   }
   if (age) parts.push(`Age: ${age} years old`);
 
-  if (styleAesthetic) {
-    const aestheticLabel =
-      styleAesthetic === "minimalist" ? "Minimalist (clean lines, neutral tones, understated elegance)"
-      : styleAesthetic === "streetwear" ? "Streetwear (bold, urban, expressive, layered graphics)"
-      : styleAesthetic === "smart_casual" ? "Smart Casual (polished yet relaxed, office-ready but not formal)"
-      : styleAesthetic === "boho" ? "Boho / Free Spirit (flowy fabrics, earthy textures, relaxed patterns)"
-      : styleAesthetic === "classic" ? "Classic / Preppy (timeless tailored basics, clean silhouettes)"
-      : styleAesthetic === "sporty" ? "Sport & Active (functional, clean, athleisure-influenced)"
-      : styleAesthetic;
-    parts.push(`Style aesthetic: ${aestheticLabel}`);
+  if (styleAesthetics && styleAesthetics.length > 0) {
+    const labels = styleAesthetics.map((a) => AESTHETIC_LABELS[a] ?? a);
+    if (labels.length === 1) {
+      parts.push(`Style aesthetic: ${labels[0]}`);
+    } else {
+      parts.push(`Style aesthetics (user wears all of these depending on the day): ${labels.join("; ")}`);
+    }
   }
 
   if (heatAdaptation) {
@@ -125,7 +131,7 @@ router.post("/suggest-outfits", async (req, res) => {
     weatherCode,
     userGender,
     userAge,
-    styleAesthetic,
+    styleAesthetics,
     heatAdaptation,
     colorPalette,
   } = req.body as {
@@ -134,7 +140,7 @@ router.post("/suggest-outfits", async (req, res) => {
     weatherCode: number;
     userGender?: string;
     userAge?: number;
-    styleAesthetic?: string;
+    styleAesthetics?: string[];
     heatAdaptation?: string;
     colorPalette?: string;
   };
@@ -146,7 +152,7 @@ router.post("/suggest-outfits", async (req, res) => {
 
   const wDesc = weatherDesc(temperature, weatherCode);
   const tierInstructions = weatherTierInstructions(temperature, weatherCode);
-  const personalisationBlock = buildPersonalisation(userGender, userAge, styleAesthetic, heatAdaptation, colorPalette);
+  const personalisationBlock = buildPersonalisation(userGender, userAge, styleAesthetics, heatAdaptation, colorPalette);
 
   const itemList = items
     .slice(0, 40)
@@ -155,11 +161,22 @@ router.post("/suggest-outfits", async (req, res) => {
 
   const MOODS = ["casual", "minimal", "streetwear", "formal", "sporty", "boho", "chic"];
 
-  // Bias mood selection toward the user's aesthetic
+  // Bias mood selection toward the user's aesthetics (union of all selected)
   let moodPool = [...MOODS];
-  if (styleAesthetic === "minimalist") moodPool = ["minimal", "chic", "casual", "formal", "boho", "sporty", "streetwear"];
-  else if (styleAesthetic === "streetwear") moodPool = ["streetwear", "casual", "sporty", "minimal", "chic", "boho", "formal"];
-  else if (styleAesthetic === "smart_casual") moodPool = ["chic", "minimal", "casual", "formal", "sporty", "boho", "streetwear"];
+  const hasAesthetic = (a: string) => styleAesthetics?.includes(a) ?? false;
+  if (hasAesthetic("minimalist") && !hasAesthetic("streetwear")) {
+    moodPool = ["minimal", "chic", "casual", "formal", "boho", "sporty", "streetwear"];
+  } else if (hasAesthetic("streetwear") && !hasAesthetic("minimalist")) {
+    moodPool = ["streetwear", "casual", "sporty", "minimal", "chic", "boho", "formal"];
+  } else if (hasAesthetic("smart_casual") && !hasAesthetic("sporty")) {
+    moodPool = ["chic", "minimal", "casual", "formal", "sporty", "boho", "streetwear"];
+  } else if (hasAesthetic("sporty")) {
+    moodPool = ["sporty", "casual", "streetwear", "minimal", "chic", "boho", "formal"];
+  } else if (hasAesthetic("boho")) {
+    moodPool = ["boho", "casual", "minimal", "chic", "sporty", "streetwear", "formal"];
+  } else if (hasAesthetic("classic")) {
+    moodPool = ["formal", "chic", "minimal", "casual", "boho", "sporty", "streetwear"];
+  }
 
   const shuffledMoods = [...moodPool].sort(() => Math.random() - 0.5).slice(0, 4);
   const variationSeed = Math.floor(Math.random() * 10000);
