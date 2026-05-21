@@ -1,0 +1,33 @@
+Please completely remove the horizontal list view design from the Wardrobe screen. It looks too clunky and confusing. Replace it entirely with a premium, user-friendly 2-column e-commerce grid layout matching the provided specification.
+
+Implementation Requirements:
+
+1. Layout Re-engineering:
+   - Use a FlatList component with numColumns={2} to display clothing items side-by-side. 
+   - Apply clean, equal padding and spacing gaps between the columns so the grid looks balanced and breathes properly.
+
+2. Premium Card Container Design:
+   - Wrap each item inside a crisp, vertical rectangular card container.
+   - Set the card background color to pure white (#FFFFFF) to create a premium contrast against our Warm Cream (#FAF8F5) app background.
+   - Give each card a very subtle, clean border (#EAEAEA) and a micro-drop shadow to resemble a high-end fashion marketplace catalog.
+
+3. Image Optimization:
+   - Centered Clothing View: Place the actual cropped clothing product image front and center inside the card.
+   - Set the <Image> component to resizeMode="contain" with proper internal padding so the clothes never stretch, warp, or hit the card edges.
+   - CRITICAL: Remove all large generic icon blocks or abstract symbols from the main view of the card. The product image must be the absolute hero.
+
+4. Minimal Typography & Metadata Layout:
+   - Below the centered clothing image inside the card, display the metadata neatly stacked using small, crisp Espresso (#1C1512) typography:
+     * Item Name (bold, single line, truncated if too long)
+     * Category name and a subtle, small color swatch indicator circle
+     * Tiny neutral-colored pills at the bottom for the season tags (e.g., "Summer", "Spring")
+
+5. Card Interaction Overlays:
+   - Absolute position a small, sleek favorite heart outline button in the top-right corner of each individual card.
+   - Absolute position any minor status badges (like a neon "NEW" tag) in the top-left corner.
+
+6. Floating Action Button (FAB):
+   - Keep the Category Pills at the very top of the screen to filter items smoothly.
+   - Add a beautifully styled, circular floating "+" button in the absolute bottom-right corner of the screen using our Caramel accent color (#C8906A) with a high zIndex so it floats over the grid entries perfectly.
+
+Ensure all layout maps cleanly to this ultra-clean grid style and renders instantly from local storage. Do not leave any remnants of the old horizontal list rows.

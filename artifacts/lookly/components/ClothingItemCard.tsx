@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import React from "react";
+import React, { useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -11,148 +11,182 @@ import {
 import { useColors } from "@/hooks/useColors";
 import { type ClothingItem } from "@/contexts/WardrobeContext";
 
-const CATEGORY_ICONS: Record<string, React.ComponentProps<typeof Feather>["name"]> = {
-  tops: "wind",
-  bottoms: "minus",
-  dresses: "star",
-  outerwear: "layers",
-  shoes: "chevrons-up",
-  accessories: "circle",
-};
-
 interface Props {
   item: ClothingItem;
   onPress?: () => void;
   onDelete?: () => void;
 }
 
-export default function ClothingItemCard({ item, onPress, onDelete }: Props) {
+export default function ClothingItemCard({ item, onPress }: Props) {
   const colors = useColors();
+  const [liked, setLiked] = useState(false);
+
+  const categoryLabel =
+    item.category.charAt(0).toUpperCase() + item.category.slice(1);
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
-        styles.container,
-        {
-          backgroundColor: colors.card,
-          borderColor: colors.border,
-          opacity: pressed ? 0.85 : 1,
-          transform: [{ scale: pressed ? 0.97 : 1 }],
-        },
+        styles.card,
+        { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] },
       ]}
     >
-      <View style={[styles.colorBlock, { backgroundColor: item.imageUri ? "#F5F3F0" : item.colorHex }]}>
+      {/* ── Image zone ── */}
+      <View style={styles.imageZone}>
         {item.imageUri ? (
           <Image
             source={{ uri: item.imageUri }}
-            style={StyleSheet.absoluteFillObject}
+            style={styles.image}
             contentFit="contain"
-            transition={200}
+            transition={250}
           />
         ) : (
+          <View style={[styles.colorBlock, { backgroundColor: item.colorHex + "33" }]}>
+            <View style={[styles.colorCircle, { backgroundColor: item.colorHex }]} />
+          </View>
+        )}
+
+        {/* Heart button — top right */}
+        <TouchableOpacity
+          onPress={(e) => { e.stopPropagation(); setLiked((v) => !v); }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={styles.heartBtn}
+        >
           <Feather
-            name={CATEGORY_ICONS[item.category] ?? "circle"}
-            size={22}
-            color={isLight(item.colorHex) ? "#1C1512" : "#FAF8F5"}
+            name={liked ? "heart" : "heart"}
+            size={15}
+            color={liked ? "#E05C5C" : "#B0A9A3"}
           />
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Metadata ── */}
+      <View style={styles.info}>
+        <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+
+        <View style={styles.metaRow}>
+          <View style={[styles.swatch, { backgroundColor: item.colorHex }]} />
+          <Text style={[styles.metaText, { color: "#78716C" }]} numberOfLines={1}>
+            {categoryLabel}
+          </Text>
+        </View>
+
+        {item.seasons.length > 0 && (
+          <View style={styles.pillRow}>
+            {item.seasons.slice(0, 3).map((s) => (
+              <View key={s} style={styles.pill}>
+                <Text style={styles.pillText}>
+                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                </Text>
+              </View>
+            ))}
+          </View>
         )}
       </View>
-      <View style={styles.info}>
-        <Text
-          style={[styles.name, { color: colors.foreground }]}
-          numberOfLines={1}
-        >
-          {item.name}
-        </Text>
-        <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-          {item.category.charAt(0).toUpperCase() + item.category.slice(1)} · {item.color}
-        </Text>
-        <View style={styles.seasons}>
-          {item.seasons.map((s) => (
-            <View
-              key={s}
-              style={[styles.seasonPill, { backgroundColor: colors.secondary }]}
-            >
-              <Text style={[styles.seasonText, { color: colors.mutedForeground }]}>
-                {s.charAt(0).toUpperCase() + s.slice(1)}
-              </Text>
-            </View>
-          ))}
-        </View>
-      </View>
-      {onDelete && (
-        <TouchableOpacity
-          onPress={onDelete}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={[styles.deleteBtn, { backgroundColor: colors.secondary }]}
-        >
-          <Feather name="trash-2" size={14} color={colors.mutedForeground} />
-        </TouchableOpacity>
-      )}
     </Pressable>
   );
 }
 
-function isLight(hex: string): boolean {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return (r * 299 + g * 587 + b * 114) / 1000 > 128;
-}
-
 const styles = StyleSheet.create({
-  container: {
+  card: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
     borderRadius: 16,
     borderWidth: 1,
-    flexDirection: "row",
-    alignItems: "center",
+    borderColor: "#EAEAEA",
     overflow: "hidden",
-    marginBottom: 10,
+    // Shadow — iOS / web
+    shadowColor: "#1C1512",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    // Shadow — Android
+    elevation: 3,
   },
-  colorBlock: {
-    width: 72,
-    height: 84,
+  imageZone: {
+    aspectRatio: 1,
+    backgroundColor: "#F7F5F2",
     alignItems: "center",
     justifyContent: "center",
-    flexShrink: 0,
-    overflow: "hidden",
     position: "relative",
   },
+  image: {
+    width: "100%",
+    height: "100%",
+  },
+  colorBlock: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  colorCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    opacity: 0.9,
+  },
+  heartBtn: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.88)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
   info: {
-    flex: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 3,
+    padding: 10,
+    gap: 5,
   },
   name: {
-    fontSize: 15,
-    fontWeight: "600",
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#1C1512",
+    letterSpacing: 0.1,
   },
-  meta: {
-    fontSize: 12,
-    fontWeight: "400",
-  },
-  seasons: {
+  metaRow: {
     flexDirection: "row",
-    gap: 5,
-    marginTop: 4,
+    alignItems: "center",
+    gap: 6,
   },
-  seasonPill: {
-    paddingHorizontal: 8,
+  swatch: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    flexShrink: 0,
+    borderWidth: 0.5,
+    borderColor: "rgba(0,0,0,0.08)",
+  },
+  metaText: {
+    fontSize: 11,
+    fontWeight: "500",
+    flexShrink: 1,
+  },
+  pillRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+    marginTop: 1,
+  },
+  pill: {
+    backgroundColor: "#F2EFE9",
+    paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 20,
   },
-  seasonText: {
-    fontSize: 10,
+  pillText: {
+    fontSize: 9,
     fontWeight: "600",
-  },
-  deleteBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
+    color: "#78716C",
+    letterSpacing: 0.3,
   },
 });

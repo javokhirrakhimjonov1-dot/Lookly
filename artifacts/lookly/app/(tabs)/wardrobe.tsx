@@ -3,6 +3,7 @@ import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
+  FlatList,
   Platform,
   ScrollView,
   StyleSheet,
@@ -39,6 +40,7 @@ export default function WardrobeScreen() {
   const [selectedItem, setSelectedItem] = useState<ClothingItem | null>(null);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const bottomPad = Platform.OS === "web" ? 100 : insets.bottom + 100;
 
   const filtered =
     activeCategory === "all"
@@ -55,8 +57,14 @@ export default function WardrobeScreen() {
     setSelectedItem(item);
   };
 
+  const handleAdd = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push("/add-item");
+  };
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
+      {/* ── Header ── */}
       <View
         style={[
           styles.header,
@@ -74,22 +82,15 @@ export default function WardrobeScreen() {
               {items.length} {items.length === 1 ? "item" : "items"}
             </Text>
           </View>
-          <View style={styles.headerBtns}>
-            <TouchableOpacity
-              onPress={() => router.push("/outfit-builder")}
-              style={[styles.buildBtn, { backgroundColor: colors.secondary }]}
-            >
-              <Feather name="scissors" size={16} color={colors.accent} />
-              <Text style={[styles.buildBtnText, { color: colors.accent }]}>Build Look</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => router.push("/add-item")}
-              style={[styles.addBtn, { backgroundColor: colors.primary }]}
-            >
-              <Feather name="plus" size={20} color={colors.primaryForeground} />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            onPress={() => router.push("/outfit-builder")}
+            style={[styles.buildBtn, { backgroundColor: colors.secondary }]}
+          >
+            <Feather name="scissors" size={15} color={colors.accent} />
+            <Text style={[styles.buildBtnText, { color: colors.accent }]}>Build Look</Text>
+          </TouchableOpacity>
         </View>
+
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -111,50 +112,49 @@ export default function WardrobeScreen() {
         </ScrollView>
       </View>
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={[
-          styles.content,
+      {/* ── Grid ── */}
+      {!isLoading && filtered.length === 0 ? (
+        <View style={[styles.empty, { paddingBottom: bottomPad }]}>
+          <Feather name="layers" size={40} color={colors.border} />
+          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+            {activeCategory === "all" ? "Your wardrobe is empty" : `No ${activeCategory} yet`}
+          </Text>
+          <Text style={[styles.emptySubtitle, { color: colors.mutedForeground }]}>
+            Tap the + button to add your first item
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => item.id}
+          numColumns={2}
+          contentContainerStyle={[styles.gridContent, { paddingBottom: bottomPad }]}
+          columnWrapperStyle={styles.row}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => (
+            <ClothingItemCard
+              item={item}
+              onPress={() => handleItemPress(item)}
+              onDelete={() => handleDelete(item.id)}
+            />
+          )}
+        />
+      )}
+
+      {/* ── Floating Action Button ── */}
+      <TouchableOpacity
+        onPress={handleAdd}
+        style={[
+          styles.fab,
           {
-            paddingBottom: Platform.OS === "web" ? 100 : insets.bottom + 100,
+            backgroundColor: "#C8906A",
+            bottom: Platform.OS === "web" ? 32 : insets.bottom + 24,
           },
         ]}
-        showsVerticalScrollIndicator={false}
+        activeOpacity={0.85}
       >
-        {isLoading ? null : filtered.length === 0 ? (
-          <View style={styles.empty}>
-            <Feather name="layers" size={40} color={colors.border} />
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              {activeCategory === "all" ? "Your wardrobe is empty" : `No ${activeCategory} yet`}
-            </Text>
-            <Text style={[styles.emptySubtitle, { color: colors.mutedForeground }]}>
-              Tap the + button to add your first item
-            </Text>
-            <TouchableOpacity
-              onPress={() => router.push("/add-item")}
-              style={[styles.emptyBtn, { backgroundColor: colors.primary }]}
-            >
-              <Text style={[styles.emptyBtnText, { color: colors.primaryForeground }]}>
-                Add item
-              </Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <>
-            <Text style={[styles.tapHint, { color: colors.mutedForeground }]}>
-              Tap any item to style it with AI
-            </Text>
-            {filtered.map((item) => (
-              <ClothingItemCard
-                key={item.id}
-                item={item}
-                onPress={() => handleItemPress(item)}
-                onDelete={() => handleDelete(item.id)}
-              />
-            ))}
-          </>
-        )}
-      </ScrollView>
+        <Feather name="plus" size={26} color="#FFFFFF" />
+      </TouchableOpacity>
 
       <ItemDetailSheet
         item={selectedItem}
@@ -169,9 +169,7 @@ export default function WardrobeScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
+  root: { flex: 1 },
   header: {
     borderBottomWidth: 1,
     paddingHorizontal: 18,
@@ -193,16 +191,11 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: "700",
   },
-  headerBtns: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
   buildBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 22,
   },
@@ -210,50 +203,47 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
   },
-  addBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   pills: {
     paddingRight: 18,
   },
-  content: {
-    paddingHorizontal: 18,
+  gridContent: {
+    paddingHorizontal: 14,
     paddingTop: 16,
-    gap: 0,
   },
-  tapHint: {
-    fontSize: 12,
-    fontWeight: "500",
-    marginBottom: 12,
+  row: {
+    gap: 10,
+    marginBottom: 10,
   },
   empty: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 60,
     gap: 10,
+    paddingHorizontal: 32,
   },
   emptyTitle: {
     fontSize: 18,
     fontWeight: "600",
     marginTop: 8,
+    textAlign: "center",
   },
   emptySubtitle: {
     fontSize: 14,
-    fontWeight: "400",
     textAlign: "center",
   },
-  emptyBtn: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 100,
-    marginTop: 8,
-  },
-  emptyBtnText: {
-    fontSize: 15,
-    fontWeight: "600",
+  fab: {
+    position: "absolute",
+    right: 22,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 99,
+    shadowColor: "#C8906A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 8,
   },
 });
