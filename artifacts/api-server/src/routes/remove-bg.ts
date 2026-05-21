@@ -55,12 +55,14 @@ router.post("/remove-bg", async (req, res) => {
         `Crisp edges, no drop shadows, no reflections, no mannequin, no model body parts.` +
         logoPart;
 
-      const response = await openai.images.edit({
+      const response = await (openai.images.edit as Function)({
         model: "gpt-image-1",
         image: file,
         prompt: editPrompt,
         n: 1,
         size: "1024x1024",
+        output_format: "jpeg",
+        output_compression: 80,
       });
 
       const b64 = (response.data?.[0] as { b64_json?: string } | undefined)?.b64_json;
@@ -81,11 +83,13 @@ router.post("/remove-bg", async (req, res) => {
       `Item centred and fills 80% of the frame. Highly detailed, true-to-life colours and textures.` +
       logoPart;
 
-    const response = await openai.images.generate({
+    const response = await (openai.images.generate as Function)({
       model: "gpt-image-1",
       prompt: genPrompt,
       size: "1024x1024",
       n: 1,
+      output_format: "jpeg",
+      output_compression: 80,
     });
 
     const b64 = (response.data?.[0] as { b64_json?: string } | undefined)?.b64_json;

@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
+import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import React, { useState } from "react";
@@ -174,6 +175,15 @@ async function removeBg(
   } catch {
     return null;
   }
+}
+
+async function compressForUpload(uri: string): Promise<{ uri: string; base64: string; mimeType: string }> {
+  const result = await ImageManipulator.manipulateAsync(
+    uri,
+    [{ resize: { width: 800 } }],
+    { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+  );
+  return { uri: result.uri, base64: result.base64 ?? "", mimeType: "image/jpeg" };
 }
 
 function resolveColor(colorName: string, colorHex: string): { name: string; hex: string } {
@@ -418,6 +428,7 @@ export default function AddItemScreen() {
   const [brandLogo, setBrandLogo] = useState<BrandLogo | null>(null);
   const [scannedImage, setScannedImage] = useState<string | null>(null);
   const [extractedItemUri, setExtractedItemUri] = useState<string | null>(null);
+  const [compressedPhotoUri, setCompressedPhotoUri] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [isRemovingBg, setIsRemovingBg] = useState(false);
   const [scanDone, setScanDone] = useState(false);
@@ -504,6 +515,7 @@ export default function AddItemScreen() {
     const photoRef = localUri ?? `data:${mimeType};base64,${base64}`;
     setScannedImage(photoRef);
     setExtractedItemUri(null);
+    setCompressedPhotoUri(localUri ?? null);
     setIsScanning(true);
     setIsRemovingBg(false);
     setScanDone(false);
@@ -512,7 +524,7 @@ export default function AddItemScreen() {
     });
 
     try {
-      // ── Phase 1: identify items ──
+      // ── Phase 1 (BLOCKING): identify items ──
       const items = await scanClothingItems(base64, mimeType);
 
       if (items.length === 0) {
@@ -534,53 +546,44 @@ export default function AddItemScreen() {
       });
       setDetectedItems(taggedItems);
       setIsScanning(false);
-
-      // ── Phase 2: remove background from the actual photo ──
-      // Run all removals in parallel; await before showing picker so images are ready.
-      setIsRemovingBg(true);
-
-      const bgResults = await Promise.allSettled(
-        taggedItems.map((item) => {
-          const color = resolveColor(item.colorName, item.colorHex);
-          return removeBg(
-            item.name, item.category, color.name, color.hex, item.material, item.brandLogo,
-            base64, mimeType, // ← pass the actual photo
-          );
-        })
-      );
-
-      // Apply results back to taggedItems in place
-      const enriched = taggedItems.map((item, idx) => {
-        const result = bgResults[idx];
-        const cleanUri = result?.status === "fulfilled" ? result.value : null;
-        return cleanUri ? { ...item, _extractedUri: cleanUri } : item;
-      });
-
-      setDetectedItems(enriched);
-
-      // Surface the first clean image as the preview
-      const firstClean = enriched[0]?._extractedUri ?? null;
-      if (firstClean) {
-        setScannedImage(firstClean);
-        setExtractedItemUri(firstClean);
-      }
-
-      setIsRemovingBg(false);
       setScanDone(true);
 
-      // ── Phase 3: show result ──
-      if (enriched.length === 1) {
-        applyDetectedItem(enriched[0]!);
+      // ── Phase 2 (NON-BLOCKING): show form/picker immediately, BG removal in background ──
+      if (taggedItems.length === 1) {
+        applyDetectedItem(taggedItems[0]!);
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setShowPicker(true);
       }
+
+      // Fire BG removal — UI is already unblocked, image swaps silently when ready
+      setIsRemovingBg(true);
+      Promise.allSettled(
+        taggedItems.map((item, idx) => {
+          const color = resolveColor(item.colorName, item.colorHex);
+          return removeBg(
+            item.name, item.category, color.name, color.hex, item.material, item.brandLogo,
+            base64, mimeType,
+          ).then((cleanUri) => {
+            if (!cleanUri) return;
+            setDetectedItems((prev) => {
+              const next = [...prev];
+              if (next[idx]) next[idx] = { ...next[idx]!, _extractedUri: cleanUri };
+              return next;
+            });
+            if (idx === 0) {
+              setScannedImage(cleanUri);
+              setExtractedItemUri(cleanUri);
+            }
+          });
+        })
+      ).then(() => setIsRemovingBg(false));
+
     } catch {
       Alert.alert("Scan failed", "Could not identify items. Please fill in the details manually.");
       setScannedImage(null);
     } finally {
       setIsScanning(false);
-      setIsRemovingBg(false);
     }
   };
 
@@ -601,8 +604,8 @@ export default function AddItemScreen() {
 
     if (result.assets.length === 1) {
       const asset = result.assets[0]!;
-      if (!asset.base64) return;
-      await runScan(asset.base64, asset.mimeType ?? "image/jpeg", asset.uri);
+      const compressed = await compressForUpload(asset.uri);
+      await runScan(compressed.base64, compressed.mimeType, compressed.uri);
       return;
     }
 
@@ -647,32 +650,33 @@ export default function AddItemScreen() {
     }
 
     setDetectedItems(allItems);
+    setScanDone(true);
 
-    // ── Phase 2 (multi-photo): remove backgrounds before showing picker ──
-    setIsRemovingBg(true);
-    const bgResults = await Promise.allSettled(
-      allItems.map((item) => {
-        const color = resolveColor(item.colorName, item.colorHex);
-        return removeBg(item.name, item.category, color.name, color.hex, item.material, item.brandLogo);
-      })
-    );
-    const enrichedAll = allItems.map((item, idx) => {
-      const result = bgResults[idx];
-      const cleanUri = result?.status === "fulfilled" ? result.value : null;
-      return cleanUri ? { ...item, _extractedUri: cleanUri } : item;
-    });
-    setDetectedItems(enrichedAll);
-    const firstClean = enrichedAll[0]?._extractedUri ?? null;
-    if (firstClean) { setScannedImage(firstClean); setExtractedItemUri(firstClean); }
-    setIsRemovingBg(false);
-
-    // ── Phase 3: show result ──
-    if (enrichedAll.length === 1) {
-      applyDetectedItem(enrichedAll[0]!);
+    // ── Show picker immediately (non-blocking) ──
+    if (allItems.length === 1) {
+      applyDetectedItem(allItems[0]!);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowPicker(true);
     }
+
+    // ── BG removal runs in background, updates cards silently ──
+    setIsRemovingBg(true);
+    Promise.allSettled(
+      allItems.map((item, idx) => {
+        const color = resolveColor(item.colorName, item.colorHex);
+        return removeBg(item.name, item.category, color.name, color.hex, item.material, item.brandLogo)
+          .then((cleanUri) => {
+            if (!cleanUri) return;
+            setDetectedItems((prev) => {
+              const next = [...prev];
+              if (next[idx]) next[idx] = { ...next[idx]!, _extractedUri: cleanUri };
+              return next;
+            });
+            if (idx === 0) { setScannedImage(cleanUri); setExtractedItemUri(cleanUri); }
+          });
+      })
+    ).then(() => setIsRemovingBg(false));
   };
 
   const handleCameraCapture = async () => {
@@ -682,13 +686,14 @@ export default function AddItemScreen() {
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
-      quality: 0.6,
-      base64: true,
+      quality: 1,
+      base64: false,
       allowsEditing: false,
     });
-    if (result.canceled || !result.assets[0] || !result.assets[0].base64) return;
+    if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
-    await runScan(asset.base64!, asset.mimeType ?? "image/jpeg", asset.uri);
+    const compressed = await compressForUpload(asset.uri);
+    await runScan(compressed.base64, compressed.mimeType, compressed.uri);
   };
 
   const canSave = !!name.trim() && !!category && !!selectedColor && seasons.length > 0;
@@ -708,7 +713,7 @@ export default function AddItemScreen() {
       isWorkwear,
       purchasePrice: !isNaN(price) && price > 0 ? price : undefined,
       tags: tags.length > 0 ? tags : [category],
-      imageUri: extractedItemUri ?? undefined,
+      imageUri: extractedItemUri ?? compressedPhotoUri ?? undefined,
       brandLogo: brandLogo ?? undefined,
     });
     router.back();
@@ -785,12 +790,10 @@ export default function AddItemScreen() {
           {scannedImage && (
             <View style={styles.scannedImageWrap}>
               <Image source={{ uri: scannedImage }} style={styles.scannedImage} contentFit="cover" />
-              {(isScanning || isRemovingBg) && (
+              {isScanning && (
                 <View style={[styles.scanOverlay, { backgroundColor: "rgba(28,21,18,0.7)" }]}>
                   <ActivityIndicator size="large" color="#FAF8F5" />
-                  {isRemovingBg ? (
-                    <Text style={styles.scanOverlayText}>AI is isolating your garment and removing background…</Text>
-                  ) : scanPhotoTotal > 1 ? (
+                  {scanPhotoTotal > 1 ? (
                     <>
                       <Text style={styles.scanOverlayText}>
                         Analyzing photo {scanPhotoIndex} of {scanPhotoTotal}…
@@ -814,6 +817,12 @@ export default function AddItemScreen() {
                   )}
                 </View>
               )}
+              {isRemovingBg && !isScanning && (
+                <View style={[styles.isolatingBadge, { backgroundColor: "rgba(28,21,18,0.82)" }]}>
+                  <ActivityIndicator size="small" color={colors.accent} />
+                  <Text style={styles.isolatingText}>Isolating garment…</Text>
+                </View>
+              )}
               {scanDone && !isScanning && (
                 <View style={[styles.scanDoneBadge, { backgroundColor: colors.accent }]}>
                   <Feather name="check" size={12} color="#FFFFFF" />
@@ -835,20 +844,20 @@ export default function AddItemScreen() {
           <Animated.View style={[styles.scanButtons, scanAnimStyle]}>
             <TouchableOpacity
               onPress={handleCameraCapture}
-              disabled={isScanning || isRemovingBg}
-              style={[styles.scanBtn, { backgroundColor: colors.primary, opacity: (isScanning || isRemovingBg) ? 0.6 : 1 }]}
+              disabled={isScanning}
+              style={[styles.scanBtn, { backgroundColor: colors.primary, opacity: isScanning ? 0.6 : 1 }]}
             >
               <Feather name="camera" size={16} color={colors.primaryForeground} />
               <Text style={[styles.scanBtnText, { color: colors.primaryForeground }]}>Take photo</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleScanPhoto}
-              disabled={isScanning || isRemovingBg}
-              style={[styles.scanBtn, { backgroundColor: colors.secondary, borderColor: colors.border, borderWidth: 1, opacity: (isScanning || isRemovingBg) ? 0.6 : 1 }]}
+              disabled={isScanning}
+              style={[styles.scanBtn, { backgroundColor: colors.secondary, borderColor: colors.border, borderWidth: 1, opacity: isScanning ? 0.6 : 1 }]}
             >
-              {(isScanning || isRemovingBg) ? <ActivityIndicator size="small" color={colors.accent} /> : <Feather name="upload" size={16} color={colors.accent} />}
+              {isScanning ? <ActivityIndicator size="small" color={colors.accent} /> : <Feather name="upload" size={16} color={colors.accent} />}
               <Text style={[styles.scanBtnText, { color: colors.accent }]}>
-                {isRemovingBg ? "Processing..." : isScanning ? "Analyzing..." : "Upload photo"}
+                {isScanning ? "Analyzing..." : "Upload photo"}
               </Text>
             </TouchableOpacity>
           </Animated.View>
@@ -1086,6 +1095,18 @@ const styles = StyleSheet.create({
   scanOverlayText: { color: "#FAF8F5", fontSize: 14, fontWeight: "600" },
   scanDots: { flexDirection: "row", gap: 7, marginTop: 4 },
   scanDot: { width: 8, height: 8, borderRadius: 4 },
+  isolatingBadge: {
+    position: "absolute",
+    bottom: 10,
+    left: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 100,
+  },
+  isolatingText: { color: "#FAF8F5", fontSize: 11, fontWeight: "600" },
   scanDoneBadge: {
     position: "absolute",
     bottom: 10,
