@@ -149,12 +149,23 @@ async function removeBg(
   colorHex?: string,
   material?: string,
   brandLogo?: BrandLogo | null,
+  photoBase64?: string,
+  photoMimeType?: string,
 ): Promise<string | null> {
   try {
     const res = await fetch(`${API_BASE}/remove-bg`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ itemName, category, colorName, colorHex, material, brandLogo: brandLogo ?? undefined }),
+      body: JSON.stringify({
+        itemName,
+        category,
+        colorName,
+        colorHex,
+        material,
+        brandLogo: brandLogo ?? undefined,
+        photoBase64,
+        mimeType: photoMimeType,
+      }),
     });
     if (!res.ok) return null;
     const data = await res.json() as { image?: string };
@@ -408,6 +419,7 @@ export default function AddItemScreen() {
   const [scannedImage, setScannedImage] = useState<string | null>(null);
   const [extractedItemUri, setExtractedItemUri] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [isRemovingBg, setIsRemovingBg] = useState(false);
   const [scanDone, setScanDone] = useState(false);
   const [scanPhotoIndex, setScanPhotoIndex] = useState(0);
   const [scanPhotoTotal, setScanPhotoTotal] = useState(0);
@@ -489,18 +501,18 @@ export default function AddItemScreen() {
   };
 
   const runScan = async (base64: string, mimeType: string, localUri?: string) => {
-    // Prefer the local file URI for storage — it's tiny and reliable.
-    // The data URI is only used for sending to the scan API, never stored in AsyncStorage.
     const photoRef = localUri ?? `data:${mimeType};base64,${base64}`;
     setScannedImage(photoRef);
     setExtractedItemUri(null);
     setIsScanning(true);
+    setIsRemovingBg(false);
     setScanDone(false);
     scanScale.value = withSpring(0.97, { damping: 12 }, () => {
       scanScale.value = withSpring(1);
     });
 
     try {
+      // ── Phase 1: identify items ──
       const items = await scanClothingItems(base64, mimeType);
 
       if (items.length === 0) {
@@ -521,37 +533,54 @@ export default function AddItemScreen() {
         };
       });
       setDetectedItems(taggedItems);
+      setIsScanning(false);
 
-      if (taggedItems.length === 1) {
-        applyDetectedItem(taggedItems[0]!);
+      // ── Phase 2: remove background from the actual photo ──
+      // Run all removals in parallel; await before showing picker so images are ready.
+      setIsRemovingBg(true);
+
+      const bgResults = await Promise.allSettled(
+        taggedItems.map((item) => {
+          const color = resolveColor(item.colorName, item.colorHex);
+          return removeBg(
+            item.name, item.category, color.name, color.hex, item.material, item.brandLogo,
+            base64, mimeType, // ← pass the actual photo
+          );
+        })
+      );
+
+      // Apply results back to taggedItems in place
+      const enriched = taggedItems.map((item, idx) => {
+        const result = bgResults[idx];
+        const cleanUri = result?.status === "fulfilled" ? result.value : null;
+        return cleanUri ? { ...item, _extractedUri: cleanUri } : item;
+      });
+
+      setDetectedItems(enriched);
+
+      // Surface the first clean image as the preview
+      const firstClean = enriched[0]?._extractedUri ?? null;
+      if (firstClean) {
+        setScannedImage(firstClean);
+        setExtractedItemUri(firstClean);
+      }
+
+      setIsRemovingBg(false);
+      setScanDone(true);
+
+      // ── Phase 3: show result ──
+      if (enriched.length === 1) {
+        applyDetectedItem(enriched[0]!);
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setShowPicker(true);
       }
-
-      // Kick off AI-generated product images in the background.
-      // If they succeed, they upgrade the stored imageUri; if they fail,
-      // the local photo URI is already saved and will be used instead.
-      taggedItems.forEach((item, idx) => {
-        const color = resolveColor(item.colorName, item.colorHex);
-        removeBg(item.name, item.category, color.name, color.hex, item.material, item.brandLogo).then((cleanUri) => {
-          if (!cleanUri) return;
-          setDetectedItems((prev) => {
-            const next = [...prev];
-            if (next[idx]) next[idx] = { ...next[idx]!, _extractedUri: cleanUri };
-            return next;
-          });
-          if (idx === 0) {
-            setScannedImage(cleanUri);
-            setExtractedItemUri(cleanUri);
-          }
-        });
-      });
     } catch {
       Alert.alert("Scan failed", "Could not identify items. Please fill in the details manually.");
       setScannedImage(null);
     } finally {
       setIsScanning(false);
+      setIsRemovingBg(false);
     }
   };
 
@@ -618,28 +647,32 @@ export default function AddItemScreen() {
     }
 
     setDetectedItems(allItems);
-    if (allItems.length === 1) {
-      applyDetectedItem(allItems[0]!);
+
+    // ── Phase 2 (multi-photo): remove backgrounds before showing picker ──
+    setIsRemovingBg(true);
+    const bgResults = await Promise.allSettled(
+      allItems.map((item) => {
+        const color = resolveColor(item.colorName, item.colorHex);
+        return removeBg(item.name, item.category, color.name, color.hex, item.material, item.brandLogo);
+      })
+    );
+    const enrichedAll = allItems.map((item, idx) => {
+      const result = bgResults[idx];
+      const cleanUri = result?.status === "fulfilled" ? result.value : null;
+      return cleanUri ? { ...item, _extractedUri: cleanUri } : item;
+    });
+    setDetectedItems(enrichedAll);
+    const firstClean = enrichedAll[0]?._extractedUri ?? null;
+    if (firstClean) { setScannedImage(firstClean); setExtractedItemUri(firstClean); }
+    setIsRemovingBg(false);
+
+    // ── Phase 3: show result ──
+    if (enrichedAll.length === 1) {
+      applyDetectedItem(enrichedAll[0]!);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowPicker(true);
     }
-
-    allItems.forEach((item, idx) => {
-      const color = resolveColor(item.colorName, item.colorHex);
-      removeBg(item.name, item.category, color.name, color.hex, item.material, item.brandLogo).then((cleanUri) => {
-        if (!cleanUri) return;
-        setDetectedItems((prev) => {
-          const next = [...prev];
-          if (next[idx]) next[idx] = { ...next[idx]!, _extractedUri: cleanUri };
-          return next;
-        });
-        if (idx === 0) {
-          setScannedImage(cleanUri);
-          setExtractedItemUri(cleanUri);
-        }
-      });
-    });
   };
 
   const handleCameraCapture = async () => {
@@ -752,10 +785,12 @@ export default function AddItemScreen() {
           {scannedImage && (
             <View style={styles.scannedImageWrap}>
               <Image source={{ uri: scannedImage }} style={styles.scannedImage} contentFit="cover" />
-              {isScanning && (
+              {(isScanning || isRemovingBg) && (
                 <View style={[styles.scanOverlay, { backgroundColor: "rgba(28,21,18,0.7)" }]}>
                   <ActivityIndicator size="large" color="#FAF8F5" />
-                  {scanPhotoTotal > 1 ? (
+                  {isRemovingBg ? (
+                    <Text style={styles.scanOverlayText}>AI is isolating your garment and removing background…</Text>
+                  ) : scanPhotoTotal > 1 ? (
                     <>
                       <Text style={styles.scanOverlayText}>
                         Analyzing photo {scanPhotoIndex} of {scanPhotoTotal}…
@@ -800,20 +835,20 @@ export default function AddItemScreen() {
           <Animated.View style={[styles.scanButtons, scanAnimStyle]}>
             <TouchableOpacity
               onPress={handleCameraCapture}
-              disabled={isScanning}
-              style={[styles.scanBtn, { backgroundColor: colors.primary, opacity: isScanning ? 0.6 : 1 }]}
+              disabled={isScanning || isRemovingBg}
+              style={[styles.scanBtn, { backgroundColor: colors.primary, opacity: (isScanning || isRemovingBg) ? 0.6 : 1 }]}
             >
               <Feather name="camera" size={16} color={colors.primaryForeground} />
               <Text style={[styles.scanBtnText, { color: colors.primaryForeground }]}>Take photo</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleScanPhoto}
-              disabled={isScanning}
-              style={[styles.scanBtn, { backgroundColor: colors.secondary, borderColor: colors.border, borderWidth: 1, opacity: isScanning ? 0.6 : 1 }]}
+              disabled={isScanning || isRemovingBg}
+              style={[styles.scanBtn, { backgroundColor: colors.secondary, borderColor: colors.border, borderWidth: 1, opacity: (isScanning || isRemovingBg) ? 0.6 : 1 }]}
             >
-              {isScanning ? <ActivityIndicator size="small" color={colors.accent} /> : <Feather name="upload" size={16} color={colors.accent} />}
+              {(isScanning || isRemovingBg) ? <ActivityIndicator size="small" color={colors.accent} /> : <Feather name="upload" size={16} color={colors.accent} />}
               <Text style={[styles.scanBtnText, { color: colors.accent }]}>
-                {isScanning ? "Analyzing..." : "Upload photo"}
+                {isRemovingBg ? "Processing..." : isScanning ? "Analyzing..." : "Upload photo"}
               </Text>
             </TouchableOpacity>
           </Animated.View>
