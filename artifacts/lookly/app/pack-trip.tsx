@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -427,6 +428,123 @@ const drStyles = StyleSheet.create({
 });
 
 // ─────────────────────────────────────────────
+// Pack item card — wardrobe grid visual standard
+// ─────────────────────────────────────────────
+function PackItemCard({
+  item,
+  checked,
+  onToggle,
+}: {
+  item: ClothingItem;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  const categoryLabel = item.category.charAt(0).toUpperCase() + item.category.slice(1);
+  return (
+    <Pressable
+      onPress={onToggle}
+      style={({ pressed }) => [
+        pkStyles.card,
+        { opacity: pressed ? 0.88 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] },
+      ]}
+    >
+      {/* Image zone */}
+      <View style={pkStyles.imageZone}>
+        {item.imageUri ? (
+          <Image
+            source={{ uri: item.imageUri }}
+            style={pkStyles.image}
+            contentFit="contain"
+            transition={250}
+          />
+        ) : (
+          <View style={pkStyles.noImage}>
+            <Feather name="shopping-bag" size={24} color="#C8B9AE" />
+          </View>
+        )}
+        {/* Check badge — top right, toggleable */}
+        <View style={[pkStyles.checkBadge, checked ? pkStyles.checkBadgeOn : pkStyles.checkBadgeOff]}>
+          <Feather name="check" size={11} color={checked ? "#fff" : "#C8B9AE"} />
+        </View>
+      </View>
+
+      {/* Info strip */}
+      <View style={pkStyles.info}>
+        <Text style={pkStyles.name} numberOfLines={1}>{item.name}</Text>
+        <View style={pkStyles.metaRow}>
+          <View style={[pkStyles.swatch, { backgroundColor: item.colorHex }]} />
+          <Text style={pkStyles.metaText} numberOfLines={1}>{categoryLabel}</Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+const pkStyles = StyleSheet.create({
+  card: {
+    width: 112,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#EAEAEA",
+    overflow: "hidden",
+    shadowColor: "#1C1512",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  imageZone: {
+    aspectRatio: 3 / 4,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  image: { width: "100%", height: "100%" },
+  noImage: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F8F5F2",
+  },
+  checkBadge: {
+    position: "absolute",
+    top: 7,
+    right: 7,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  checkBadgeOn: { backgroundColor: "#059669" },
+  checkBadgeOff: {
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderWidth: 1.5,
+    borderColor: "#D1D5DB",
+  },
+  info: { padding: 8, gap: 4 },
+  name: { fontSize: 12, fontWeight: "700", color: "#1C1512", letterSpacing: 0.1 },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  swatch: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    flexShrink: 0,
+    borderWidth: 0.5,
+    borderColor: "rgba(0,0,0,0.08)",
+  },
+  metaText: { fontSize: 10, fontWeight: "500", color: "#78716C" },
+});
+
+// ─────────────────────────────────────────────
 // Main screen
 // ─────────────────────────────────────────────
 export default function PackTripScreen() {
@@ -579,6 +697,24 @@ export default function PackTripScreen() {
   const dominantTier = avgHigh != null && avgLow != null ? getTier((avgHigh + avgLow) / 2) : null;
   const totalPacked = packingList?.reduce((s, c) => s + c.fromWardrobe.length, 0) ?? 0;
   const totalToBuy = packingList?.reduce((s, c) => s + c.needToBuy.length, 0) ?? 0;
+
+  // Checked item state — all items start checked; tapping toggles
+  const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (packingList) {
+      const allIds = packingList.flatMap((c) => c.fromWardrobe.map((i) => i.id));
+      setCheckedItems(new Set(allIds));
+    }
+  }, [packingList]);
+
+  const toggleChecked = (id: string) => {
+    setCheckedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -743,9 +879,6 @@ export default function PackTripScreen() {
             {packingList.map((cat) => (
               <View key={cat.category} style={[styles.packCat, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={styles.packCatHeader}>
-                  <View style={[styles.packIconWrap, { backgroundColor: colors.accent + "22" }]}>
-                    <Feather name={cat.icon} size={15} color={colors.accent} />
-                  </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.packCatTitle, { color: colors.foreground }]}>{cat.category}</Text>
                     <Text style={[styles.packCatReason, { color: colors.mutedForeground }]}>{cat.reason}</Text>
@@ -756,17 +889,22 @@ export default function PackTripScreen() {
                 </View>
 
                 {cat.fromWardrobe.length > 0 && (
-                  <View style={styles.wardrobeMatches}>
+                  <View style={styles.wardrobeCarousel}>
                     <Text style={[styles.matchesLabel, { color: colors.mutedForeground }]}>FROM YOUR WARDROBE</Text>
-                    {cat.fromWardrobe.map((item) => (
-                      <View key={item.id} style={[styles.itemRow, { backgroundColor: colors.secondary }]}>
-                        <View style={[styles.itemSwatch, { backgroundColor: item.colorHex }]} />
-                        <Text style={[styles.itemName, { color: colors.foreground }]} numberOfLines={1}>{item.name}</Text>
-                        <View style={[styles.checkBadge, { backgroundColor: "#F0FDF4" }]}>
-                          <Feather name="check" size={10} color="#059669" />
-                        </View>
-                      </View>
-                    ))}
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.carouselRow}
+                    >
+                      {cat.fromWardrobe.map((item) => (
+                        <PackItemCard
+                          key={item.id}
+                          item={item}
+                          checked={checkedItems.has(item.id)}
+                          onToggle={() => toggleChecked(item.id)}
+                        />
+                      ))}
+                    </ScrollView>
                   </View>
                 )}
 
@@ -863,17 +1001,13 @@ const styles = StyleSheet.create({
   packStatLabel: { fontSize: 11, fontWeight: "600" },
   packCat: { borderRadius: 18, borderWidth: 1, padding: 14, gap: 12 },
   packCatHeader: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-  packIconWrap: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center", flexShrink: 0 },
   packCatTitle: { fontSize: 15, fontWeight: "700" },
   packCatReason: { fontSize: 12, lineHeight: 17, marginTop: 2 },
   neededBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   neededNum: { fontSize: 14, fontWeight: "800" },
-  wardrobeMatches: { gap: 7 },
+  wardrobeCarousel: { gap: 10 },
   matchesLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.8 },
-  itemRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 10, borderRadius: 10 },
-  itemSwatch: { width: 14, height: 14, borderRadius: 3, flexShrink: 0 },
-  itemName: { flex: 1, fontSize: 13, fontWeight: "500" },
-  checkBadge: { width: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  carouselRow: { gap: 10, paddingBottom: 4 },
   toBuySection: { gap: 8 },
   buyCardRow: { gap: 10, paddingBottom: 4 },
   buyCard: {
