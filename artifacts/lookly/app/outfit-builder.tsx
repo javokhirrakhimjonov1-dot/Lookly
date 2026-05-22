@@ -67,10 +67,94 @@ function makeComboKey(assigned: Partial<Record<OutfitSlotKey, ClothingItem>>): s
     .join("|");
 }
 
+// ─── Climate compatibility utilities ─────────────────────────────────────────
+
+/** Returns true if footwear is open-toe / sandal-type (inappropriate in cool weather). */
+function isSummerOnlyShoe(item: ClothingItem): boolean {
+  const n = item.name.toLowerCase();
+  const tags = item.tags.map((t) => t.toLowerCase());
+  const warmSeasonsOnly =
+    item.seasons.length > 0 &&
+    !item.seasons.includes("fall") &&
+    !item.seasons.includes("winter");
+  return (
+    n.includes("sandal") ||
+    n.includes("flip flop") ||
+    n.includes("flip-flop") ||
+    n.includes("slide") ||
+    n.includes("open toe") ||
+    n.includes("open-toe") ||
+    n.includes("slipper") ||
+    n.includes("espadrille") ||
+    tags.some((t) =>
+      ["sandals", "open-toe", "flip-flops", "slides", "summer-only", "open_toe"].includes(t)
+    ) ||
+    warmSeasonsOnly
+  );
+}
+
+/** Minimum temperature (°C) at which open-toe/sandal footwear is acceptable. */
+const SANDAL_TEMP_MIN = 22;
+
+/**
+ * Cross-category climate coherence check.
+ * Called once per attempt inside localSmartFill to reject illogical combos
+ * before they ever reach the canvas.
+ */
+function isClimateCompatible(
+  combo: Partial<Record<OutfitSlotKey, ClothingItem>>,
+  temperature: number
+): boolean {
+  const shoes = combo["shoes"];
+
+  if (shoes && isSummerOnlyShoe(shoes)) {
+    // Gate 1: temperature must be warm enough for open-toe footwear
+    if (temperature < SANDAL_TEMP_MIN) return false;
+
+    // Gate 2: no heavy tops or outerwear paired with sandals
+    for (const key of ["tops", "outerwear"] as OutfitSlotKey[]) {
+      const piece = combo[key];
+      if (!piece) continue;
+      if (piece.fabricWeight === "heavy") return false;
+      // Item is tagged for fall/winter only → incompatible with sandals
+      if (
+        piece.seasons.length > 0 &&
+        !piece.seasons.includes("summer") &&
+        !piece.seasons.includes("spring")
+      )
+        return false;
+    }
+
+    // Gate 3: sandals + formal/workwear bottoms → incoherent
+    const bottom = combo["bottoms"] ?? combo["dresses"];
+    if (bottom?.isWorkwear) return false;
+
+    // Gate 4: medium-weight outerwear at cool temp still wrong with sandals
+    const outer = combo["outerwear"];
+    if (outer && temperature < 26) return false;
+  }
+
+  // Gate 5: heavy outerwear + summer-only bottoms → incoherent even without sandals
+  const outer = combo["outerwear"];
+  if (outer?.fabricWeight === "heavy") {
+    const bottom = combo["bottoms"] ?? combo["dresses"];
+    if (
+      bottom &&
+      bottom.seasons.length > 0 &&
+      !bottom.seasons.includes("fall") &&
+      !bottom.seasons.includes("winter")
+    )
+      return false;
+  }
+
+  return true;
+}
+
 // ─── Local smart fill ────────────────────────────────────────────────────────
 // mode "fill-empty"  → only touches slots that are currently empty AND unlocked
 // mode "reshuffle"   → replaces every unlocked slot with a fresh pick
-// Tries up to maxAttempts times to produce a combo not already in sessionCombos.
+// Each attempt is validated for cross-category climate coherence via
+// isClimateCompatible before being accepted or recorded.
 function localSmartFill(
   currentAssigned: Partial<Record<OutfitSlotKey, ClothingItem>>,
   allItems: ClothingItem[],
@@ -78,11 +162,12 @@ function localSmartFill(
   temperature: number,
   sessionCombos: Set<string>,
   mode: "fill-empty" | "reshuffle",
-  maxAttempts = 30
+  maxAttempts = 40
 ): Partial<Record<OutfitSlotKey, ClothingItem>> {
   const season = getCurrentSeason();
   const isHot = temperature > 26;
   const isCold = temperature < 12;
+  const isCool = temperature < SANDAL_TEMP_MIN;
   const FILL_CATS: ClothingCategory[] = [
     "tops", "bottoms", "outerwear", "dresses", "shoes", "accessories",
   ];
@@ -93,13 +178,26 @@ function localSmartFill(
       if (i.category !== cat) return false;
       if (isHot && i.fabricWeight === "heavy") return false;
       if (isCold && i.fabricWeight === "light") return false;
+      // Pre-filter: remove sandals/open-toe shoes when temperature is below threshold
+      if (cat === "shoes" && isCool && isSummerOnlyShoe(i)) return false;
       return true;
     });
+    // Fallback: relax fabric constraint but keep sandal ban if cool
+    if (pool.length === 0) {
+      pool = allItems.filter(
+        (i) =>
+          i.category === cat &&
+          !(cat === "shoes" && isCool && isSummerOnlyShoe(i))
+      );
+    }
+    // Last resort: full category pool
     if (pool.length === 0) pool = allItems.filter((i) => i.category === cat);
+
     const seasonPool = pool.filter((i) => i.seasons.includes(season));
     return seasonPool.length > 0 ? seasonPool : pool;
   };
 
+  let lastClimateValid: Partial<Record<OutfitSlotKey, ClothingItem>> | null = null;
   let lastAttempt: Partial<Record<OutfitSlotKey, ClothingItem>> = { ...currentAssigned };
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -128,12 +226,19 @@ function localSmartFill(
     }
 
     lastAttempt = next;
+
+    // ── Climate coherence audit ──────────────────────────────────────────
+    if (!isClimateCompatible(next, temperature)) continue; // bad combo — retry
+
+    // Track the best climate-valid result so far for the fallback
+    if (!lastClimateValid) lastClimateValid = next;
+
+    // Deduplicate: only return if this combo hasn't been shown in this session
     if (!sessionCombos.has(makeComboKey(next))) return next;
-    // combo already seen — try again
   }
 
-  // Exhausted all attempts — return last generated attempt anyway
-  return lastAttempt;
+  // Exhausted all attempts — return best climate-valid result, or last attempt
+  return lastClimateValid ?? lastAttempt;
 }
 
 async function generateOutfitPreview(
