@@ -1,0 +1,22 @@
+CRITICAL UI OVERRIDE: The Lucky Shuffle screen (Image 14) is rendering as a text-heavy vertical list of item slots. This completely ruins the user experience. We must replace this list layout with a full-screen Visual Outfit Canvas layout immediately.
+
+Please apply the following structural changes:
+
+1. WIPE OUT THE VERTICAL LIST VIEW:
+   - Completely remove the vertical list containers, item category headers ("OUTERWEAR", "TOP"), sizes, text names, and "0x worn" metadata rows from this display panel.
+
+2. IMPLEMENT THE VISUAL OUTFIT CANVAS:
+   - Replace the list with a beautiful, spacious, centralized layout container where the actual background-free clothing images are layered cleanly to form a finished, cohesive look.
+   - The garments must be rendered as the absolute heroes of the screen: large, crisp, and beautifully centered using an elegant grid or overlapping layout block (similar to a true magazine lookbook style).
+   - Ensure all pieces load their actual background-isolated image assets, explicitly forcing:
+     <Image source={{ uri: item.imageUri }} resizeMode="contain" style={{ backgroundColor: 'transparent' }} />
+
+3. INTEGRATE DYNAMIC ACTION BUTTONS PER SLOT:
+   - Even though the list text is gone, we must keep the functionality. Hover a small, minimalist translucent lock icon over the corner of each clothing image zone so the user can still freeze specific layers before shuffling.
+   - Retain the "Never again / Не показывать больше" function as a sleek, low-profile icon action.
+
+4. INTEGRATE THE SHUFFLE ALGORITHM & BRANDING LAYER:
+   - Position our premium, bold text badge right below this new visual outfit presentation canvas, utilizing our preset rule-breaking taglines (e.g., "Ready to break the mainstream / Готов сломать стереотипы", "Going against the flow").
+   - Ensure the bottom "Shuffle All" black action bar triggers the ultra-fast local memory filtering we designed, instantly updating the images on the canvas without lag or screen stutter.
+
+Maintain our signature Warm Cream background canvas and elegant Espresso accents so the entire module looks like a finished, high-end consumer app.
