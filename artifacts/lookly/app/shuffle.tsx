@@ -299,25 +299,20 @@ export default function ShuffleScreen() {
                     },
                   ]}
                 >
-                  <View style={[styles.slotIcon, { backgroundColor: item?.imageUri ? "#F5F3F0" : item ? item.colorHex : colors.secondary }]}>
+                  <View style={[styles.slotIcon, { backgroundColor: "#FFFFFF" }]}>
                     {item?.imageUri ? (
                       <Image
                         source={{ uri: item.imageUri }}
                         style={StyleSheet.absoluteFillObject}
                         contentFit="contain"
                       />
+                    ) : item ? (
+                      <View style={{ alignItems: "center", gap: 4 }}>
+                        <View style={[styles.colorDot, { backgroundColor: item.colorHex }]} />
+                        <Feather name={slot.icon} size={16} color="#C8B9AE" />
+                      </View>
                     ) : (
-                      <Feather
-                        name={slot.icon}
-                        size={20}
-                        color={
-                          item
-                            ? isLight(item.colorHex)
-                              ? "rgba(28,21,18,0.5)"
-                              : "rgba(250,248,245,0.5)"
-                            : colors.border
-                        }
-                      />
+                      <Feather name={slot.icon} size={20} color={colors.border} />
                     )}
                   </View>
 

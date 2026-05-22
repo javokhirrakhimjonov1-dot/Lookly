@@ -42,8 +42,9 @@ export default function ClothingItemCard({ item, onPress }: Props) {
             transition={250}
           />
         ) : (
-          <View style={[styles.colorBlock, { backgroundColor: item.colorHex + "33" }]}>
-            <View style={[styles.colorCircle, { backgroundColor: item.colorHex }]} />
+          <View style={styles.noImage}>
+            <View style={[styles.colorDot, { backgroundColor: item.colorHex }]} />
+            <Feather name="shopping-bag" size={26} color="#C8B9AE" style={{ marginTop: 8 }} />
           </View>
         )}
 
@@ -106,7 +107,7 @@ const styles = StyleSheet.create({
   },
   imageZone: {
     aspectRatio: 1,
-    backgroundColor: "#F7F5F2",
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
@@ -115,17 +116,20 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
-  colorBlock: {
+  noImage: {
     width: "100%",
     height: "100%",
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    gap: 0,
   },
-  colorCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    opacity: 0.9,
+  colorDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
   },
   heartBtn: {
     position: "absolute",
