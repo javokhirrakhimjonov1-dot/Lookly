@@ -10,6 +10,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { type ClothingCategory, type ClothingItem, useWardrobe } from "@/contexts/WardrobeContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const CATEGORY_COLORS: Record<ClothingCategory, string> = {
   tops: "#C8906A",
@@ -33,6 +34,7 @@ function isLight(hex: string): boolean {
 
 function CostPerWearCard({ item }: { item: ClothingItem }) {
   const colors = useColors();
+  const { t } = useLanguage();
   const cpw =
     item.purchasePrice && item.timesWorn > 0
       ? (item.purchasePrice / item.timesWorn).toFixed(2)
@@ -46,31 +48,31 @@ function CostPerWearCard({ item }: { item: ClothingItem }) {
       ]}
     >
       <View style={[styles.cpwColor, { backgroundColor: item.colorHex }]} />
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.cpwName, { color: colors.foreground }]} numberOfLines={1}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[styles.cpwName, { color: colors.foreground }]} numberOfLines={2}>
           {item.name}
         </Text>
         <Text style={[styles.cpwMeta, { color: colors.mutedForeground }]}>
-          {item.timesWorn} wear{item.timesWorn !== 1 ? "s" : ""}
+          {item.timesWorn}× {t("stat_worn")}
           {item.purchasePrice ? ` · $${item.purchasePrice}` : ""}
         </Text>
       </View>
       {cpw ? (
         <View style={[styles.cpwBadge, { backgroundColor: colors.secondary }]}>
           <Text style={[styles.cpwValue, { color: colors.accent }]}>${cpw}</Text>
-          <Text style={[styles.cpwLabel, { color: colors.mutedForeground }]}>per wear</Text>
+          <Text style={[styles.cpwLabel, { color: colors.mutedForeground }]}>{t("stat_per_wear")}</Text>
         </View>
       ) : item.timesWorn > 0 ? (
         <View style={[styles.cpwBadge, { backgroundColor: colors.secondary }]}>
           <Text style={[styles.cpwValue, { color: colors.foreground }]}>
             {item.timesWorn}×
           </Text>
-          <Text style={[styles.cpwLabel, { color: colors.mutedForeground }]}>worn</Text>
+          <Text style={[styles.cpwLabel, { color: colors.mutedForeground }]}>{t("stat_worn")}</Text>
         </View>
       ) : (
         <View style={[styles.cpwBadge, { backgroundColor: "#FEF2F2" }]}>
           <Text style={[styles.cpwValue, { color: "#DC2626" }]}>0×</Text>
-          <Text style={[styles.cpwLabel, { color: "#DC2626" }]}>unworn</Text>
+          <Text style={[styles.cpwLabel, { color: "#DC2626" }]}>{t("stat_unworn_badge")}</Text>
         </View>
       )}
     </View>
@@ -81,6 +83,7 @@ export default function StatsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { items } = useWardrobe();
+  const { t } = useLanguage();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -130,8 +133,8 @@ export default function StatsScreen() {
           },
         ]}
       >
-        <Text style={[styles.label, { color: colors.mutedForeground }]}>WARDROBE</Text>
-        <Text style={[styles.title, { color: colors.foreground }]}>Stats & ROI</Text>
+        <Text style={[styles.label, { color: colors.mutedForeground }]}>{t("tab_wardrobe").toUpperCase()}</Text>
+        <Text style={[styles.title, { color: colors.foreground }]}>{t("stats_title")}</Text>
       </View>
 
       <ScrollView
@@ -144,19 +147,19 @@ export default function StatsScreen() {
         {items.length === 0 ? (
           <View style={[styles.empty, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
             <Feather name="bar-chart-2" size={36} color={colors.border} />
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No data yet</Text>
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{t("stat_no_data")}</Text>
             <Text style={[styles.emptyBody, { color: colors.mutedForeground }]}>
-              Add items to your wardrobe and track wear history to see your stats.
+              {t("stat_no_data_body")}
             </Text>
           </View>
         ) : (
           <>
             <View style={styles.summaryGrid}>
               {[
-                { label: "Total items", value: stats.total, icon: "layers" as const, color: colors.accent },
-                { label: "Total value", value: stats.totalValue ? `$${stats.totalValue}` : "—", icon: "dollar-sign" as const, color: "#6B7C4D" },
-                { label: "Total wears", value: stats.totalWears, icon: "trending-up" as const, color: "#1E3A5F" },
-                { label: "Unworn", value: stats.unworn, icon: "alert-circle" as const, color: stats.unworn > 0 ? "#DC2626" : colors.mutedForeground },
+                { label: t("stat_total_items"), value: stats.total, icon: "layers" as const, color: colors.accent },
+                { label: t("stat_total_value"), value: stats.totalValue ? `$${stats.totalValue}` : "—", icon: "dollar-sign" as const, color: "#6B7C4D" },
+                { label: t("stat_total_wears"), value: stats.totalWears, icon: "trending-up" as const, color: "#1E3A5F" },
+                { label: t("stat_unworn"), value: stats.unworn, icon: "alert-circle" as const, color: stats.unworn > 0 ? "#DC2626" : colors.mutedForeground },
               ].map((s) => (
                 <View
                   key={s.label}
@@ -175,13 +178,13 @@ export default function StatsScreen() {
 
             <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                Wardrobe Composition
+                {t("stat_composition")}
               </Text>
               <View style={styles.barChart}>
                 {stats.byCategory.map(({ cat, count }) => (
                   <View key={cat} style={styles.barRow}>
-                    <Text style={[styles.barLabel, { color: colors.mutedForeground }]}>
-                      {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                    <Text style={[styles.barLabel, { color: colors.mutedForeground }]} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.75}>
+                      {t(`cat_${cat}` as Parameters<typeof t>[0])}
                     </Text>
                     <View style={[styles.barTrack, { backgroundColor: colors.secondary }]}>
                       <View
@@ -202,7 +205,7 @@ export default function StatsScreen() {
                 <View style={[styles.workwearRow, { borderTopColor: colors.border }]}>
                   <Feather name="briefcase" size={13} color={colors.accent} />
                   <Text style={[styles.workwearText, { color: colors.mutedForeground }]}>
-                    {stats.workwearCount} workwear item{stats.workwearCount !== 1 ? "s" : ""} (excluded from casual shuffle)
+                    {stats.workwearCount} {t(stats.workwearCount === 1 ? "stat_workwear_excl" : "stat_workwear_excl_pl")}
                   </Text>
                 </View>
               )}
@@ -211,7 +214,7 @@ export default function StatsScreen() {
             {stats.mostWorn.length > 0 && (
               <View style={styles.listSection}>
                 <Text style={[styles.listTitle, { color: colors.foreground }]}>
-                  Most Worn
+                  {t("stat_most_worn")}
                 </Text>
                 {stats.mostWorn.map((item) => (
                   <CostPerWearCard key={item.id} item={item} />
@@ -222,10 +225,10 @@ export default function StatsScreen() {
             {stats.bestValue.length > 0 && (
               <View style={styles.listSection}>
                 <Text style={[styles.listTitle, { color: colors.foreground }]}>
-                  Best Value (Cost Per Wear)
+                  {t("stat_best_value")}
                 </Text>
                 <Text style={[styles.listSubtitle, { color: colors.mutedForeground }]}>
-                  Purchase price ÷ times worn
+                  {t("stat_cost_hint")}
                 </Text>
                 {stats.bestValue.map((item) => (
                   <CostPerWearCard key={item.id} item={item} />
@@ -235,10 +238,10 @@ export default function StatsScreen() {
 
             <View style={styles.listSection}>
               <Text style={[styles.listTitle, { color: colors.foreground }]}>
-                Needs More Love
+                {t("stat_needs_love")}
               </Text>
               <Text style={[styles.listSubtitle, { color: colors.mutedForeground }]}>
-                Items you've barely worn
+                {t("stat_barely_worn")}
               </Text>
               {stats.leastWorn.map((item) => (
                 <CostPerWearCard key={item.id} item={item} />
@@ -274,7 +277,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   summaryValue: { fontSize: 24, fontWeight: "800", marginTop: 4 },
-  summaryLabel: { fontSize: 12, fontWeight: "500" },
+  summaryLabel: { fontSize: 12, fontWeight: "500", flexWrap: "wrap" },
   section: {
     borderRadius: 18,
     borderWidth: 1,
@@ -284,7 +287,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 16, fontWeight: "700" },
   barChart: { gap: 10 },
   barRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  barLabel: { width: 76, fontSize: 12, fontWeight: "500" },
+  barLabel: { width: 88, fontSize: 12, fontWeight: "500", flexShrink: 0 },
   barTrack: { flex: 1, height: 10, borderRadius: 5, overflow: "hidden" },
   barFill: { height: "100%", borderRadius: 5 },
   barCount: { width: 24, fontSize: 12, fontWeight: "700", textAlign: "right" },
@@ -296,7 +299,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     marginTop: 2,
   },
-  workwearText: { fontSize: 12 },
+  workwearText: { fontSize: 12, flex: 1, flexWrap: "wrap" },
   listSection: { gap: 10 },
   listTitle: { fontSize: 17, fontWeight: "700" },
   listSubtitle: { fontSize: 12, marginTop: -4 },

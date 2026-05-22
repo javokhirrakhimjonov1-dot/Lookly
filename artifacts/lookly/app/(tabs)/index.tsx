@@ -100,7 +100,7 @@ export default function HomeScreen() {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.headerRow}>
-        <View>
+        <View style={{ flex: 1, marginRight: 12 }}>
           <Text style={[styles.greeting, { color: colors.mutedForeground }]}>
             {today}
           </Text>
@@ -184,10 +184,10 @@ export default function HomeScreen() {
           <Text style={[styles.shuffleLabel, { color: "rgba(250,248,245,0.7)" }]}>
             {t("feeling_lucky")}
           </Text>
-          <Text style={[styles.shuffleTitle, { color: colors.primaryForeground }]}>
+          <Text style={[styles.shuffleTitle, { color: colors.primaryForeground }]} numberOfLines={2}>
             {t("lucky_shuffle")}
           </Text>
-          <Text style={[styles.shuffleSub, { color: "rgba(250,248,245,0.7)" }]}>
+          <Text style={[styles.shuffleSub, { color: "rgba(250,248,245,0.7)" }]} numberOfLines={2}>
             {t("lucky_hint")}
           </Text>
         </View>
@@ -228,10 +228,10 @@ export default function HomeScreen() {
           <Feather name="bell" size={16} color="#DC2626" />
           <View style={{ flex: 1 }}>
             <Text style={[styles.alertTitle, { color: "#DC2626" }]}>
-              Flash deals ending soon
+              {t("flash_deals_ending")}
             </Text>
             <Text style={[styles.alertBody, { color: "#991B1B" }]}>
-              {urgentDeals.map((d) => d.brandName).join(", ")} — don't miss out
+              {urgentDeals.map((d) => d.brandName).join(", ")} — {t("dont_miss_out")}
             </Text>
           </View>
           <TouchableOpacity onPress={() => router.push("/(tabs)/deals")}>
@@ -433,6 +433,7 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
   avatarText: {
     fontSize: 16,
@@ -473,11 +474,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  weatherLookLeft: { gap: 4, flex: 1 },
+  weatherLookLeft: { gap: 4, flex: 1, paddingRight: 16 },
   weatherLookLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 1.2, color: "rgba(250,248,245,0.7)" },
-  weatherLookTitle: { fontSize: 22, fontWeight: "800", color: "#FAF8F5" },
-  weatherLookSub: { fontSize: 12, fontWeight: "400", color: "rgba(250,248,245,0.8)", lineHeight: 17 },
-  weatherLookIconWrap: { alignItems: "center", justifyContent: "center", paddingLeft: 16 },
+  weatherLookTitle: { fontSize: 22, fontWeight: "800", color: "#FAF8F5", flexWrap: "wrap" },
+  weatherLookSub: { fontSize: 12, fontWeight: "400", color: "rgba(250,248,245,0.8)", lineHeight: 17, flexWrap: "wrap" },
+  weatherLookIconWrap: { alignItems: "center", justifyContent: "center", flexShrink: 0 },
   shuffleCard: {
     borderRadius: 20,
     padding: 20,
@@ -485,16 +486,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  shuffleLeft: { gap: 3 },
+  shuffleLeft: { gap: 3, flex: 1, paddingRight: 16 },
   shuffleLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 1 },
-  shuffleTitle: { fontSize: 22, fontWeight: "800" },
-  shuffleSub: { fontSize: 12, fontWeight: "400" },
+  shuffleTitle: { fontSize: 22, fontWeight: "800", flexWrap: "wrap" },
+  shuffleSub: { fontSize: 12, fontWeight: "400", flexWrap: "wrap" },
   shuffleIconWrap: {
     width: 56,
     height: 56,
     borderRadius: 28,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
   statsRow: {
     flexDirection: "row",
@@ -515,6 +517,8 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 11,
     fontWeight: "500",
+    flexWrap: "wrap",
+    lineHeight: 14,
   },
   utilRow: {
     flexDirection: "row",
