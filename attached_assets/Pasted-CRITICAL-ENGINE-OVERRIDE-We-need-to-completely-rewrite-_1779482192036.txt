@@ -1,0 +1,31 @@
+CRITICAL ENGINE OVERRIDE: We need to completely rewrite the backend outfit generation algorithms and frontend presentation for BOTH 'AI Suggestions' and 'Lucky Shuffle'. Right now they are identical and redundant. We must split them into two entirely separate selection pipelines with distinct visual personalities.
+
+Please apply the following core updates simultaneously:
+
+1. COMPULSORY LOGIC GATE (TEMPERATURE & CLIMATE HARMONY):
+- For BOTH features, implement a strict Climatological Matching Guard. Every item must have a 'weatherTier' or temperature parameter (e.g., 'Hot', 'Mild', 'Cold').
+- When generating an outfit for a given weather state (e.g., 16°C Sunny), ALL selected slots (Tops, Bottoms, Outerwear, Shoes) MUST be restricted to that exact matching climate tier.
+- CRITICAL: Explicitly ban cross-contamination. If a Top or Outerwear item is flagged for 'Mild' or 'Cold' weather, the engine is strictly forbidden from pairing it with open-toe beach sandals, flip-flops, or summer-only items. Keep the layers logically realistic.
+
+2. RE-CODE 'AI SUGGESTIONS' (THE RELIABLE STYLIST):
+- This algorithm must prioritize high-probability, cohesive, and classic combinations.
+- Filter the user's wardrobe dataset to match safe, complementary color palettes (monochromatic, neutrals, earthy tones) and prioritize items with high wear-frequency scores (clothes the user actually loves wearing).
+
+3. RE-CODE 'LUCKY SHUFFLE' (THE REBEL STYLE EXPERIMENT):
+- Change this algorithm to act as a bold, rule-breaking fashion discovery tool.
+- Keep the temperature/weather safety guard active so it's realistic, but completely lift traditional color and category style constraints.
+- The Discovery Rule: Force the selector to actively query and pull items with a LOW wear count (unworn clothes sitting at the bottom of the database as seen in our Stats tab).
+- Color Contrast Rule: Program it to match complementary or triadic color contrasts (e.g., matching a neutral base with an unexpected, vibrant accent layer).
+- Session History Guard: Maintain a runtime array tracking combinations shown during the current session. NEVER show the exact same outfit combination twice in a single trial.
+- Lock Resistance: Ensure any item slot manually locked by the user remains frozen while the unlocked slots shuffle around it.
+
+4. EDGY BRANDING TAGLINES FOR LUCKY SHUFFLE:
+- When 'Lucky Shuffle' generates a look, add a prominent, clean, uppercase text badge or subtitle directly below the garment canvas rendering its style verdict.
+- Randomly pull from this preset array of edgy, high-fashion personality taglines based on active locale (en/ru):
+  * "Ready to break the mainstream / Готов сломать стереотипы"
+  * "Going against the flow / Против течения"
+  * "Bold experimentation / Смелый эксперимент"
+  * "Defying the style rules / Вне правил стиля"
+- Style this text stack cleanly using our primary Espresso typography (#1C1512) or a minimalist Caramel (#C8906A) accent banner block.
+
+Run these backend logic and frontend UI adjustments right now to ensure both features function with true, independent intelligence.

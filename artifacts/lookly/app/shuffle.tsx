@@ -111,6 +111,34 @@ function isSummerOnlyShoe(item: ClothingItem): boolean {
 /** Temperature threshold below which open-toe shoes are banned. */
 const SANDAL_TEMP_MIN = 22;
 
+// ─── Edgy style taglines ──────────────────────────────────────────────────────
+
+const TAGLINES: Record<string, string[]> = {
+  en: [
+    "READY TO BREAK THE MAINSTREAM",
+    "GOING AGAINST THE FLOW",
+    "BOLD EXPERIMENTATION",
+    "DEFYING THE STYLE RULES",
+  ],
+  ru: [
+    "ГОТОВ СЛОМАТЬ СТЕРЕОТИПЫ",
+    "ПРОТИВ ТЕЧЕНИЯ",
+    "СМЕЛЫЙ ЭКСПЕРИМЕНТ",
+    "ВНЕ ПРАВИЛ СТИЛЯ",
+  ],
+  uz: [
+    "MODA QOIDALARINI BUZISHGA TAYYOR",
+    "OQIMGA QARSHI",
+    "JASUR TAJRIBA",
+    "USLUB QOIDALARIDAN TASHQARI",
+  ],
+};
+
+function pickTagline(lang: string): string {
+  const pool = TAGLINES[lang] ?? TAGLINES.en!;
+  return pool[Math.floor(Math.random() * pool.length)]!;
+}
+
 /**
  * Discovery pick: heavily biases toward unworn / rarely-worn items.
  * This is the "forgotten clothes" engine — timesWorn=0 gets 6× weight,
@@ -170,7 +198,7 @@ type SlotMap = Partial<Record<ClothingCategory, ClothingItem | null>>;
 
 export default function ShuffleScreen() {
   const colors = useColors();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const insets = useSafeAreaInsets();
   const { items, markWorn, saveOutfit } = useWardrobe();
   const { temperature } = useWeather();
@@ -184,6 +212,7 @@ export default function ShuffleScreen() {
   const [isShuffling, setIsShuffling] = useState(false);
   const [hasSaved, setHasSaved] = useState(false);
   const [discoveryBannerVisible, setDiscoveryBannerVisible] = useState(false);
+  const [tagline, setTagline] = useState<string | null>(null);
 
   const bannerOpacity = useRef(new Animated.Value(0)).current;
   const spinValues = useRef<Partial<Record<ClothingCategory, Animated.Value>>>(
@@ -305,6 +334,7 @@ export default function ShuffleScreen() {
 
     Animated.parallel(animations).start();
     await doShuffle();
+    setTagline(pickTagline(lang));
 
     setTimeout(() => {
       setIsShuffling(false);
@@ -457,6 +487,23 @@ export default function ShuffleScreen() {
                   {t("lucky_discovery_banner")}
                 </Text>
               </Animated.View>
+            )}
+
+            {/* ── Tagline badge ─────────────────────────────────────────── */}
+            {tagline && filledCount > 0 && (
+              <View
+                style={[
+                  styles.taglineBadge,
+                  { borderColor: colors.accent + "55" },
+                ]}
+              >
+                <View
+                  style={[styles.taglineAccentBar, { backgroundColor: colors.accent }]}
+                />
+                <Text style={[styles.taglineText, { color: colors.accent }]}>
+                  {tagline}
+                </Text>
+              </View>
             )}
 
             {/* ── Outfit slots ─────────────────────────────────────────────── */}
@@ -795,4 +842,24 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   addBtnText: { fontSize: 14, fontWeight: "600" },
+  taglineBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 10,
+    overflow: "hidden",
+    marginBottom: 2,
+  },
+  taglineAccentBar: {
+    width: 4,
+    alignSelf: "stretch",
+  },
+  taglineText: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
 });
