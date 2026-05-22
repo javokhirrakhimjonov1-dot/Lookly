@@ -19,6 +19,7 @@ import { useDeals } from "@/contexts/DealsContext";
 import { useWeather } from "@/contexts/WeatherContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { getTimeLeft, useSquadVote } from "@/contexts/SquadVoteContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const ALERT_BG: Record<string, string> = {
   temperature_drop: "#EFF6FF",
@@ -52,15 +53,9 @@ function getInitials(name: string): string {
   return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
 }
 
-function getGreeting(): string {
-  const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  return "Good evening";
-}
-
 export default function HomeScreen() {
   const colors = useColors();
+  const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const { items } = useWardrobe();
   const { looks } = useSocial();
@@ -68,6 +63,13 @@ export default function HomeScreen() {
   const { weatherAlert, dismissAlert, condition, temperature } = useWeather();
   const { fullName } = useUserProfile();
   const { myPolls } = useSquadVote();
+
+  function getGreeting(): string {
+    const h = new Date().getHours();
+    if (h < 12) return t("greeting_morning");
+    if (h < 17) return t("greeting_afternoon");
+    return t("greeting_evening");
+  }
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const today = new Date().toLocaleDateString("en-US", {
@@ -160,10 +162,10 @@ export default function HomeScreen() {
         activeOpacity={0.88}
       >
         <View style={styles.weatherLookLeft}>
-          <Text style={styles.weatherLookLabel}>TODAY'S WEATHER</Text>
-          <Text style={styles.weatherLookTitle}>Make Your Look</Text>
+          <Text style={styles.weatherLookLabel}>{t("today_weather")}</Text>
+          <Text style={styles.weatherLookTitle}>{t("make_your_look")}</Text>
           <Text style={styles.weatherLookSub}>
-            AI picks the perfect outfit for {temperature}°C · {condition}
+            {t("ai_outfit_desc")} {temperature}°C · {condition}
           </Text>
         </View>
         <View style={styles.weatherLookIconWrap}>
@@ -180,13 +182,13 @@ export default function HomeScreen() {
       >
         <View style={styles.shuffleLeft}>
           <Text style={[styles.shuffleLabel, { color: "rgba(250,248,245,0.7)" }]}>
-            FEELING LUCKY?
+            {t("feeling_lucky")}
           </Text>
           <Text style={[styles.shuffleTitle, { color: colors.primaryForeground }]}>
-            Lucky Shuffle
+            {t("lucky_shuffle")}
           </Text>
           <Text style={[styles.shuffleSub, { color: "rgba(250,248,245,0.7)" }]}>
-            Lock items you love · shuffle the rest
+            {t("lucky_hint")}
           </Text>
         </View>
         <View style={[styles.shuffleIconWrap, { backgroundColor: "rgba(250,248,245,0.15)" }]}>
@@ -200,7 +202,7 @@ export default function HomeScreen() {
           style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
         >
           <Text style={[styles.statNumber, { color: colors.foreground }]}>{items.length}</Text>
-          <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Wardrobe items</Text>
+          <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{t("wardrobe_items")}</Text>
           <Feather name="layers" size={16} color={colors.accent} style={{ marginTop: 2 }} />
         </TouchableOpacity>
         <TouchableOpacity
@@ -208,7 +210,7 @@ export default function HomeScreen() {
           style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
         >
           <Text style={[styles.statNumber, { color: colors.foreground }]}>{looks.length}</Text>
-          <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Daily looks</Text>
+          <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{t("daily_looks_stat")}</Text>
           <Feather name="camera" size={16} color={colors.accent} style={{ marginTop: 2 }} />
         </TouchableOpacity>
         <TouchableOpacity
@@ -216,7 +218,7 @@ export default function HomeScreen() {
           style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
         >
           <Text style={[styles.statNumber, { color: "#DC2626" }]}>{urgentDeals.length}</Text>
-          <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Deals expiring</Text>
+          <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{t("deals_expiring")}</Text>
           <Feather name="tag" size={16} color="#DC2626" style={{ marginTop: 2 }} />
         </TouchableOpacity>
       </View>
@@ -247,8 +249,8 @@ export default function HomeScreen() {
           <View style={[styles.utilIcon, { backgroundColor: "#EFF6FF" }]}>
             <Feather name="calendar" size={18} color="#3B82F6" />
           </View>
-          <Text style={[styles.utilTitle, { color: colors.foreground }]}>Outfit Calendar</Text>
-          <Text style={[styles.utilSub, { color: colors.mutedForeground }]}>Track what you wore</Text>
+          <Text style={[styles.utilTitle, { color: colors.foreground }]}>{t("outfit_calendar")}</Text>
+          <Text style={[styles.utilSub, { color: colors.mutedForeground }]}>{t("track_wore")}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => router.push("/pack-trip")}
@@ -257,8 +259,8 @@ export default function HomeScreen() {
           <View style={[styles.utilIcon, { backgroundColor: colors.accent + "22" }]}>
             <Feather name="briefcase" size={18} color={colors.accent} />
           </View>
-          <Text style={[styles.utilTitle, { color: colors.foreground }]}>Pack for Trip</Text>
-          <Text style={[styles.utilSub, { color: colors.mutedForeground }]}>AI travel packing list</Text>
+          <Text style={[styles.utilTitle, { color: colors.foreground }]}>{t("pack_trip")}</Text>
+          <Text style={[styles.utilSub, { color: colors.mutedForeground }]}>{t("ai_packing")}</Text>
         </TouchableOpacity>
       </View>
 
@@ -269,11 +271,11 @@ export default function HomeScreen() {
             <View style={styles.squadCardLeft}>
               <View style={[styles.squadBadge, { backgroundColor: "#C8906A" }]}>
                 <Feather name="users" size={10} color="#FAF8F5" />
-                <Text style={styles.squadBadgeText}>LIVE VOTES</Text>
+                <Text style={styles.squadBadgeText}>{t("live_votes")}</Text>
               </View>
             </View>
             <TouchableOpacity onPress={() => router.push("/(tabs)/looks")}>
-              <Text style={[styles.seeAll, { color: colors.accent }]}>View all</Text>
+              <Text style={[styles.seeAll, { color: colors.accent }]}>{t("view_all")}</Text>
             </TouchableOpacity>
           </View>
 
@@ -289,7 +291,7 @@ export default function HomeScreen() {
                     {poll.outfitData.name}
                   </Text>
                   <Text style={[styles.squadPollSub, { color: colors.mutedForeground }]}>
-                    {total}/{poll.sentTo.length} voted · {getTimeLeft(poll.expiresAt)}
+                    {total}/{poll.sentTo.length} {t("voted")} · {getTimeLeft(poll.expiresAt)}
                   </Text>
                 </View>
                 <View style={styles.squadBarRow}>
@@ -320,7 +322,7 @@ export default function HomeScreen() {
 
           {myPolls.length > 2 && (
             <Text style={[styles.squadMore, { color: colors.mutedForeground }]}>
-              +{myPolls.length - 2} more active poll{myPolls.length > 3 ? "s" : ""}
+              +{myPolls.length - 2} {t(myPolls.length > 3 ? "more_polls_other" : "more_polls_one")}
             </Text>
           )}
         </View>
@@ -328,10 +330,10 @@ export default function HomeScreen() {
 
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-          Friends' Looks
+          {t("friends_looks")}
         </Text>
         <TouchableOpacity onPress={() => router.push("/(tabs)/looks")}>
-          <Text style={[styles.seeAll, { color: colors.accent }]}>See all</Text>
+          <Text style={[styles.seeAll, { color: colors.accent }]}>{t("see_all")}</Text>
         </TouchableOpacity>
       </View>
 

@@ -19,9 +19,11 @@ import { useColors } from "@/hooks/useColors";
 import { useSocial } from "@/contexts/SocialContext";
 import { useSquadVote } from "@/contexts/SquadVoteContext";
 import { useWeather } from "@/contexts/WeatherContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function LooksScreen() {
   const colors = useColors();
+  const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const { looks, addLook, toggleLike, removeLook } = useSocial();
   const { pendingPolls } = useSquadVote();
@@ -54,10 +56,10 @@ export default function LooksScreen() {
   };
 
   const handleDelete = (id: string) => {
-    Alert.alert("Remove look", "Remove this look from your feed?", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(t("remove_look"), t("remove_confirm"), [
+      { text: t("cancel"), style: "cancel" },
       {
-        text: "Remove",
+        text: t("remove"),
         style: "destructive",
         onPress: () => removeLook(id),
       },
@@ -76,14 +78,14 @@ export default function LooksScreen() {
           },
         ]}
       >
-        <Text style={[styles.title, { color: colors.foreground }]}>Daily Looks</Text>
+        <Text style={[styles.title, { color: colors.foreground }]}>{t("daily_looks_title")}</Text>
         <TouchableOpacity
           onPress={() => setShowPost(true)}
           style={[styles.postBtn, { backgroundColor: colors.primary }]}
         >
           <Feather name="camera" size={16} color={colors.primaryForeground} />
           <Text style={[styles.postBtnText, { color: colors.primaryForeground }]}>
-            Post Look
+            {t("post_look_btn")}
           </Text>
         </TouchableOpacity>
       </View>
@@ -101,14 +103,14 @@ export default function LooksScreen() {
             <View style={styles.votesSectionHeader}>
               <View style={[styles.votesBadge, { backgroundColor: "#C8906A" }]}>
                 <Feather name="users" size={11} color="#FAF8F5" />
-                <Text style={styles.votesBadgeText}>SQUAD VOTE</Text>
+                <Text style={styles.votesBadgeText}>{t("squad_vote_badge")}</Text>
               </View>
               <Text style={[styles.votesSectionCount, { color: colors.mutedForeground }]}>
-                {pendingPolls.length} pending
+                {pendingPolls.length} {t("pending")}
               </Text>
             </View>
             <Text style={[styles.votesSectionSub, { color: colors.mutedForeground }]}>
-              Friends want your opinion on their outfits
+              {t("friends_opinion")}
             </Text>
             {pendingPolls.map((poll) => (
               <SquadVoteCard key={poll.id} poll={poll} />
@@ -122,10 +124,10 @@ export default function LooksScreen() {
           <View style={styles.empty}>
             <Feather name="camera" size={40} color={colors.border} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              No looks yet
+              {t("no_looks")}
             </Text>
             <Text style={[styles.emptySubtitle, { color: colors.mutedForeground }]}>
-              Be the first to post your daily look
+              {t("be_first")}
             </Text>
           </View>
         ) : (
@@ -150,9 +152,9 @@ export default function LooksScreen() {
             ]}
           >
             <TouchableOpacity onPress={() => setShowPost(false)}>
-              <Text style={[styles.cancelText, { color: colors.mutedForeground }]}>Cancel</Text>
+              <Text style={[styles.cancelText, { color: colors.mutedForeground }]}>{t("cancel")}</Text>
             </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>New Look</Text>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>{t("new_look")}</Text>
             <TouchableOpacity
               onPress={handlePost}
               style={[
@@ -170,7 +172,7 @@ export default function LooksScreen() {
                   },
                 ]}
               >
-                Share
+                {t("share")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -179,10 +181,10 @@ export default function LooksScreen() {
             <View style={[styles.photoArea, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
               <Feather name="camera" size={36} color={colors.border} />
               <Text style={[styles.photoHint, { color: colors.mutedForeground }]}>
-                Tap to add photo
+                {t("tap_add_photo")}
               </Text>
               <Text style={[styles.photoNote, { color: colors.mutedForeground }]}>
-                (photo sharing coming soon)
+                {t("photo_coming_soon")}
               </Text>
             </View>
 
@@ -196,7 +198,7 @@ export default function LooksScreen() {
             <TextInput
               value={caption}
               onChangeText={setCaption}
-              placeholder="Describe your look today..."
+              placeholder={t("describe_look")}
               placeholderTextColor={colors.mutedForeground}
               multiline
               maxLength={200}
@@ -217,7 +219,7 @@ export default function LooksScreen() {
               <TextInput
                 value={tagInput}
                 onChangeText={setTagInput}
-                placeholder="Tags: ootd, casual, summer (comma-separated)"
+                placeholder={t("tags_placeholder")}
                 placeholderTextColor={colors.mutedForeground}
                 style={[styles.tagInput, { color: colors.foreground }]}
               />

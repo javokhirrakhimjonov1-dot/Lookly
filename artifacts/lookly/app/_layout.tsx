@@ -18,6 +18,7 @@ import { WardrobeProvider } from "@/contexts/WardrobeContext";
 import { WeatherProvider } from "@/contexts/WeatherContext";
 import { SocialProvider } from "@/contexts/SocialContext";
 import { SquadVoteProvider } from "@/contexts/SquadVoteContext";
+import { LanguageProvider } from "@/contexts/LanguageContext";
 import { DealsProvider } from "@/contexts/DealsContext";
 import { UserProfileProvider, useUserProfile } from "@/contexts/UserProfileContext";
 import { CalendarProvider } from "@/contexts/CalendarContext";
@@ -79,6 +80,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ErrorBoundary>
         <QueryClientProvider client={queryClient}>
+          <LanguageProvider>
           <UserProfileProvider>
             <WeatherProvider>
               <WardrobeProvider>
@@ -98,6 +100,7 @@ export default function RootLayout() {
               </WardrobeProvider>
             </WeatherProvider>
           </UserProfileProvider>
+          </LanguageProvider>
         </QueryClientProvider>
       </ErrorBoundary>
     </SafeAreaProvider>

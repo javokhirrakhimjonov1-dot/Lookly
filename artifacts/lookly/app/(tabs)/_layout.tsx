@@ -8,29 +8,31 @@ import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 
 import { useColors } from "@/hooks/useColors";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 function NativeTabLayout() {
+  const { t } = useLanguage();
   return (
     <NativeTabs>
       <NativeTabs.Trigger name="index">
         <Icon sf={{ default: "house", selected: "house.fill" }} />
-        <Label>Home</Label>
+        <Label>{t("tab_home")}</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="wardrobe">
         <Icon sf={{ default: "hanger", selected: "hanger" }} />
-        <Label>Wardrobe</Label>
+        <Label>{t("tab_wardrobe")}</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="looks">
         <Icon sf={{ default: "camera", selected: "camera.fill" }} />
-        <Label>Looks</Label>
+        <Label>{t("tab_looks")}</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="deals">
         <Icon sf={{ default: "tag", selected: "tag.fill" }} />
-        <Label>Deals</Label>
+        <Label>{t("tab_deals")}</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="stats">
         <Icon sf={{ default: "chart.bar", selected: "chart.bar.fill" }} />
-        <Label>Stats</Label>
+        <Label>{t("tab_stats")}</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -38,6 +40,7 @@ function NativeTabLayout() {
 
 function ClassicTabLayout() {
   const colors = useColors();
+  const { t } = useLanguage();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
@@ -82,7 +85,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
+          title: t("tab_home"),
           tabBarIcon: ({ color }) =>
             isIOS ? (
               <SymbolView name="house" tintColor={color} size={22} />
@@ -94,7 +97,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="wardrobe"
         options={{
-          title: "Wardrobe",
+          title: t("tab_wardrobe"),
           tabBarIcon: ({ color }) =>
             isIOS ? (
               <SymbolView name="tshirt" tintColor={color} size={22} />
@@ -106,7 +109,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="looks"
         options={{
-          title: "Looks",
+          title: t("tab_looks"),
           tabBarIcon: ({ color }) =>
             isIOS ? (
               <SymbolView name="camera" tintColor={color} size={22} />
@@ -118,7 +121,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="deals"
         options={{
-          title: "Deals",
+          title: t("tab_deals"),
           tabBarIcon: ({ color }) =>
             isIOS ? (
               <SymbolView name="tag" tintColor={color} size={22} />
@@ -130,7 +133,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="stats"
         options={{
-          title: "Stats",
+          title: t("tab_stats"),
           tabBarIcon: ({ color }) =>
             isIOS ? (
               <SymbolView name="chart.bar" tintColor={color} size={22} />

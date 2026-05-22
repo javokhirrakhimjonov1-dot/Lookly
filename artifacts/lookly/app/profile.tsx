@@ -18,13 +18,7 @@ import { useColors } from "@/hooks/useColors";
 import { useWardrobe } from "@/contexts/WardrobeContext";
 import { useSocial } from "@/contexts/SocialContext";
 import { type Gender, useUserProfile } from "@/contexts/UserProfileContext";
-
-const GENDER_OPTIONS: { key: Gender; label: string }[] = [
-  { key: "male", label: "Male" },
-  { key: "female", label: "Female" },
-  { key: "non-binary", label: "Non-binary" },
-  { key: "prefer_not_to_say", label: "Prefer not to say" },
-];
+import { type Language, useLanguage } from "@/contexts/LanguageContext";
 
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -35,6 +29,7 @@ function getInitials(name: string): string {
 
 export default function ProfileScreen() {
   const colors = useColors();
+  const { t, lang, setLang } = useLanguage();
   const insets = useSafeAreaInsets();
   const { items } = useWardrobe();
   const { looks } = useSocial();
@@ -50,6 +45,19 @@ export default function ProfileScreen() {
     captureBodyPhoto,
     clearBodyPhoto,
   } = useUserProfile();
+
+  const GENDER_OPTIONS: { key: Gender; label: string }[] = [
+    { key: "male", label: t("gender_male") },
+    { key: "female", label: t("gender_female") },
+    { key: "non-binary", label: t("gender_nonbinary") },
+    { key: "prefer_not_to_say", label: t("gender_prefer_not") },
+  ];
+
+  const LANG_OPTIONS: { key: Language; flag: string; label: string }[] = [
+    { key: "en", flag: "🇬🇧", label: "English" },
+    { key: "ru", flag: "🇷🇺", label: "Русский" },
+    { key: "uz", flag: "🇺🇿", label: "O'zbekcha" },
+  ];
 
   const [photoLoading, setPhotoLoading] = useState(false);
   const [localName, setLocalName] = useState(fullName);
@@ -85,20 +93,20 @@ export default function ProfileScreen() {
 
   const handleClear = () => {
     Alert.alert(
-      "Remove body photo?",
-      "Outfit previews will use a generic model instead of your reference photo.",
+      t("remove_photo_title"),
+      t("remove_photo_msg"),
       [
-        { text: "Cancel", style: "cancel" },
-        { text: "Remove", style: "destructive", onPress: clearBodyPhoto },
+        { text: t("cancel"), style: "cancel" },
+        { text: t("remove_btn"), style: "destructive", onPress: clearBodyPhoto },
       ]
     );
   };
 
   const rows = [
-    { icon: "bell" as const, label: "Deal notifications", description: "Get alerts for new Tashkent discounts" },
-    { icon: "cloud" as const, label: "Weather location", description: "Auto-detected · fallback to Tashkent" },
-    { icon: "shield" as const, label: "Privacy", description: "Manage who sees your looks" },
-    { icon: "info" as const, label: "About Lookly", description: "Version 1.0.0" },
+    { icon: "bell" as const, label: t("deal_notif"), description: t("deal_notif_desc") },
+    { icon: "cloud" as const, label: t("weather_loc"), description: t("weather_loc_desc") },
+    { icon: "shield" as const, label: t("privacy"), description: t("privacy_desc") },
+    { icon: "info" as const, label: t("about_lookly"), description: t("version") },
   ];
 
   return (
@@ -119,7 +127,7 @@ export default function ProfileScreen() {
         <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
           <Text style={[styles.avatarText, { color: colors.primaryForeground }]}>{initials}</Text>
         </View>
-        <Text style={[styles.name, { color: colors.foreground }]}>{displayName}</Text>
+        <Text style={[styles.name, { color: colors.foreground }]}>{displayName || t("your_profile")}</Text>
         {(gender || age) ? (
           <Text style={[styles.profileMeta, { color: colors.mutedForeground }]}>
             {[
@@ -130,16 +138,16 @@ export default function ProfileScreen() {
             ].filter(Boolean).join(" · ")}
           </Text>
         ) : null}
-        <Text style={[styles.location, { color: colors.mutedForeground }]}>Tashkent, Uzbekistan</Text>
+        <Text style={[styles.location, { color: colors.mutedForeground }]}>{t("tashkent_uz")}</Text>
         <View style={styles.statsRow}>
           <View style={styles.stat}>
             <Text style={[styles.statNumber, { color: colors.foreground }]}>{items.length}</Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Items</Text>
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{t("stat_items")}</Text>
           </View>
           <View style={[styles.dividerV, { backgroundColor: colors.border }]} />
           <View style={styles.stat}>
             <Text style={[styles.statNumber, { color: colors.foreground }]}>{myLooks.length}</Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>My Looks</Text>
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{t("stat_my_looks")}</Text>
           </View>
         </View>
       </View>
@@ -151,22 +159,22 @@ export default function ProfileScreen() {
             <Feather name="user" size={16} color={colors.accent} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>About You</Text>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t("about_you")}</Text>
             <Text style={[styles.sectionSub, { color: colors.mutedForeground }]}>
-              Helps personalise outfit suggestions and AI model previews
+              {t("personalise_hint")}
             </Text>
           </View>
         </View>
 
         {/* Full name */}
         <View style={styles.fieldGroup}>
-          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>FULL NAME</Text>
+          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>{t("full_name")}</Text>
           <TextInput
             style={[styles.textInput, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
             value={localName}
             onChangeText={setLocalName}
             onBlur={handleNameBlur}
-            placeholder="e.g. Dilnoza Yusupova"
+            placeholder={t("name_placeholder")}
             placeholderTextColor={colors.mutedForeground}
             autoCorrect={false}
             returnKeyType="done"
@@ -175,7 +183,7 @@ export default function ProfileScreen() {
 
         {/* Gender */}
         <View style={styles.fieldGroup}>
-          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>GENDER</Text>
+          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>{t("gender_label")}</Text>
           <View style={styles.genderRow}>
             {GENDER_OPTIONS.map((opt) => {
               const active = gender === opt.key;
@@ -207,20 +215,20 @@ export default function ProfileScreen() {
 
         {/* Age */}
         <View style={styles.fieldGroup}>
-          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>AGE</Text>
+          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>{t("age_label")}</Text>
           <View style={styles.ageRow}>
             <TextInput
               style={[styles.ageInput, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
               value={localAge}
               onChangeText={setLocalAge}
               onBlur={handleAgeBlur}
-              placeholder="e.g. 24"
+              placeholder={t("age_placeholder")}
               placeholderTextColor={colors.mutedForeground}
               keyboardType="number-pad"
               maxLength={3}
               returnKeyType="done"
             />
-            <Text style={[styles.ageHint, { color: colors.mutedForeground }]}>years old · ages 13–99</Text>
+            <Text style={[styles.ageHint, { color: colors.mutedForeground }]}>{t("years_old_hint")}</Text>
           </View>
         </View>
 
@@ -228,15 +236,15 @@ export default function ProfileScreen() {
           <View style={[styles.profileTip, { backgroundColor: "#F0FDF4", borderColor: "#BBF7D0" }]}>
             <Feather name="check-circle" size={13} color="#059669" />
             <Text style={[styles.profileTipText, { color: "#065F46" }]}>
-              AI outfit previews will be tailored for{" "}
-              {[firstName, gender && gender !== "prefer_not_to_say" ? GENDER_OPTIONS.find((g) => g.key === gender)?.label.toLowerCase() : null, age ? `age ${age}` : null].filter(Boolean).join(", ")}
+              {t("ai_tailored")}{" "}
+              {[firstName, gender && gender !== "prefer_not_to_say" ? GENDER_OPTIONS.find((g) => g.key === gender)?.label.toLowerCase() : null, age ? `${age}` : null].filter(Boolean).join(", ")}
             </Text>
           </View>
         ) : (
           <View style={[styles.profileTip, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
             <Feather name="info" size={13} color={colors.mutedForeground} />
             <Text style={[styles.profileTipText, { color: colors.mutedForeground }]}>
-              Fill in your details so the AI can generate outfit previews that look right for you
+              {t("fill_details")}
             </Text>
           </View>
         )}
@@ -249,9 +257,9 @@ export default function ProfileScreen() {
             <Feather name="camera" size={16} color={colors.accent} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Body Reference Photo</Text>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t("body_ref")}</Text>
             <Text style={[styles.sectionSub, { color: colors.mutedForeground }]}>
-              Used to personalise outfit previews so the model resembles you
+              {t("body_ref_hint")}
             </Text>
           </View>
         </View>
@@ -266,10 +274,10 @@ export default function ProfileScreen() {
             <View style={styles.photoInfo}>
               <View style={[styles.photoBadge, { backgroundColor: "#F0FDF4", borderColor: "#BBF7D0" }]}>
                 <Feather name="check-circle" size={13} color="#059669" />
-                <Text style={[styles.photoBadgeText, { color: "#059669" }]}>Reference photo set</Text>
+                <Text style={[styles.photoBadgeText, { color: "#059669" }]}>{t("ref_photo_set")}</Text>
               </View>
               <Text style={[styles.photoHint, { color: colors.mutedForeground }]}>
-                AI previews will use your body type and appearance as a guide
+                {t("ai_uses_body")}
               </Text>
               <View style={styles.photoActions}>
                 <TouchableOpacity
@@ -278,14 +286,14 @@ export default function ProfileScreen() {
                   style={[styles.photoActionBtn, { borderColor: colors.border }]}
                 >
                   <Feather name="refresh-cw" size={13} color={colors.accent} />
-                  <Text style={[styles.photoActionText, { color: colors.accent }]}>Replace</Text>
+                  <Text style={[styles.photoActionText, { color: colors.accent }]}>{t("replace")}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleClear}
                   style={[styles.photoActionBtn, { borderColor: "#FECACA" }]}
                 >
                   <Feather name="trash-2" size={13} color="#DC2626" />
-                  <Text style={[styles.photoActionText, { color: "#DC2626" }]}>Remove</Text>
+                  <Text style={[styles.photoActionText, { color: "#DC2626" }]}>{t("remove_btn")}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -295,13 +303,13 @@ export default function ProfileScreen() {
             <View style={[styles.bodyPhotoTip, { backgroundColor: colors.secondary }]}>
               <Feather name="info" size={14} color={colors.mutedForeground} />
               <Text style={[styles.bodyPhotoTipText, { color: colors.mutedForeground }]}>
-                Upload a clear, well-lit full-body photo standing straight. The AI will use your body type, skin tone, and hair to generate a personalised outfit preview.
+                {t("upload_hint")}
               </Text>
             </View>
             {photoLoading ? (
               <View style={styles.photoLoadingRow}>
                 <ActivityIndicator size="small" color={colors.accent} />
-                <Text style={[styles.photoLoadingText, { color: colors.mutedForeground }]}>Processing...</Text>
+                <Text style={[styles.photoLoadingText, { color: colors.mutedForeground }]}>{t("processing")}</Text>
               </View>
             ) : (
               <View style={styles.photoUploadBtns}>
@@ -310,19 +318,63 @@ export default function ProfileScreen() {
                   style={[styles.uploadBtn, { backgroundColor: colors.primary }]}
                 >
                   <Feather name="camera" size={15} color={colors.primaryForeground} />
-                  <Text style={[styles.uploadBtnText, { color: colors.primaryForeground }]}>Take photo</Text>
+                  <Text style={[styles.uploadBtnText, { color: colors.primaryForeground }]}>{t("take_photo")}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleUpload}
                   style={[styles.uploadBtn, { backgroundColor: colors.secondary, borderWidth: 1, borderColor: colors.border }]}
                 >
                   <Feather name="upload" size={15} color={colors.accent} />
-                  <Text style={[styles.uploadBtnText, { color: colors.accent }]}>Upload photo</Text>
+                  <Text style={[styles.uploadBtnText, { color: colors.accent }]}>{t("upload_photo")}</Text>
                 </TouchableOpacity>
               </View>
             )}
           </>
         )}
+      </View>
+
+      {/* Language */}
+      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={styles.sectionHeader}>
+          <View style={[styles.sectionIconWrap, { backgroundColor: colors.accent + "22" }]}>
+            <Feather name="globe" size={16} color={colors.accent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t("language_label")}</Text>
+            <Text style={[styles.sectionSub, { color: colors.mutedForeground }]}>{t("language_desc")}</Text>
+          </View>
+        </View>
+        <View style={styles.langRow}>
+          {LANG_OPTIONS.map((opt) => {
+            const active = lang === opt.key;
+            return (
+              <TouchableOpacity
+                key={opt.key}
+                onPress={() => setLang(opt.key)}
+                style={[
+                  styles.langPill,
+                  {
+                    backgroundColor: active ? colors.primary : colors.secondary,
+                    borderColor: active ? colors.primary : colors.border,
+                  },
+                ]}
+              >
+                <Text style={styles.langFlag}>{opt.flag}</Text>
+                <Text
+                  style={[
+                    styles.langPillText,
+                    { color: active ? colors.primaryForeground : colors.mutedForeground },
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+                {active && (
+                  <Feather name="check" size={12} color={colors.primaryForeground} />
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
 
       {/* Settings */}
@@ -426,6 +478,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1,
   },
   photoActionText: { fontSize: 12, fontWeight: "600" },
+  langRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  langPill: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 14, paddingVertical: 10, borderRadius: 100, borderWidth: 1,
+  },
+  langFlag: { fontSize: 16 },
+  langPillText: { fontSize: 14, fontWeight: "600" },
   settingsCard: { borderRadius: 18, borderWidth: 1, overflow: "hidden" },
   settingsRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16 },
   rowIcon: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },

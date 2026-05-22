@@ -12,16 +12,22 @@ import CategoryPill from "@/components/CategoryPill";
 import DealCard from "@/components/DealCard";
 import { useColors } from "@/hooks/useColors";
 import { useDeals } from "@/contexts/DealsContext";
-
-const CATEGORIES = ["All", "Women", "Men", "Kids"];
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function DealsScreen() {
   const colors = useColors();
+  const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const { filteredDeals, activeCategory, setActiveCategory, deals } = useDeals();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const newCount = deals.filter((d) => d.isNew).length;
+  const CATEGORIES: { key: string; label: string }[] = [
+    { key: "All", label: t("cat_all") },
+    { key: "Women", label: t("cat_women") },
+    { key: "Men", label: t("cat_men") },
+    { key: "Kids", label: t("cat_kids") },
+  ];
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -37,17 +43,17 @@ export default function DealsScreen() {
       >
         <View style={styles.headerTop}>
           <View>
-            <Text style={[styles.label, { color: colors.mutedForeground }]}>TASHKENT</Text>
-            <Text style={[styles.title, { color: colors.foreground }]}>Local Deals</Text>
+            <Text style={[styles.label, { color: colors.mutedForeground }]}>{t("tashkent")}</Text>
+            <Text style={[styles.title, { color: colors.foreground }]}>{t("local_deals")}</Text>
           </View>
           <View style={[styles.newBadge, { backgroundColor: "#DC2626" }]}>
-            <Text style={styles.newBadgeText}>{newCount} new</Text>
+            <Text style={styles.newBadgeText}>{newCount} {t("new_count")}</Text>
           </View>
         </View>
         <View style={[styles.infoCard, { backgroundColor: colors.secondary }]}>
           <Feather name="bell" size={14} color={colors.accent} />
           <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
-            Showing live discounts from Tashkent brands
+            {t("live_discounts")}
           </Text>
         </View>
         <ScrollView
@@ -57,10 +63,10 @@ export default function DealsScreen() {
         >
           {CATEGORIES.map((c) => (
             <CategoryPill
-              key={c}
-              label={c}
-              isActive={activeCategory === c}
-              onPress={() => setActiveCategory(c)}
+              key={c.key}
+              label={c.label}
+              isActive={activeCategory === c.key}
+              onPress={() => setActiveCategory(c.key)}
             />
           ))}
         </ScrollView>
@@ -74,7 +80,7 @@ export default function DealsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Text style={[styles.resultCount, { color: colors.mutedForeground }]}>
-          {filteredDeals.length} {filteredDeals.length === 1 ? "deal" : "deals"} found
+          {filteredDeals.length} {t(filteredDeals.length === 1 ? "deal_singular" : "deal_plural")} {t("deals_found_suffix")}
         </Text>
         {filteredDeals.map((deal) => (
           <DealCard key={deal.id} deal={deal} />
@@ -83,7 +89,7 @@ export default function DealsScreen() {
           <View style={styles.empty}>
             <Feather name="tag" size={40} color={colors.border} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              No deals in this category
+              {t("no_deals")}
             </Text>
           </View>
         )}

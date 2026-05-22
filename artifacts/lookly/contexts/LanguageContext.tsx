@@ -1,0 +1,444 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
+
+export type Language = "en" | "ru" | "uz";
+
+const STORAGE_KEY = "@lookly_language";
+
+const translations: Record<Language, Record<string, string>> = {
+  en: {
+    // Tabs
+    tab_home: "Home",
+    tab_wardrobe: "Wardrobe",
+    tab_looks: "Looks",
+    tab_deals: "Deals",
+    tab_stats: "Stats",
+
+    // Greetings
+    greeting_morning: "Good morning",
+    greeting_afternoon: "Good afternoon",
+    greeting_evening: "Good evening",
+
+    // Home screen
+    today_weather: "TODAY'S WEATHER",
+    make_your_look: "Make Your Look",
+    ai_outfit_desc: "AI picks the perfect outfit for",
+    feeling_lucky: "FEELING LUCKY?",
+    lucky_shuffle: "Lucky Shuffle",
+    lucky_hint: "Lock items you love · shuffle the rest",
+    wardrobe_items: "Wardrobe items",
+    daily_looks_stat: "Daily looks",
+    deals_expiring: "Deals expiring",
+    outfit_calendar: "Outfit Calendar",
+    track_wore: "Track what you wore",
+    pack_trip: "Pack for Trip",
+    ai_packing: "AI travel packing list",
+    friends_looks: "Friends' Looks",
+    see_all: "See all",
+    post_look_short: "Post look",
+    live_votes: "LIVE VOTES",
+    view_all: "View all",
+    voted: "voted",
+    more_polls_one: "more active poll",
+    more_polls_other: "more active polls",
+
+    // Wardrobe
+    my_wardrobe: "MY WARDROBE",
+    item_singular: "item",
+    item_plural: "items",
+    build_look: "Build Look",
+    cat_all: "All",
+    cat_tops: "Tops",
+    cat_bottoms: "Bottoms",
+    cat_dresses: "Dresses",
+    cat_outerwear: "Outerwear",
+    cat_shoes: "Shoes",
+    cat_accessories: "Accessories",
+    wardrobe_empty: "Your wardrobe is empty",
+    tap_add_first: "Tap the + button to add your first item",
+
+    // Looks
+    daily_looks_title: "Daily Looks",
+    post_look_btn: "Post Look",
+    squad_vote_badge: "SQUAD VOTE",
+    pending: "pending",
+    friends_opinion: "Friends want your opinion on their outfits",
+    no_looks: "No looks yet",
+    be_first: "Be the first to post your daily look",
+    remove_look: "Remove look",
+    remove_confirm: "Remove this look from your feed?",
+    cancel: "Cancel",
+    remove: "Remove",
+    new_look: "New Look",
+    share: "Share",
+    describe_look: "Describe your look today...",
+    tags_placeholder: "Tags: ootd, casual, summer (comma-separated)",
+    tap_add_photo: "Tap to add photo",
+    photo_coming_soon: "(photo sharing coming soon)",
+
+    // Deals
+    tashkent: "TASHKENT",
+    local_deals: "Local Deals",
+    new_count: "new",
+    live_discounts: "Showing live discounts from Tashkent brands",
+    cat_women: "Women",
+    cat_men: "Men",
+    cat_kids: "Kids",
+    deal_singular: "deal",
+    deal_plural: "deals",
+    deals_found_suffix: "found",
+    no_deals: "No deals in this category",
+
+    // Profile
+    your_profile: "Your Profile",
+    tashkent_uz: "Tashkent, Uzbekistan",
+    stat_items: "Items",
+    stat_my_looks: "My Looks",
+    about_you: "About You",
+    personalise_hint:
+      "Helps personalise outfit suggestions and AI model previews",
+    full_name: "FULL NAME",
+    gender_label: "GENDER",
+    age_label: "AGE",
+    years_old_hint: "years old · ages 13–99",
+    name_placeholder: "e.g. Dilnoza Yusupova",
+    age_placeholder: "e.g. 24",
+    gender_male: "Male",
+    gender_female: "Female",
+    gender_nonbinary: "Non-binary",
+    gender_prefer_not: "Prefer not to say",
+    ai_tailored: "AI outfit previews will be tailored for",
+    fill_details:
+      "Fill in your details so the AI can generate outfit previews that look right for you",
+    body_ref: "Body Reference Photo",
+    body_ref_hint: "Used to personalise outfit previews so the model resembles you",
+    upload_hint:
+      "Upload a clear, well-lit full-body photo standing straight. The AI will use your body type, skin tone, and hair to generate a personalised outfit preview.",
+    ref_photo_set: "Reference photo set",
+    ai_uses_body: "AI previews will use your body type and appearance as a guide",
+    replace: "Replace",
+    remove_btn: "Remove",
+    take_photo: "Take photo",
+    upload_photo: "Upload photo",
+    processing: "Processing...",
+    remove_photo_title: "Remove body photo?",
+    remove_photo_msg:
+      "Outfit previews will use a generic model instead of your reference photo.",
+    language_label: "Language",
+    language_desc: "Choose your preferred language",
+    deal_notif: "Deal notifications",
+    deal_notif_desc: "Get alerts for new Tashkent discounts",
+    weather_loc: "Weather location",
+    weather_loc_desc: "Auto-detected · fallback to Tashkent",
+    privacy: "Privacy",
+    privacy_desc: "Manage who sees your looks",
+    about_lookly: "About Lookly",
+    version: "Version 1.0.0",
+  },
+
+  ru: {
+    // Tabs
+    tab_home: "Главная",
+    tab_wardrobe: "Гардероб",
+    tab_looks: "Образы",
+    tab_deals: "Скидки",
+    tab_stats: "Статистика",
+
+    // Greetings
+    greeting_morning: "Доброе утро",
+    greeting_afternoon: "Добрый день",
+    greeting_evening: "Добрый вечер",
+
+    // Home screen
+    today_weather: "ПОГОДА СЕГОДНЯ",
+    make_your_look: "Создать образ",
+    ai_outfit_desc: "ИИ подберёт идеальный образ для",
+    feeling_lucky: "ПОПЫТАЙТЕ УДАЧУ?",
+    lucky_shuffle: "Случайный образ",
+    lucky_hint: "Зафиксируйте любимые вещи · перемешайте остальные",
+    wardrobe_items: "Вещей в гардеробе",
+    daily_looks_stat: "Дневных образов",
+    deals_expiring: "Скидок заканчивается",
+    outfit_calendar: "Календарь образов",
+    track_wore: "Отслеживайте, что вы носили",
+    pack_trip: "Собраться в поездку",
+    ai_packing: "ИИ список вещей для поездки",
+    friends_looks: "Образы друзей",
+    see_all: "Смотреть всё",
+    post_look_short: "Опубликовать",
+    live_votes: "АКТИВНЫЕ ГОЛОСА",
+    view_all: "Смотреть всё",
+    voted: "проголосовало",
+    more_polls_one: "ещё активный опрос",
+    more_polls_other: "ещё активных опросов",
+
+    // Wardrobe
+    my_wardrobe: "МОЙ ГАРДЕРОБ",
+    item_singular: "вещь",
+    item_plural: "вещей",
+    build_look: "Создать образ",
+    cat_all: "Все",
+    cat_tops: "Верх",
+    cat_bottoms: "Низ",
+    cat_dresses: "Платья",
+    cat_outerwear: "Верхняя одежда",
+    cat_shoes: "Обувь",
+    cat_accessories: "Аксессуары",
+    wardrobe_empty: "Ваш гардероб пуст",
+    tap_add_first: "Нажмите + чтобы добавить первую вещь",
+
+    // Looks
+    daily_looks_title: "Дневные образы",
+    post_look_btn: "Поделиться",
+    squad_vote_badge: "ГОЛОСОВАНИЕ",
+    pending: "ожидает",
+    friends_opinion: "Друзья хотят узнать ваше мнение об образах",
+    no_looks: "Образов пока нет",
+    be_first: "Станьте первым, кто поделится образом",
+    remove_look: "Удалить образ",
+    remove_confirm: "Удалить этот образ из ленты?",
+    cancel: "Отмена",
+    remove: "Удалить",
+    new_look: "Новый образ",
+    share: "Поделиться",
+    describe_look: "Опишите свой образ сегодня...",
+    tags_placeholder: "Теги: ootd, casual, summer (через запятую)",
+    tap_add_photo: "Нажмите, чтобы добавить фото",
+    photo_coming_soon: "(скоро будет доступно)",
+
+    // Deals
+    tashkent: "ТАШКЕНТ",
+    local_deals: "Местные скидки",
+    new_count: "новых",
+    live_discounts: "Актуальные скидки от ташкентских брендов",
+    cat_women: "Женщины",
+    cat_men: "Мужчины",
+    cat_kids: "Дети",
+    deal_singular: "скидка",
+    deal_plural: "скидок",
+    deals_found_suffix: "найдено",
+    no_deals: "Нет скидок в этой категории",
+
+    // Profile
+    your_profile: "Ваш профиль",
+    tashkent_uz: "Ташкент, Узбекистан",
+    stat_items: "Вещей",
+    stat_my_looks: "Мои образы",
+    about_you: "О вас",
+    personalise_hint: "Помогает персонализировать советы по образам и превью ИИ",
+    full_name: "ПОЛНОЕ ИМЯ",
+    gender_label: "ПОЛ",
+    age_label: "ВОЗРАСТ",
+    years_old_hint: "лет · возраст 13–99",
+    name_placeholder: "напр. Дильноза Юсупова",
+    age_placeholder: "напр. 24",
+    gender_male: "Мужской",
+    gender_female: "Женский",
+    gender_nonbinary: "Небинарный",
+    gender_prefer_not: "Предпочитаю не указывать",
+    ai_tailored: "Превью образов ИИ настроено для",
+    fill_details: "Заполните данные, чтобы ИИ создавал персональные превью образов",
+    body_ref: "Референс-фото тела",
+    body_ref_hint: "Используется для персонализации превью образов",
+    upload_hint:
+      "Загрузите чёткое, хорошо освещённое фото во весь рост. ИИ использует тип вашего тела, тон кожи и причёску для создания персонального превью.",
+    ref_photo_set: "Референс-фото установлено",
+    ai_uses_body: "ИИ будет использовать ваш тип тела как ориентир",
+    replace: "Заменить",
+    remove_btn: "Удалить",
+    take_photo: "Сфотографировать",
+    upload_photo: "Загрузить фото",
+    processing: "Обработка...",
+    remove_photo_title: "Удалить фото тела?",
+    remove_photo_msg:
+      "Превью образов будет использовать стандартную модель вместо вашего фото.",
+    language_label: "Язык",
+    language_desc: "Выберите предпочитаемый язык",
+    deal_notif: "Уведомления о скидках",
+    deal_notif_desc: "Получайте уведомления о новых скидках в Ташкенте",
+    weather_loc: "Местоположение погоды",
+    weather_loc_desc: "Автоопределение · резервный Ташкент",
+    privacy: "Конфиденциальность",
+    privacy_desc: "Управляйте тем, кто видит ваши образы",
+    about_lookly: "О приложении",
+    version: "Версия 1.0.0",
+  },
+
+  uz: {
+    // Tabs
+    tab_home: "Bosh sahifa",
+    tab_wardrobe: "Garderob",
+    tab_looks: "Ko'rinishlar",
+    tab_deals: "Chegirmalar",
+    tab_stats: "Statistika",
+
+    // Greetings
+    greeting_morning: "Xayrli tong",
+    greeting_afternoon: "Xayrli kun",
+    greeting_evening: "Xayrli kech",
+
+    // Home screen
+    today_weather: "BUGUNGI OB-HAVO",
+    make_your_look: "Ko'rinish yarating",
+    ai_outfit_desc: "AI ideal kiyim tanlaydi",
+    feeling_lucky: "OMADINGIZNI SINAB KO'RING?",
+    lucky_shuffle: "Tasodifiy tanlov",
+    lucky_hint: "Sevganlarni qulflang · qolganlarini aralashtiring",
+    wardrobe_items: "Garderobdagi kiyimlar",
+    daily_looks_stat: "Kunlik ko'rinishlar",
+    deals_expiring: "Chegirmalar tugaydi",
+    outfit_calendar: "Ko'rinishlar taqvimi",
+    track_wore: "Kiyganlaringizni kuzating",
+    pack_trip: "Safar uchun yig'ish",
+    ai_packing: "AI sayohat ro'yxati",
+    friends_looks: "Do'stlarning ko'rinishlari",
+    see_all: "Hammasini ko'rish",
+    post_look_short: "Ko'rinish ulashish",
+    live_votes: "FAOL OVOZLAR",
+    view_all: "Hammasini ko'rish",
+    voted: "ovoz berdi",
+    more_polls_one: "yana faol so'rovnoma",
+    more_polls_other: "yana faol so'rovnomalar",
+
+    // Wardrobe
+    my_wardrobe: "GARDEROBIM",
+    item_singular: "kiyim",
+    item_plural: "kiyim",
+    build_look: "Ko'rinish yaratish",
+    cat_all: "Barchasi",
+    cat_tops: "Ustki",
+    cat_bottoms: "Pastki",
+    cat_dresses: "Ko'ylaklar",
+    cat_outerwear: "Tashqi kiyim",
+    cat_shoes: "Oyoq kiyim",
+    cat_accessories: "Aksessuarlar",
+    wardrobe_empty: "Garderobingiz bo'sh",
+    tap_add_first: "Birinchi kiyimingizni qo'shish uchun + tugmasini bosing",
+
+    // Looks
+    daily_looks_title: "Kunlik ko'rinishlar",
+    post_look_btn: "Ko'rinish ulashish",
+    squad_vote_badge: "GURUH OVOZI",
+    pending: "kutilmoqda",
+    friends_opinion: "Do'stlaringiz kiyimlaringiz haqida fikringizni bilmoqchi",
+    no_looks: "Hali ko'rinishlar yo'q",
+    be_first: "Kunlik ko'rinish ulashgan birinchi bo'ling",
+    remove_look: "Ko'rinishni o'chirish",
+    remove_confirm: "Bu ko'rinishni lentangizdan o'chirasizmi?",
+    cancel: "Bekor qilish",
+    remove: "O'chirish",
+    new_look: "Yangi ko'rinish",
+    share: "Ulashish",
+    describe_look: "Bugungi ko'rinishingizni tasvirlab bering...",
+    tags_placeholder: "Teglar: ootd, casual, summer (vergul bilan)",
+    tap_add_photo: "Rasm qo'shish uchun bosing",
+    photo_coming_soon: "(tez orada qo'shiladi)",
+
+    // Deals
+    tashkent: "TOSHKENT",
+    local_deals: "Mahalliy chegirmalar",
+    new_count: "yangi",
+    live_discounts: "Toshkent brendlaridan jonli chegirmalar",
+    cat_women: "Ayollar",
+    cat_men: "Erkaklar",
+    cat_kids: "Bolalar",
+    deal_singular: "chegirma",
+    deal_plural: "chegirma",
+    deals_found_suffix: "topildi",
+    no_deals: "Bu toifada chegirmalar yo'q",
+
+    // Profile
+    your_profile: "Profilingiz",
+    tashkent_uz: "Toshkent, O'zbekiston",
+    stat_items: "Kiyimlar",
+    stat_my_looks: "Ko'rinishlarim",
+    about_you: "Siz haqingizda",
+    personalise_hint: "Kiyim tavsiyalarini va AI ko'rinishlarini shaxsiylashtirishga yordam beradi",
+    full_name: "TO'LIQ ISM",
+    gender_label: "JINS",
+    age_label: "YOSH",
+    years_old_hint: "yosh · 13–99 yosh",
+    name_placeholder: "mas. Dilnoza Yusupova",
+    age_placeholder: "mas. 24",
+    gender_male: "Erkak",
+    gender_female: "Ayol",
+    gender_nonbinary: "Noaniq",
+    gender_prefer_not: "Aytmaslikni afzal ko'raman",
+    ai_tailored: "AI kiyim ko'rinishlari moslashtiriladi",
+    fill_details:
+      "AI ko'rinishlarini moslashtirish uchun ma'lumotlaringizni kiriting",
+    body_ref: "Tana referens-fotosi",
+    body_ref_hint: "Ko'rinish oldindan ko'rishlarini moslashtirish uchun ishlatiladi",
+    upload_hint:
+      "Tik turgan holda aniq, yaxshi yoritilgan to'liq boy rasmingizni yuklang. AI tana turingiz, teri rangi va sochlaringizdan foydalanib shaxsiy ko'rinish yaratadi.",
+    ref_photo_set: "Referens-foto o'rnatildi",
+    ai_uses_body: "AI tana turingizdan ko'rinish yaratishda foydalanadi",
+    replace: "Almashtirish",
+    remove_btn: "O'chirish",
+    take_photo: "Rasm olish",
+    upload_photo: "Rasm yuklash",
+    processing: "Ishlanmoqda...",
+    remove_photo_title: "Tana rasmini o'chirasizmi?",
+    remove_photo_msg:
+      "Ko'rinish oldindan ko'rishlari referens-foto o'rniga umumiy modeldan foydalanadi.",
+    language_label: "Til",
+    language_desc: "Afzal ko'rgan tilingizni tanlang",
+    deal_notif: "Chegirma bildirisnomalar",
+    deal_notif_desc: "Toshkentdagi yangi chegirmalar haqida xabarnoma oling",
+    weather_loc: "Ob-havo joylashuvi",
+    weather_loc_desc: "Avtoaniqlanadi · zaxira Toshkent",
+    privacy: "Maxfiylik",
+    privacy_desc: "Kim ko'rinishlaringizni ko'rishini boshqaring",
+    about_lookly: "Lookly haqida",
+    version: "Versiya 1.0.0",
+  },
+};
+
+interface LanguageContextValue {
+  lang: Language;
+  setLang: (lang: Language) => Promise<void>;
+  t: (key: string) => string;
+}
+
+const LanguageContext = createContext<LanguageContextValue>({
+  lang: "en",
+  setLang: async () => {},
+  t: (k) => k,
+});
+
+export function LanguageProvider({ children }: { children: React.ReactNode }) {
+  const [lang, setLangState] = useState<Language>("en");
+
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEY).then((v) => {
+      if (v === "en" || v === "ru" || v === "uz") setLangState(v);
+    });
+  }, []);
+
+  const setLang = useCallback(async (l: Language) => {
+    setLangState(l);
+    await AsyncStorage.setItem(STORAGE_KEY, l);
+  }, []);
+
+  const t = useCallback(
+    (key: string) =>
+      translations[lang][key] ?? translations.en[key] ?? key,
+    [lang]
+  );
+
+  return (
+    <LanguageContext.Provider value={{ lang, setLang, t }}>
+      {children}
+    </LanguageContext.Provider>
+  );
+}
+
+export function useLanguage() {
+  return useContext(LanguageContext);
+}

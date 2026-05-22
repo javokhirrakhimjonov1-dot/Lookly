@@ -21,23 +21,25 @@ import {
   type ClothingItem,
   useWardrobe,
 } from "@/contexts/WardrobeContext";
-
-const CATEGORIES: { key: "all" | ClothingCategory; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "tops", label: "Tops" },
-  { key: "bottoms", label: "Bottoms" },
-  { key: "dresses", label: "Dresses" },
-  { key: "outerwear", label: "Outerwear" },
-  { key: "shoes", label: "Shoes" },
-  { key: "accessories", label: "Accessories" },
-];
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function WardrobeScreen() {
   const colors = useColors();
+  const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const { items, removeItem, isLoading } = useWardrobe();
   const [activeCategory, setActiveCategory] = useState<"all" | ClothingCategory>("all");
   const [selectedItem, setSelectedItem] = useState<ClothingItem | null>(null);
+
+  const CATEGORIES: { key: "all" | ClothingCategory; label: string }[] = [
+    { key: "all", label: t("cat_all") },
+    { key: "tops", label: t("cat_tops") },
+    { key: "bottoms", label: t("cat_bottoms") },
+    { key: "dresses", label: t("cat_dresses") },
+    { key: "outerwear", label: t("cat_outerwear") },
+    { key: "shoes", label: t("cat_shoes") },
+    { key: "accessories", label: t("cat_accessories") },
+  ];
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 100 : insets.bottom + 100;
@@ -77,9 +79,9 @@ export default function WardrobeScreen() {
       >
         <View style={styles.headerTop}>
           <View>
-            <Text style={[styles.label, { color: colors.mutedForeground }]}>MY WARDROBE</Text>
+            <Text style={[styles.label, { color: colors.mutedForeground }]}>{t("my_wardrobe")}</Text>
             <Text style={[styles.title, { color: colors.foreground }]}>
-              {items.length} {items.length === 1 ? "item" : "items"}
+              {items.length} {t(items.length === 1 ? "item_singular" : "item_plural")}
             </Text>
           </View>
           <TouchableOpacity
@@ -87,7 +89,7 @@ export default function WardrobeScreen() {
             style={[styles.buildBtn, { backgroundColor: colors.secondary }]}
           >
             <Feather name="scissors" size={15} color={colors.accent} />
-            <Text style={[styles.buildBtnText, { color: colors.accent }]}>Build Look</Text>
+            <Text style={[styles.buildBtnText, { color: colors.accent }]}>{t("build_look")}</Text>
           </TouchableOpacity>
         </View>
 
@@ -117,10 +119,12 @@ export default function WardrobeScreen() {
         <View style={[styles.empty, { paddingBottom: bottomPad }]}>
           <Feather name="layers" size={40} color={colors.border} />
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-            {activeCategory === "all" ? "Your wardrobe is empty" : `No ${activeCategory} yet`}
+            {activeCategory === "all"
+              ? t("wardrobe_empty")
+              : `${t(`cat_${activeCategory}`)} — ${t("wardrobe_empty").toLowerCase()}`}
           </Text>
           <Text style={[styles.emptySubtitle, { color: colors.mutedForeground }]}>
-            Tap the + button to add your first item
+            {t("tap_add_first")}
           </Text>
         </View>
       ) : (
