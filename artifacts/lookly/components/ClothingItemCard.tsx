@@ -43,8 +43,8 @@ export default function ClothingItemCard({ item, onPress }: Props) {
           />
         ) : (
           <View style={styles.noImage}>
-            <View style={[styles.colorDot, { backgroundColor: item.colorHex }]} />
-            <Feather name="shopping-bag" size={26} color="#C8B9AE" style={{ marginTop: 8 }} />
+            <Feather name="shopping-bag" size={28} color="#C8B9AE" />
+            <Text style={styles.noImageLabel} numberOfLines={1}>{item.category}</Text>
           </View>
         )}
 
@@ -122,14 +122,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#FFFFFF",
-    gap: 0,
+    gap: 6,
   },
-  colorDot: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.06)",
+  noImageLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#C8B9AE",
+    textTransform: "capitalize",
+    letterSpacing: 0.4,
   },
   heartBtn: {
     position: "absolute",

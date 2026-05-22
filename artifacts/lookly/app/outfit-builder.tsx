@@ -132,72 +132,47 @@ function SlotCard({ slotKey: _slotKey, label, icon, assignedItem, onClear, flex 
         animStyle,
         {
           flex,
-          backgroundColor: assignedItem ? assignedItem.colorHex : colors.card,
-          borderColor: assignedItem ? "transparent" : colors.border,
+          backgroundColor: "#FFFFFF",
+          borderColor: assignedItem ? "#EAEAEA" : colors.border,
           borderStyle: assignedItem ? "solid" : "dashed",
         },
       ]}
     >
       {assignedItem ? (
         <>
+          {assignedItem.imageUri ? (
+            <Image
+              source={{ uri: assignedItem.imageUri }}
+              style={StyleSheet.absoluteFillObject}
+              contentFit="contain"
+            />
+          ) : (
+            <View style={styles.slotNoImage}>
+              <Feather name={icon} size={22} color="#C8B9AE" />
+            </View>
+          )}
           <View style={styles.slotFilledContent}>
             <Text
-              style={[
-                styles.slotFilledName,
-                { color: isLight(assignedItem.colorHex) ? "#1C1512" : "#FAF8F5" },
-              ]}
+              style={[styles.slotFilledName, { color: "#1C1512" }]}
               numberOfLines={2}
             >
               {assignedItem.name}
             </Text>
-            <Text
-              style={[
-                styles.slotFilledSub,
-                {
-                  color: isLight(assignedItem.colorHex)
-                    ? "rgba(28,21,18,0.6)"
-                    : "rgba(250,248,245,0.7)",
-                },
-              ]}
-            >
+            <Text style={[styles.slotFilledSub, { color: "rgba(28,21,18,0.55)" }]}>
               {label}
             </Text>
           </View>
           {isLocked && (
-            <View
-              style={[
-                styles.lockBadge,
-                {
-                  backgroundColor: isLight(assignedItem.colorHex)
-                    ? "rgba(28,21,18,0.22)"
-                    : "rgba(250,248,245,0.25)",
-                },
-              ]}
-            >
-              <Feather
-                name="lock"
-                size={9}
-                color={isLight(assignedItem.colorHex) ? "#1C1512" : "#FAF8F5"}
-              />
+            <View style={[styles.lockBadge, { backgroundColor: "rgba(28,21,18,0.12)" }]}>
+              <Feather name="lock" size={9} color="#1C1512" />
             </View>
           )}
           <TouchableOpacity
             onPress={onClear}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={[
-              styles.clearBtn,
-              {
-                backgroundColor: isLight(assignedItem.colorHex)
-                  ? "rgba(28,21,18,0.15)"
-                  : "rgba(250,248,245,0.2)",
-              },
-            ]}
+            style={[styles.clearBtn, { backgroundColor: "rgba(28,21,18,0.10)" }]}
           >
-            <Feather
-              name="x"
-              size={12}
-              color={isLight(assignedItem.colorHex) ? "#1C1512" : "#FAF8F5"}
-            />
+            <Feather name="x" size={12} color="#1C1512" />
           </TouchableOpacity>
         </>
       ) : (
@@ -241,23 +216,21 @@ function DraggableItem({ item, isAssigned, onTap }: DraggableItemProps) {
       style={styles.draggableWrap}
     >
       <Animated.View style={animStyle}>
-        <View style={[styles.itemCard, { backgroundColor: item.colorHex }]}>
+        <View style={[styles.itemCard, { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#EAEAEA" }]}>
+          {item.imageUri ? (
+            <Image
+              source={{ uri: item.imageUri }}
+              style={StyleSheet.absoluteFillObject}
+              contentFit="contain"
+            />
+          ) : (
+            <View style={styles.itemCardNoImage}>
+              <Feather name="shopping-bag" size={22} color="#C8B9AE" />
+            </View>
+          )}
           {isAssigned && (
-            <View
-              style={[
-                styles.assignedOverlay,
-                {
-                  backgroundColor: isLight(item.colorHex)
-                    ? "rgba(28,21,18,0.18)"
-                    : "rgba(250,248,245,0.25)",
-                },
-              ]}
-            >
-              <Feather
-                name="check"
-                size={18}
-                color={isLight(item.colorHex) ? "#1C1512" : "#FAF8F5"}
-              />
+            <View style={[styles.assignedOverlay, { backgroundColor: "rgba(28,21,18,0.18)" }]}>
+              <Feather name="check" size={18} color="#FAF8F5" />
             </View>
           )}
         </View>
@@ -1146,6 +1119,11 @@ const styles = StyleSheet.create({
     gap: 6,
     padding: 12,
   },
+  slotNoImage: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   slotLabel: { fontSize: 11, fontWeight: "600", textAlign: "center" },
   slotFilledContent: { flex: 1, padding: 10, justifyContent: "flex-end" },
   slotFilledOverlay: { backgroundColor: "transparent" },
@@ -1227,6 +1205,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: "hidden",
     position: "relative",
+  },
+  itemCardNoImage: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
   },
   assignedOverlay: {
     ...StyleSheet.absoluteFillObject,

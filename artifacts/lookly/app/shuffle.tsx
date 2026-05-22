@@ -307,10 +307,7 @@ export default function ShuffleScreen() {
                         contentFit="contain"
                       />
                     ) : item ? (
-                      <View style={{ alignItems: "center", gap: 4 }}>
-                        <View style={[styles.colorDot, { backgroundColor: item.colorHex }]} />
-                        <Feather name={slot.icon} size={16} color="#C8B9AE" />
-                      </View>
+                      <Feather name={slot.icon} size={20} color="#C8B9AE" />
                     ) : (
                       <Feather name={slot.icon} size={20} color={colors.border} />
                     )}
@@ -329,9 +326,6 @@ export default function ShuffleScreen() {
                           {item.name}
                         </Text>
                         <View style={styles.slotMeta}>
-                          <View
-                            style={[styles.colorDot, { backgroundColor: item.colorHex }]}
-                          />
                           <Text style={[styles.slotMetaText, { color: colors.mutedForeground }]}>
                             {item.color} · {item.fabricWeight ?? "medium"}
                           </Text>
