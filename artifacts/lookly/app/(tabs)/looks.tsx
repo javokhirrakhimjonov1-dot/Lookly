@@ -14,14 +14,17 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import LookCard from "@/components/LookCard";
+import SquadVoteCard from "@/components/SquadVoteCard";
 import { useColors } from "@/hooks/useColors";
 import { useSocial } from "@/contexts/SocialContext";
+import { useSquadVote } from "@/contexts/SquadVoteContext";
 import { useWeather } from "@/contexts/WeatherContext";
 
 export default function LooksScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { looks, addLook, toggleLike, removeLook } = useSocial();
+  const { pendingPolls } = useSquadVote();
   const { condition, temperature } = useWeather();
   const [showPost, setShowPost] = useState(false);
   const [caption, setCaption] = useState("");
@@ -92,6 +95,29 @@ export default function LooksScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* ── Pending Squad Votes ── */}
+        {pendingPolls.length > 0 && (
+          <View style={styles.votesSection}>
+            <View style={styles.votesSectionHeader}>
+              <View style={[styles.votesBadge, { backgroundColor: "#C8906A" }]}>
+                <Feather name="users" size={11} color="#FAF8F5" />
+                <Text style={styles.votesBadgeText}>SQUAD VOTE</Text>
+              </View>
+              <Text style={[styles.votesSectionCount, { color: colors.mutedForeground }]}>
+                {pendingPolls.length} pending
+              </Text>
+            </View>
+            <Text style={[styles.votesSectionSub, { color: colors.mutedForeground }]}>
+              Friends want your opinion on their outfits
+            </Text>
+            {pendingPolls.map((poll) => (
+              <SquadVoteCard key={poll.id} poll={poll} />
+            ))}
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          </View>
+        )}
+
+        {/* ── Social Feed ── */}
         {looks.length === 0 ? (
           <View style={styles.empty}>
             <Feather name="camera" size={40} color={colors.border} />
@@ -114,6 +140,7 @@ export default function LooksScreen() {
         )}
       </ScrollView>
 
+      {/* ── Post modal ── */}
       <Modal visible={showPost} animationType="slide" presentationStyle="pageSheet">
         <View style={[styles.modal, { backgroundColor: colors.background }]}>
           <View
@@ -203,9 +230,7 @@ export default function LooksScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
+  root: { flex: 1 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -214,10 +239,7 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     borderBottomWidth: 1,
   },
-  title: {
-    fontSize: 26,
-    fontWeight: "700",
-  },
+  title: { fontSize: 26, fontWeight: "700" },
   postBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -226,31 +248,57 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 100,
   },
-  postBtnText: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
+  postBtnText: { fontSize: 14, fontWeight: "600" },
   content: {
     paddingHorizontal: 18,
     paddingTop: 16,
+  },
+  votesSection: {
+    marginBottom: 4,
+  },
+  votesSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 4,
+  },
+  votesBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  votesBadgeText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#FAF8F5",
+    letterSpacing: 0.8,
+  },
+  votesSectionCount: {
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  votesSectionSub: {
+    fontSize: 12,
+    fontWeight: "400",
+    marginBottom: 12,
+    lineHeight: 17,
+  },
+  divider: {
+    height: 1,
+    marginBottom: 16,
+    marginTop: 4,
   },
   empty: {
     alignItems: "center",
     paddingVertical: 60,
     gap: 10,
   },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginTop: 8,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    textAlign: "center",
-  },
-  modal: {
-    flex: 1,
-  },
+  emptyTitle: { fontSize: 18, fontWeight: "600", marginTop: 8 },
+  emptySubtitle: { fontSize: 14, textAlign: "center" },
+  modal: { flex: 1 },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -259,27 +307,15 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     borderBottomWidth: 1,
   },
-  cancelText: {
-    fontSize: 15,
-    fontWeight: "500",
-  },
-  modalTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-  },
+  cancelText: { fontSize: 15, fontWeight: "500" },
+  modalTitle: { fontSize: 17, fontWeight: "700" },
   shareBtn: {
     paddingHorizontal: 18,
     paddingVertical: 8,
     borderRadius: 100,
   },
-  shareBtnText: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  modalContent: {
-    padding: 18,
-    gap: 14,
-  },
+  shareBtnText: { fontSize: 14, fontWeight: "600" },
+  modalContent: { padding: 18, gap: 14 },
   photoArea: {
     height: 200,
     borderRadius: 18,
@@ -289,13 +325,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
   },
-  photoHint: {
-    fontSize: 15,
-    fontWeight: "500",
-  },
-  photoNote: {
-    fontSize: 12,
-  },
+  photoHint: { fontSize: 15, fontWeight: "500" },
+  photoNote: { fontSize: 12 },
   weatherChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -305,10 +336,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignSelf: "flex-start",
   },
-  weatherChipText: {
-    fontSize: 13,
-    fontWeight: "500",
-  },
+  weatherChipText: { fontSize: 13, fontWeight: "500" },
   captionInput: {
     borderWidth: 1,
     borderRadius: 14,
@@ -325,8 +353,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  tagInput: {
-    flex: 1,
-    fontSize: 14,
-  },
+  tagInput: { flex: 1, fontSize: 14 },
 });

@@ -18,6 +18,7 @@ import { useWardrobe } from "@/contexts/WardrobeContext";
 import { useDeals } from "@/contexts/DealsContext";
 import { useWeather } from "@/contexts/WeatherContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
+import { getTimeLeft, useSquadVote } from "@/contexts/SquadVoteContext";
 
 const ALERT_BG: Record<string, string> = {
   temperature_drop: "#EFF6FF",
@@ -66,6 +67,7 @@ export default function HomeScreen() {
   const { deals } = useDeals();
   const { weatherAlert, dismissAlert, condition, temperature } = useWeather();
   const { fullName } = useUserProfile();
+  const { myPolls } = useSquadVote();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const today = new Date().toLocaleDateString("en-US", {
@@ -259,6 +261,70 @@ export default function HomeScreen() {
           <Text style={[styles.utilSub, { color: colors.mutedForeground }]}>AI travel packing list</Text>
         </TouchableOpacity>
       </View>
+
+      {/* ── Live Squad Votes (creator view) ── */}
+      {myPolls.length > 0 && (
+        <View style={[styles.squadCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.squadCardHeader}>
+            <View style={styles.squadCardLeft}>
+              <View style={[styles.squadBadge, { backgroundColor: "#C8906A" }]}>
+                <Feather name="users" size={10} color="#FAF8F5" />
+                <Text style={styles.squadBadgeText}>LIVE VOTES</Text>
+              </View>
+            </View>
+            <TouchableOpacity onPress={() => router.push("/(tabs)/looks")}>
+              <Text style={[styles.seeAll, { color: colors.accent }]}>View all</Text>
+            </TouchableOpacity>
+          </View>
+
+          {myPolls.slice(0, 2).map((poll) => {
+            const hearts = poll.votes.filter((v) => v.response === "heart").length;
+            const total = poll.votes.length;
+            const ratio = total > 0 ? hearts / total : 0;
+            const heartPct = Math.round(ratio * 100);
+            return (
+              <View key={poll.id} style={styles.squadPollRow}>
+                <View style={styles.squadPollMeta}>
+                  <Text style={[styles.squadPollName, { color: colors.foreground }]} numberOfLines={1}>
+                    {poll.outfitData.name}
+                  </Text>
+                  <Text style={[styles.squadPollSub, { color: colors.mutedForeground }]}>
+                    {total}/{poll.sentTo.length} voted · {getTimeLeft(poll.expiresAt)}
+                  </Text>
+                </View>
+                <View style={styles.squadBarRow}>
+                  <View style={[styles.squadBarTrack, { backgroundColor: colors.secondary }]}>
+                    <View
+                      style={[
+                        styles.squadBarFill,
+                        { backgroundColor: "#C8906A", width: `${heartPct}%` as `${number}%` },
+                      ]}
+                    />
+                  </View>
+                  <View style={styles.squadBarLabels}>
+                    <View style={styles.squadBarLabel}>
+                      <Feather name="heart" size={10} color="#C8906A" />
+                      <Text style={[styles.squadBarPct, { color: "#C8906A" }]}>{heartPct}%</Text>
+                    </View>
+                    <View style={styles.squadBarLabel}>
+                      <Text style={[styles.squadBarPct, { color: colors.mutedForeground }]}>
+                        {100 - heartPct}%
+                      </Text>
+                      <Feather name="x" size={10} color={colors.mutedForeground} />
+                    </View>
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+
+          {myPolls.length > 2 && (
+            <Text style={[styles.squadMore, { color: colors.mutedForeground }]}>
+              +{myPolls.length - 2} more active poll{myPolls.length > 3 ? "s" : ""}
+            </Text>
+          )}
+        </View>
+      )}
 
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
@@ -559,5 +625,85 @@ const styles = StyleSheet.create({
   addLookText: {
     fontSize: 12,
     fontWeight: "500",
+  },
+  squadCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 16,
+    gap: 12,
+  },
+  squadCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  squadCardLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  squadBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  squadBadgeText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#FAF8F5",
+    letterSpacing: 0.8,
+  },
+  squadPollRow: {
+    gap: 6,
+  },
+  squadPollMeta: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    gap: 8,
+  },
+  squadPollName: {
+    fontSize: 13,
+    fontWeight: "700",
+    flex: 1,
+  },
+  squadPollSub: {
+    fontSize: 11,
+    fontWeight: "400",
+    flexShrink: 0,
+  },
+  squadBarRow: {
+    gap: 4,
+  },
+  squadBarTrack: {
+    height: 8,
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  squadBarFill: {
+    height: "100%",
+    borderRadius: 4,
+  },
+  squadBarLabels: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  squadBarLabel: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  squadBarPct: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  squadMore: {
+    fontSize: 12,
+    fontWeight: "500",
+    textAlign: "center",
+    marginTop: 4,
   },
 });

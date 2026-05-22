@@ -1,0 +1,27 @@
+Please build a social micro-polling feature called 'Squad Vote' for Lookly using a Heart/Dislike interaction system. This allows users to share AI outfit suggestions with selected friends for feedback before wearing them.
+
+Implementation Steps:
+
+1. Data Architecture:
+   - Expand our local mock data schema or database to include a 'Poll' model:
+     * id (String)
+     * creatorId (String)
+     * outfitData (Object containing outfit name, items, and preview image uri)
+     * votes (Array of objects tracking: { friendName: String, response: 'heart' | 'dislike' })
+     * expiresAt (Timestamp, defaults to 2 hours from creation)
+
+2. UI Share Component (Home Screen / AI Suggestions):
+   - Add a clean, minimalist share icon or button titled "Ask Friends" directly onto each AI outfit recommendation card.
+   - Tapping this button must open a modal displaying a list of selectable friend profiles along with an action button labeled "Send to Squad".
+
+3. The Friend Voting Component (Looks / Feed Tab):
+   - Build a 'Pending Votes' section at the top of the social feed.
+   - When a friend shares a look, render a premium voting card displaying the full-body outfit preview image, the creator's name, and two prominent, high-contrast action buttons side-by-side:
+     * A Heart Button (Icon transitions to filled Caramel #C8906A or subtle red on press) indicating "Love It / Wear It".
+     * A Dislike Button (A clean modern "X" or explicit dislike signifier matching Espresso #1C1512) indicating "Skip It".
+   - Tapping either action registers the vote instantly and animates the card into a live percentage breakdown bar showing the ratio of Hearts vs. Dislikes.
+
+4. Creator Feedback Loop:
+   - On the creator's Home Screen or Profile, provide a "Live Outfits Voting" card component that reads the current poll state, displaying a real-time progress bar of how many Hearts vs. Dislikes their look is pulling from the squad.
+
+Maintain our structural palette guidelines (Warm Cream, Espresso text, and Caramel accents) for all new buttons, cards, and animation states.

@@ -17,6 +17,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { WardrobeProvider } from "@/contexts/WardrobeContext";
 import { WeatherProvider } from "@/contexts/WeatherContext";
 import { SocialProvider } from "@/contexts/SocialContext";
+import { SquadVoteProvider } from "@/contexts/SquadVoteContext";
 import { DealsProvider } from "@/contexts/DealsContext";
 import { UserProfileProvider, useUserProfile } from "@/contexts/UserProfileContext";
 import { CalendarProvider } from "@/contexts/CalendarContext";
@@ -83,6 +84,7 @@ export default function RootLayout() {
               <WardrobeProvider>
                 <CalendarProvider>
                   <SocialProvider>
+                    <SquadVoteProvider>
                     <DealsProvider>
                       <GestureHandlerRootView>
                         <KeyboardProvider>
@@ -90,6 +92,7 @@ export default function RootLayout() {
                         </KeyboardProvider>
                       </GestureHandlerRootView>
                     </DealsProvider>
+                    </SquadVoteProvider>
                   </SocialProvider>
                 </CalendarProvider>
               </WardrobeProvider>

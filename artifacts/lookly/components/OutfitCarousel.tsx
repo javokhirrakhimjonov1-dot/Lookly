@@ -5,8 +5,10 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
+  Modal,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,6 +19,11 @@ import { useColors } from "@/hooks/useColors";
 import { useWardrobe, type ClothingItem } from "@/contexts/WardrobeContext";
 import { useWeather } from "@/contexts/WeatherContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
+import {
+  SQUAD_FRIENDS,
+  type PollOutfitData,
+  useSquadVote,
+} from "@/contexts/SquadVoteContext";
 
 const SCREEN_W = Dimensions.get("window").width;
 const CARD_H = 500;
@@ -44,6 +51,123 @@ interface Outfit {
   items: OutfitItem[];
 }
 
+interface SquadModalProps {
+  visible: boolean;
+  outfitName: string;
+  onClose: () => void;
+  onSend: (friendNames: string[]) => void;
+}
+
+function SquadModal({ visible, outfitName, onClose, onSend }: SquadModalProps) {
+  const colors = useColors();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const toggle = (name: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const handleSend = () => {
+    if (selected.size === 0) return;
+    onSend(Array.from(selected));
+    setSelected(new Set());
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={[squadStyles.root, { backgroundColor: colors.background }]}>
+        <View style={[squadStyles.header, { borderBottomColor: colors.border }]}>
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Text style={[squadStyles.cancel, { color: colors.mutedForeground }]}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={[squadStyles.title, { color: colors.foreground }]}>Ask Your Squad</Text>
+          <View style={{ width: 52 }} />
+        </View>
+
+        <View style={[squadStyles.outfitChip, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+          <Feather name="scissors" size={13} color="#C8906A" />
+          <Text style={[squadStyles.outfitChipText, { color: colors.foreground }]} numberOfLines={1}>
+            {outfitName}
+          </Text>
+        </View>
+
+        <Text style={[squadStyles.subtitle, { color: colors.mutedForeground }]}>
+          Select friends to vote on this outfit
+        </Text>
+
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={squadStyles.friendList}>
+          {SQUAD_FRIENDS.map((friend) => {
+            const isSelected = selected.has(friend.name);
+            return (
+              <Pressable
+                key={friend.id}
+                onPress={() => toggle(friend.name)}
+                style={[
+                  squadStyles.friendRow,
+                  {
+                    backgroundColor: isSelected ? "#C8906A14" : colors.card,
+                    borderColor: isSelected ? "#C8906A" : colors.border,
+                  },
+                ]}
+              >
+                <View style={[squadStyles.friendAvatar, { backgroundColor: isSelected ? "#C8906A" : colors.secondary }]}>
+                  <Text style={[squadStyles.friendAvatarText, { color: isSelected ? "#FAF8F5" : colors.mutedForeground }]}>
+                    {friend.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[squadStyles.friendName, { color: colors.foreground }]}>{friend.name}</Text>
+                  <Text style={[squadStyles.friendHandle, { color: colors.mutedForeground }]}>@{friend.handle}</Text>
+                </View>
+                <View
+                  style={[
+                    squadStyles.checkbox,
+                    {
+                      backgroundColor: isSelected ? "#C8906A" : "transparent",
+                      borderColor: isSelected ? "#C8906A" : colors.border,
+                    },
+                  ]}
+                >
+                  {isSelected && <Feather name="check" size={12} color="#FAF8F5" />}
+                </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        <View style={[squadStyles.footer, { borderTopColor: colors.border, backgroundColor: colors.background }]}>
+          <TouchableOpacity
+            onPress={handleSend}
+            disabled={selected.size === 0}
+            style={[
+              squadStyles.sendBtn,
+              {
+                backgroundColor: selected.size > 0 ? "#C8906A" : colors.secondary,
+              },
+            ]}
+          >
+            <Feather name="send" size={16} color={selected.size > 0 ? "#FAF8F5" : colors.mutedForeground} />
+            <Text
+              style={[
+                squadStyles.sendBtnText,
+                { color: selected.size > 0 ? "#FAF8F5" : colors.mutedForeground },
+              ]}
+            >
+              {selected.size > 0
+                ? `Send to Squad (${selected.size})`
+                : "Select friends first"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function OutfitCard({
   outfit,
   wardrobeMap,
@@ -66,10 +190,13 @@ function OutfitCard({
   userAge?: number | null;
 }) {
   const colors = useColors();
+  const { createPoll } = useSquadVote();
   const moodColor = MOOD_COLORS[outfit.mood] ?? colors.accent;
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [genFailed, setGenFailed] = useState(false);
+  const [showSquadModal, setShowSquadModal] = useState(false);
+  const [pollSent, setPollSent] = useState(false);
   const generated = useRef(false);
 
   const resolvedItems = outfit.items
@@ -114,6 +241,23 @@ function OutfitCard({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleSendToSquad = async (friendNames: string[]) => {
+    const pollItems: PollOutfitData["items"] = resolvedItems.map((i) => ({
+      name: i.name,
+      color: i.color,
+      category: i.category,
+    }));
+    const pollData: PollOutfitData = {
+      name: outfit.name,
+      mood: outfit.mood,
+      previewImage: previewImage ?? undefined,
+      items: pollItems,
+    };
+    await createPoll(pollData, friendNames);
+    setShowSquadModal(false);
+    setPollSent(true);
+  };
+
   const imageAreaH = CARD_H - 72;
 
   return (
@@ -150,12 +294,10 @@ function OutfitCard({
           </View>
         ) : null}
 
-        {/* Mood pill always visible over image */}
         <View style={[styles.moodPill, { backgroundColor: moodColor }]}>
           <Text style={styles.moodText}>{outfit.mood.toUpperCase()}</Text>
         </View>
 
-        {/* Gradient scrim at bottom of image for readability */}
         {previewImage && (
           <View style={styles.imageScrim} pointerEvents="none" />
         )}
@@ -167,10 +309,26 @@ function OutfitCard({
           <Text style={[styles.outfitName, { color: colors.foreground }]} numberOfLines={1}>
             {outfit.name}
           </Text>
-          <Text style={[styles.weatherNote, { color: colors.mutedForeground }]} numberOfLines={2}>
+          <Text style={[styles.weatherNote, { color: colors.mutedForeground }]} numberOfLines={1}>
             {outfit.weatherNote ?? `${temperature}°C · ${weatherDesc}`}
           </Text>
         </View>
+
+        {/* Ask Squad button */}
+        <TouchableOpacity
+          onPress={() => !pollSent && setShowSquadModal(true)}
+          style={[
+            styles.squadBtn,
+            { backgroundColor: pollSent ? colors.secondary : "#C8906A18" },
+          ]}
+        >
+          {pollSent ? (
+            <Feather name="check" size={14} color="#C8906A" />
+          ) : (
+            <Feather name="users" size={14} color="#C8906A" />
+          )}
+        </TouchableOpacity>
+
         <TouchableOpacity
           onPress={() => router.push("/outfit-builder")}
           style={[styles.buildBtn, { backgroundColor: colors.primary }]}
@@ -181,6 +339,13 @@ function OutfitCard({
           </Text>
         </TouchableOpacity>
       </View>
+
+      <SquadModal
+        visible={showSquadModal}
+        outfitName={outfit.name}
+        onClose={() => setShowSquadModal(false)}
+        onSend={handleSendToSquad}
+      />
     </View>
   );
 }
@@ -439,15 +604,22 @@ const styles = StyleSheet.create({
   cardBody: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 14,
-    gap: 12,
+    gap: 8,
     height: 72,
   },
   cardInfo: { flex: 1 },
   outfitName: { fontSize: 16, fontWeight: "700", marginBottom: 3 },
   weatherNote: { fontSize: 12, fontWeight: "400" },
+  squadBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
   buildBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -465,4 +637,81 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   dot: { height: 6, borderRadius: 3 },
+});
+
+const squadStyles = StyleSheet.create({
+  root: { flex: 1 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 18,
+    paddingTop: 20,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+  },
+  cancel: { fontSize: 15, fontWeight: "500" },
+  title: { fontSize: 17, fontWeight: "700" },
+  outfitChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    marginHorizontal: 18,
+    marginTop: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  outfitChipText: { fontSize: 14, fontWeight: "600", flex: 1 },
+  subtitle: {
+    fontSize: 13,
+    fontWeight: "400",
+    marginHorizontal: 18,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  friendList: { paddingHorizontal: 18, paddingTop: 8, gap: 8 },
+  friendRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+  },
+  friendAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  friendAvatarText: { fontSize: 13, fontWeight: "700" },
+  friendName: { fontSize: 14, fontWeight: "600", marginBottom: 1 },
+  friendHandle: { fontSize: 11, fontWeight: "400" },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  footer: {
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+  },
+  sendBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 15,
+    borderRadius: 16,
+  },
+  sendBtnText: { fontSize: 15, fontWeight: "700" },
 });
