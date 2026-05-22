@@ -33,6 +33,7 @@ import {
 import { useSocial } from "@/contexts/SocialContext";
 import { useWeather } from "@/contexts/WeatherContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 type OutfitSlotKey = "outerwear" | "tops" | "bottoms" | "dresses" | "shoes" | "accessories";
 
@@ -151,17 +152,6 @@ function SlotCard({ slotKey: _slotKey, label, icon, assignedItem, onClear, flex 
               <Feather name={icon} size={22} color="#C8B9AE" />
             </View>
           )}
-          <View style={styles.slotFilledContent}>
-            <Text
-              style={[styles.slotFilledName, { color: "#1C1512" }]}
-              numberOfLines={2}
-            >
-              {assignedItem.name}
-            </Text>
-            <Text style={[styles.slotFilledSub, { color: "rgba(28,21,18,0.55)" }]}>
-              {label}
-            </Text>
-          </View>
           {isLocked && (
             <View style={[styles.lockBadge, { backgroundColor: "rgba(28,21,18,0.12)" }]}>
               <Feather name="lock" size={9} color="#1C1512" />
@@ -245,15 +235,7 @@ function DraggableItem({ item, isAssigned, onTap }: DraggableItemProps) {
   );
 }
 
-const FILTER_CATEGORIES: { key: "all" | ClothingCategory; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "tops", label: "Tops" },
-  { key: "bottoms", label: "Bottoms" },
-  { key: "dresses", label: "Dresses" },
-  { key: "outerwear", label: "Outerwear" },
-  { key: "shoes", label: "Shoes" },
-  { key: "accessories", label: "Accessories" },
-];
+// FILTER_CATEGORIES is built inside the component using t() — see below
 
 export default function OutfitBuilderScreen() {
   const colors = useColors();
@@ -262,6 +244,17 @@ export default function OutfitBuilderScreen() {
   const { addLook } = useSocial();
   const { condition, temperature, weatherCode } = useWeather();
   const { bodyPhotoBase64, bodyPhotoMime, gender, age } = useUserProfile();
+  const { t } = useLanguage();
+
+  const FILTER_CATEGORIES: { key: "all" | ClothingCategory; label: string }[] = [
+    { key: "all", label: t("cat_all") },
+    { key: "tops", label: t("cat_tops") },
+    { key: "bottoms", label: t("cat_bottoms") },
+    { key: "dresses", label: t("cat_dresses") },
+    { key: "outerwear", label: t("cat_outerwear") },
+    { key: "shoes", label: t("cat_shoes") },
+    { key: "accessories", label: t("cat_accessories") },
+  ];
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -512,11 +505,11 @@ export default function OutfitBuilderScreen() {
           <Feather name="arrow-left" size={22} color={colors.foreground} />
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={[styles.headerTitle, { color: colors.foreground }]}>Make Your Look</Text>
+          <Text style={[styles.headerTitle, { color: colors.foreground }]}>{t("make_your_look")}</Text>
           <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
             {pieceCount === 0
-              ? "Tap items below to build your outfit"
-              : `${pieceCount} piece${pieceCount > 1 ? "s" : ""} selected`}
+              ? t("ob_tap_to_build")
+              : `${pieceCount} ${t(pieceCount === 1 ? "ob_piece" : "ob_pieces")} ${t("ob_selected")}`}
           </Text>
         </View>
         <TouchableOpacity
@@ -539,7 +532,7 @@ export default function OutfitBuilderScreen() {
             <Feather name={hasDoneAuto ? "refresh-cw" : "zap"} size={14} color={colors.accent} />
           )}
           <Text style={[styles.autoBtnText, { color: colors.accent }]}>
-            {isAutoLoading ? "Styling…" : hasDoneAuto ? "Reshuffle" : "Auto"}
+            {isAutoLoading ? t("ob_styling") : hasDoneAuto ? t("ob_reshuffle") : t("ob_auto")}
           </Text>
         </TouchableOpacity>
       </View>
@@ -555,7 +548,7 @@ export default function OutfitBuilderScreen() {
         <View style={styles.canvas}>
           <View style={styles.canvasLabelRow}>
             <Text style={[styles.canvasLabel, { color: colors.mutedForeground }]}>
-              OUTFIT CANVAS
+              {t("ob_outfit_canvas")}
             </Text>
             <View style={[styles.weatherChip, { backgroundColor: colors.secondary }]}>
               <Text style={[styles.weatherChipText, { color: colors.mutedForeground }]}>
@@ -575,7 +568,7 @@ export default function OutfitBuilderScreen() {
           <View style={styles.canvasRow}>
             <SlotCard
               slotKey="outerwear"
-              label="Outerwear"
+              label={t("cat_outerwear")}
               icon="layers"
               assignedItem={assigned["outerwear"] ?? null}
               onClear={() => clearSlot("outerwear")}
@@ -583,7 +576,7 @@ export default function OutfitBuilderScreen() {
             />
             <SlotCard
               slotKey="tops"
-              label="Top"
+              label={t("ob_slot_top")}
               icon="wind"
               assignedItem={hasDress ? null : (assigned["tops"] ?? null)}
               onClear={() => clearSlot("tops")}
@@ -595,7 +588,7 @@ export default function OutfitBuilderScreen() {
             <View style={styles.canvasRow}>
               <SlotCard
                 slotKey="dresses"
-                label="Dress"
+                label={t("ob_slot_dress")}
                 icon="star"
                 assignedItem={assigned["dresses"] ?? null}
                 onClear={() => clearSlot("dresses")}
@@ -606,7 +599,7 @@ export default function OutfitBuilderScreen() {
             <View style={styles.canvasRow}>
               <SlotCard
                 slotKey="bottoms"
-                label="Bottom"
+                label={t("ob_slot_bottom")}
                 icon="minus"
                 assignedItem={assigned["bottoms"] ?? null}
                 onClear={() => clearSlot("bottoms")}
@@ -618,7 +611,7 @@ export default function OutfitBuilderScreen() {
           <View style={styles.canvasRow}>
             <SlotCard
               slotKey="shoes"
-              label="Shoes"
+              label={t("cat_shoes")}
               icon="chevrons-up"
               assignedItem={assigned["shoes"] ?? null}
               onClear={() => clearSlot("shoes")}
@@ -626,7 +619,7 @@ export default function OutfitBuilderScreen() {
             />
             <SlotCard
               slotKey="accessories"
-              label="Accessory"
+              label={t("ob_slot_accessory")}
               icon="circle"
               assignedItem={assigned["accessories"] ?? null}
               onClear={() => clearSlot("accessories")}
@@ -660,10 +653,10 @@ export default function OutfitBuilderScreen() {
               ]}
             >
               {isGenerating
-                ? "Generating look..."
+                ? t("ob_generating")
                 : previewImage
-                ? "View Look"
-                : "Preview on Model"}
+                ? t("ob_view_look")
+                : t("ob_preview_on_model")}
             </Text>
           </TouchableOpacity>
 
@@ -673,7 +666,7 @@ export default function OutfitBuilderScreen() {
               style={[styles.actionBtn, { borderColor: colors.border }]}
             >
               <Feather name="trash-2" size={14} color={colors.mutedForeground} />
-              <Text style={[styles.actionBtnText, { color: colors.mutedForeground }]}>Clear</Text>
+              <Text style={[styles.actionBtnText, { color: colors.mutedForeground }]}>{t("ob_clear")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => {
@@ -693,7 +686,7 @@ export default function OutfitBuilderScreen() {
             >
               <Feather name="calendar" size={14} color={pieceCount > 0 ? "#3B82F6" : colors.mutedForeground} />
               <Text style={[styles.actionBtnText, { color: pieceCount > 0 ? "#3B82F6" : colors.mutedForeground }]}>
-                Log
+                {t("ob_log")}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -711,7 +704,7 @@ export default function OutfitBuilderScreen() {
             >
               <Feather name="bookmark" size={14} color={pieceCount > 0 ? colors.accent : colors.mutedForeground} />
               <Text style={[styles.actionBtnText, { color: pieceCount > 0 ? colors.accent : colors.mutedForeground }]}>
-                Save
+                {t("ob_save")}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -727,7 +720,7 @@ export default function OutfitBuilderScreen() {
             >
               <Feather name="camera" size={14} color={pieceCount > 0 ? colors.primaryForeground : colors.mutedForeground} />
               <Text style={[styles.actionBtnText, { color: pieceCount > 0 ? colors.primaryForeground : colors.mutedForeground }]}>
-                Post Look
+                {t("ob_post_look")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -736,20 +729,20 @@ export default function OutfitBuilderScreen() {
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
         <View style={styles.pickerSection}>
-          <Text style={[styles.pickerTitle, { color: colors.foreground }]}>Your Wardrobe</Text>
+          <Text style={[styles.pickerTitle, { color: colors.foreground }]}>{t("ob_your_wardrobe")}</Text>
           {items.length === 0 ? (
             <View style={[styles.emptyWardrobe, { backgroundColor: colors.secondary }]}>
               <Feather name="layers" size={28} color={colors.border} />
-              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No items yet</Text>
+              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{t("ob_no_items")}</Text>
               <Text style={[styles.emptySubtitle, { color: colors.mutedForeground }]}>
-                Add clothes to your wardrobe first
+                {t("ob_add_clothes_first")}
               </Text>
               <TouchableOpacity
                 onPress={() => router.push("/add-item")}
                 style={[styles.addBtn, { backgroundColor: colors.primary }]}
               >
                 <Text style={[styles.addBtnText, { color: colors.primaryForeground }]}>
-                  Add items
+                  {t("ob_add_items")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -798,7 +791,7 @@ export default function OutfitBuilderScreen() {
 
               {filteredItems.length === 0 ? (
                 <Text style={[styles.noItems, { color: colors.mutedForeground }]}>
-                  No items in this category
+                  {t("ob_no_items_cat")}
                 </Text>
               ) : (
                 <View style={styles.itemGrid}>
@@ -832,7 +825,7 @@ export default function OutfitBuilderScreen() {
               <Feather name="x" size={22} color={colors.foreground} />
             </TouchableOpacity>
             <Text style={[styles.previewModalTitle, { color: colors.foreground }]}>
-              Your Look Preview
+              {t("ob_look_preview_title")}
             </Text>
             <View style={styles.previewHeaderActions}>
               <TouchableOpacity
@@ -841,7 +834,7 @@ export default function OutfitBuilderScreen() {
                 style={[styles.regenBtn, { backgroundColor: colors.secondary }]}
               >
                 <Feather name="refresh-cw" size={13} color={colors.mutedForeground} />
-                <Text style={[styles.regenBtnText, { color: colors.mutedForeground }]}>Regenerate</Text>
+                <Text style={[styles.regenBtnText, { color: colors.mutedForeground }]}>{t("ob_regenerate")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
@@ -851,7 +844,7 @@ export default function OutfitBuilderScreen() {
                 style={[styles.saveFromPreviewBtn, { backgroundColor: colors.secondary }]}
               >
                 <Feather name="bookmark" size={14} color={colors.accent} />
-                <Text style={[styles.saveFromPreviewText, { color: colors.accent }]}>Save</Text>
+                <Text style={[styles.saveFromPreviewText, { color: colors.accent }]}>{t("ob_save")}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -861,10 +854,10 @@ export default function OutfitBuilderScreen() {
               <View style={[styles.generatingContainer, { backgroundColor: colors.secondary }]}>
                 <ActivityIndicator size="large" color={colors.accent} />
                 <Text style={[styles.generatingText, { color: colors.foreground }]}>
-                  Generating your look...
+                  {t("ob_generating_your_look")}
                 </Text>
                 <Text style={[styles.generatingSubText, { color: colors.mutedForeground }]}>
-                  Our AI is styling your outfit on a model
+                  {t("ob_ai_styling")}
                 </Text>
               </View>
             ) : previewImage ? (
@@ -876,7 +869,7 @@ export default function OutfitBuilderScreen() {
                 />
                 <View style={styles.previewPieces}>
                   <Text style={[styles.previewPiecesLabel, { color: colors.mutedForeground }]}>
-                    OUTFIT PIECES
+                    {t("ob_outfit_pieces")}
                   </Text>
                   {Object.entries(assigned).map(([key, item]) => {
                     if (!item) return null;
@@ -924,15 +917,15 @@ export default function OutfitBuilderScreen() {
             ]}
           >
             <Text style={[styles.saveModalTitle, { color: colors.foreground }]}>
-              Save Outfit Template
+              {t("ob_save_template")}
             </Text>
             <Text style={[styles.saveModalSubtitle, { color: colors.mutedForeground }]}>
-              Give this outfit a name so you can reuse it later
+              {t("ob_give_name")}
             </Text>
             <TextInput
               value={outfitName}
               onChangeText={setOutfitName}
-              placeholder="e.g. Friday Office Look"
+              placeholder={t("ob_outfit_name_ph")}
               placeholderTextColor={colors.mutedForeground}
               autoFocus
               style={[
@@ -946,7 +939,7 @@ export default function OutfitBuilderScreen() {
                 style={[styles.saveModalCancel, { borderColor: colors.border }]}
               >
                 <Text style={[styles.saveModalCancelText, { color: colors.mutedForeground }]}>
-                  Cancel
+                  {t("cancel")}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -969,7 +962,7 @@ export default function OutfitBuilderScreen() {
                     },
                   ]}
                 >
-                  Save
+                  {t("ob_save")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -996,7 +989,7 @@ export default function OutfitBuilderScreen() {
               <Feather name="x" size={22} color={colors.foreground} />
             </TouchableOpacity>
             <Text style={[styles.savedOutfitsTitle, { color: colors.foreground }]}>
-              Saved Outfits
+              {t("ob_saved_outfits")}
             </Text>
             <View style={{ width: 22 }} />
           </View>
@@ -1005,10 +998,10 @@ export default function OutfitBuilderScreen() {
               <View style={styles.savedOutfitsEmpty}>
                 <Feather name="bookmark" size={36} color={colors.border} />
                 <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-                  No saved outfits yet
+                  {t("ob_no_saved")}
                 </Text>
                 <Text style={[styles.emptySubtitle, { color: colors.mutedForeground }]}>
-                  Build a look and tap "Save Template"
+                  {t("ob_save_hint")}
                 </Text>
               </View>
             ) : (
@@ -1051,7 +1044,7 @@ export default function OutfitBuilderScreen() {
                         {outfit.name}
                       </Text>
                       <Text style={[styles.savedOutfitMeta, { color: colors.mutedForeground }]}>
-                        {pieces.length} piece{pieces.length !== 1 ? "s" : ""} · {new Date(outfit.createdAt).toLocaleDateString()}
+                        {pieces.length} {t(pieces.length === 1 ? "ob_piece" : "ob_pieces")} · {new Date(outfit.createdAt).toLocaleDateString()}
                       </Text>
                     </View>
                     <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
