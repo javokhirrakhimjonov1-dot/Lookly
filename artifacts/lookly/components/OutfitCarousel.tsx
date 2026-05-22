@@ -4,7 +4,6 @@ import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Dimensions,
   Modal,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -14,6 +13,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import { useWardrobe, type ClothingItem } from "@/contexts/WardrobeContext";
@@ -25,8 +25,7 @@ import {
   useSquadVote,
 } from "@/contexts/SquadVoteContext";
 
-const SCREEN_W = Dimensions.get("window").width;
-const CARD_H = 500;
+// cardWidth and cardH are computed dynamically via useWindowDimensions inside each component
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
 const MOOD_COLORS: Record<string, string> = {
@@ -174,6 +173,7 @@ function OutfitCard({
   temperature,
   weatherDesc,
   cardWidth,
+  cardH,
   userBodyPhotoBase64,
   userBodyPhotoMime,
   userGender,
@@ -184,6 +184,7 @@ function OutfitCard({
   temperature: number;
   weatherDesc: string;
   cardWidth: number;
+  cardH: number;
   userBodyPhotoBase64: string | null;
   userBodyPhotoMime: string;
   userGender?: string | null;
@@ -258,13 +259,13 @@ function OutfitCard({
     setPollSent(true);
   };
 
-  const imageAreaH = CARD_H - 72;
+  const imageAreaH = cardH - 72;
 
   return (
     <View
       style={[
         styles.card,
-        { width: cardWidth, backgroundColor: colors.card, borderColor: colors.border },
+        { width: cardWidth, height: cardH, backgroundColor: colors.card, borderColor: colors.border },
       ]}
     >
       {/* Image / loading area */}
@@ -360,7 +361,9 @@ export default function OutfitCarousel() {
   const [activeIdx, setActiveIdx] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
 
-  const cardWidth = SCREEN_W - 36;
+  const { width: screenW, height: screenH } = useWindowDimensions();
+  const cardWidth = screenW - 36;
+  const cardH = Math.min(Math.round(screenH * 0.58), 560);
   const wDesc = weatherDescLabel(temperature, weatherCode);
 
   const fetchOutfits = useCallback(async () => {
@@ -423,7 +426,7 @@ export default function OutfitCarousel() {
         <View
           style={[
             styles.skeleton,
-            { backgroundColor: colors.card, borderColor: colors.border, height: CARD_H },
+            { backgroundColor: colors.card, borderColor: colors.border, height: cardH },
           ]}
         >
           <ActivityIndicator size="large" color={colors.accent} />
@@ -435,7 +438,7 @@ export default function OutfitCarousel() {
         <View
           style={[
             styles.skeleton,
-            { backgroundColor: colors.card, borderColor: colors.border, height: CARD_H },
+            { backgroundColor: colors.card, borderColor: colors.border, height: cardH },
           ]}
         >
           <Feather name="layers" size={28} color={colors.border} />
@@ -473,6 +476,7 @@ export default function OutfitCarousel() {
                 temperature={temperature}
                 weatherDesc={wDesc}
                 cardWidth={cardWidth}
+                cardH={cardH}
                 userBodyPhotoBase64={bodyPhotoBase64}
                 userBodyPhotoMime={bodyPhotoMime}
                 userGender={gender}
@@ -559,7 +563,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     overflow: "hidden",
-    height: CARD_H,
   },
   imageArea: {
     overflow: "hidden",

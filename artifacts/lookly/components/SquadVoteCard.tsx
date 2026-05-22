@@ -269,7 +269,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   imageArea: {
-    height: 180,
+    aspectRatio: 16 / 9,
     position: "relative",
   },
   imagePlaceholder: {

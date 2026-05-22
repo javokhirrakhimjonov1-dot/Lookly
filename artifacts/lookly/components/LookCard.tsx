@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   imagePlaceholder: {
-    height: 220,
+    aspectRatio: 4 / 3,
     marginHorizontal: 14,
     borderRadius: 14,
     alignItems: "center",

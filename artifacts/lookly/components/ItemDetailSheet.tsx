@@ -381,7 +381,7 @@ const styles = StyleSheet.create({
   content: { gap: 20, paddingTop: 0 },
   itemHero: {
     width: "100%",
-    height: 200,
+    aspectRatio: 1,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",

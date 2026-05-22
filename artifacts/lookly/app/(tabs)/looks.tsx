@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
   shareBtnText: { fontSize: 14, fontWeight: "600" },
   modalContent: { padding: 18, gap: 14 },
   photoArea: {
-    height: 200,
+    aspectRatio: 16 / 9,
     borderRadius: 18,
     borderWidth: 2,
     borderStyle: "dashed",

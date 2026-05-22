@@ -10,6 +10,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import CategoryPill from "@/components/CategoryPill";
@@ -27,6 +28,8 @@ export default function WardrobeScreen() {
   const colors = useColors();
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
+  const { width: screenW } = useWindowDimensions();
+  const numCols = screenW > 600 ? 3 : 2;
   const { items, removeItem, isLoading } = useWardrobe();
   const [activeCategory, setActiveCategory] = useState<"all" | ClothingCategory>("all");
   const [selectedItem, setSelectedItem] = useState<ClothingItem | null>(null);
@@ -129,9 +132,10 @@ export default function WardrobeScreen() {
         </View>
       ) : (
         <FlatList
+          key={numCols}
           data={filtered}
           keyExtractor={(item) => item.id}
-          numColumns={2}
+          numColumns={numCols}
           contentContainerStyle={[styles.gridContent, { paddingBottom: bottomPad }]}
           columnWrapperStyle={styles.row}
           showsVerticalScrollIndicator={false}

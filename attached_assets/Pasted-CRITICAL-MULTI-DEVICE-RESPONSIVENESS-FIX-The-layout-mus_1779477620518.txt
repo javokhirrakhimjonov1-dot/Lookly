@@ -1,0 +1,21 @@
+CRITICAL MULTI-DEVICE RESPONSIVENESS FIX: The layout must look perfectly aligned and premium across all screen lengths and devices—including small mobile displays, large iPhones, and iPads—without stretching images, misplacing icons, or breaking typography.
+
+Please refactor the styling system across all screens with these exact rules:
+
+1. FORCED ASPECT RATIO FOR IMAGES:
+   - For all clothing items, background-free garment renders, and outfit models, do NOT use hardcoded width or height pixels. 
+   - Use percentages or flex bounds combined with aspectRatio: 1 (or the target image ratio) and resizeMode: 'contain'. This guarantees that whether viewed on a small screen or a large iPad, the clothing images adapt dynamically without distortion or losing quality.
+
+2. ELIMINATE FIXED PIXEL VERTICAL HEIGHTS:
+   - Replace rigid container heights with flex configurations, percentages (e.g., height: '45%'), or dynamic viewport calculations using React Native's Dimensions API or useWindowDimensions.
+   - Ensure main layout panels (like the Home Screen Carousel, the Outfit Canvas slots, and the Stats cards grid) dynamically recalculate their heights based on the screen length of the active device.
+
+3. GRID ADAPTABILITY (IPAD VS. PHONE):
+   - Update the Wardrobe and Feed FlatList grids. On standard phones, maintain numColumns={2}. 
+   - Add a responsive check: If the screen width is characteristic of an iPad or tablet (e.g., width > 600), dynamically increase the layout to numColumns={3} or numColumns={4}. This prevents item cards from blowing up into giant, awkwardly scaled rectangles on larger screens.
+
+4. SAFE AREA AND SCROLLABLE GUARDS:
+   - Wrap all main layouts in a <SafeAreaView> component to automatically account for varying device notches, status bars, and home indicator spaces across different hardware.
+   - If a screen length is too short to display all dashboard blocks simultaneously, ensure the parent container degrades gracefully into an elegant, scrollable <ScrollView> or KeyboardAvoidingView so nothing gets clipped or hidden beneath the viewport edges.
+
+Apply these fluid responsive rules uniformly across the system so the interface looks mathematically balanced on every device.
