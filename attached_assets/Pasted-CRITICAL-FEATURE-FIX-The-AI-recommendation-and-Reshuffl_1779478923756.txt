@@ -1,0 +1,20 @@
+CRITICAL FEATURE FIX: The AI recommendation and 'Reshuffle' engine on the Make Your Look / Outfit Canvas screen is broken. It fails to automatically suggest or fill the remaining blank slots (Outerwear, Shoes, Accessories) after a user selects initial items, and tapping 'Reshuffle' frequently repeats the exact same combinations or does nothing.
+
+Please rewrite the backend/frontend logic for the suggestion engine with these strict rules:
+
+1. INTELLIGENT AUTO-FILL SUGGESTION LOGIC:
+   - When a user adds an item to the canvas (e.g., selects a Top and a Bottom), the app must trigger an automatic filling function for the remaining empty slots (Outerwear, Shoes, Accessories).
+   - The engine must filter the user's wardrobe array for items matching the current canvas context (e.g., matching the 16°C Sunny weather state or the 'General everyday look' tag) and automatically populate the blank slots with highly compatible items.
+
+2. SMART RE-SHUFFLE ENGINE (NO DUPLICATES):
+   - Maintain a local runtime array or state tracking history named 'sessionCombos' to log every outfit combination generated during the current session.
+   - When the user taps the "Reshuffle" (Перемешать) button, the function must loop through all UNLOCKED slots and pull fresh items from the wardrobe dataset.
+   - CRITICAL REQUIREMENT: Before rendering the reshuffled look on the canvas, compare the new combination's IDs against 'sessionCombos'. If the combo has already been displayed during this trial, rerun the randomizer immediately. NEVER show the exact same combination twice in a single session.
+
+3. LOCK CONTEXT RESISTANCE:
+   - Ensure that if a user presses the small lock icon on a specific item slot (like the Black short-sleeve shirt in Image 11), that locked item remains absolutely frozen and untouched while the rest of the canvas reshuffles around it cleanly.
+
+4. REAL COMPONENT UPDATES:
+   - Ensure the slots instantly update to display the newly suggested background-free clothing images cleanly centered in the layout, with zero text overlays or broken placeholder circles.
+
+Run this logic overhaul now so that the outfit canvas behaves like a smart, proactive AI stylist.

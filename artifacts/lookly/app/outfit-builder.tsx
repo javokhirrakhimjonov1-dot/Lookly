@@ -58,6 +58,84 @@ function categoryToSlotKey(cat: ClothingCategory): OutfitSlotKey {
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
+// ─── Combo fingerprint ───────────────────────────────────────────────────────
+function makeComboKey(assigned: Partial<Record<OutfitSlotKey, ClothingItem>>): string {
+  return Object.values(assigned)
+    .filter(Boolean)
+    .map((i) => i!.id)
+    .sort()
+    .join("|");
+}
+
+// ─── Local smart fill ────────────────────────────────────────────────────────
+// mode "fill-empty"  → only touches slots that are currently empty AND unlocked
+// mode "reshuffle"   → replaces every unlocked slot with a fresh pick
+// Tries up to maxAttempts times to produce a combo not already in sessionCombos.
+function localSmartFill(
+  currentAssigned: Partial<Record<OutfitSlotKey, ClothingItem>>,
+  allItems: ClothingItem[],
+  lockedSlots: Set<OutfitSlotKey>,
+  temperature: number,
+  sessionCombos: Set<string>,
+  mode: "fill-empty" | "reshuffle",
+  maxAttempts = 30
+): Partial<Record<OutfitSlotKey, ClothingItem>> {
+  const season = getCurrentSeason();
+  const isHot = temperature > 26;
+  const isCold = temperature < 12;
+  const FILL_CATS: ClothingCategory[] = [
+    "tops", "bottoms", "outerwear", "dresses", "shoes", "accessories",
+  ];
+  const hasDressLocked = lockedSlots.has("dresses");
+
+  const getPool = (cat: ClothingCategory): ClothingItem[] => {
+    let pool = allItems.filter((i) => {
+      if (i.category !== cat) return false;
+      if (isHot && i.fabricWeight === "heavy") return false;
+      if (isCold && i.fabricWeight === "light") return false;
+      return true;
+    });
+    if (pool.length === 0) pool = allItems.filter((i) => i.category === cat);
+    const seasonPool = pool.filter((i) => i.seasons.includes(season));
+    return seasonPool.length > 0 ? seasonPool : pool;
+  };
+
+  let lastAttempt: Partial<Record<OutfitSlotKey, ClothingItem>> = { ...currentAssigned };
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const next: Partial<Record<OutfitSlotKey, ClothingItem>> = { ...currentAssigned };
+
+    for (const cat of FILL_CATS) {
+      const slotKey = categoryToSlotKey(cat);
+      if (lockedSlots.has(slotKey)) continue;
+      if (mode === "fill-empty" && next[slotKey] !== undefined) continue;
+      // Skip outerwear if hot; skip tops/bottoms if a dress is locked
+      if (cat === "outerwear" && isHot) continue;
+      if ((cat === "tops" || cat === "bottoms") && hasDressLocked) continue;
+      if (cat === "dresses" && (lockedSlots.has("tops") || lockedSlots.has("bottoms"))) continue;
+
+      const pool = getPool(cat);
+      if (pool.length === 0) continue;
+
+      // For reshuffles: prefer a different item than what's currently in this slot
+      let candidates = pool;
+      if (mode === "reshuffle" && currentAssigned[slotKey]) {
+        const others = pool.filter((i) => i.id !== currentAssigned[slotKey]!.id);
+        if (others.length > 0) candidates = others;
+      }
+
+      next[slotKey] = candidates[Math.floor(Math.random() * candidates.length)]!;
+    }
+
+    lastAttempt = next;
+    if (!sessionCombos.has(makeComboKey(next))) return next;
+    // combo already seen — try again
+  }
+
+  // Exhausted all attempts — return last generated attempt anyway
+  return lastAttempt;
+}
+
 async function generateOutfitPreview(
   items: ClothingItem[],
   weather: string,
@@ -260,7 +338,7 @@ export default function OutfitBuilderScreen() {
 
   const [assigned, setAssigned] = useState<Partial<Record<OutfitSlotKey, ClothingItem>>>({});
   const [lockedSlots, setLockedSlots] = useState<Set<OutfitSlotKey>>(new Set());
-  const [lastAutoIds, setLastAutoIds] = useState<Set<string>>(new Set());
+  const sessionCombos = useRef<Set<string>>(new Set());
   const [hasDoneAuto, setHasDoneAuto] = useState(false);
   const [filterCat, setFilterCat] = useState<"all" | ClothingCategory>("all");
 
@@ -303,16 +381,25 @@ export default function OutfitBuilderScreen() {
     const slotKey = categoryToSlotKey(item.category);
     setPreviewImage(null);
     setAssigned((prev) => {
+      // Toggle off: same item tapped again
       if (prev[slotKey]?.id === item.id) {
         const next = { ...prev };
         delete next[slotKey];
         setLockedSlots((ls) => { const n = new Set(ls); n.delete(slotKey); return n; });
         return next;
       }
-      setLockedSlots((ls) => new Set([...ls, slotKey]));
-      return { ...prev, [slotKey]: item };
+      // Lock the new slot
+      const newLocked = new Set([...lockedSlots, slotKey]);
+      setLockedSlots(newLocked);
+      // Place item, then immediately auto-fill remaining EMPTY unlocked slots
+      const withItem = { ...prev, [slotKey]: item };
+      const filled = localSmartFill(
+        withItem, items, newLocked, temperature, sessionCombos.current, "fill-empty"
+      );
+      sessionCombos.current.add(makeComboKey(filled));
+      return filled;
     });
-  }, []);
+  }, [items, lockedSlots, temperature]);
 
   const clearSlot = useCallback((slotKey: OutfitSlotKey) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -329,6 +416,26 @@ export default function OutfitBuilderScreen() {
     if (isAutoLoading) return;
     setIsAutoLoading(true);
     setAutoWeatherNote(null);
+
+    // ── RESHUFFLE PATH: local-only, instant, never repeats ─────────────────
+    if (hasDoneAuto) {
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        const next = localSmartFill(
+          assigned, items, lockedSlots, temperature,
+          sessionCombos.current, "reshuffle"
+        );
+        sessionCombos.current.add(makeComboKey(next));
+        setPreviewImage(null);
+        setAssigned(next);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } finally {
+        setIsAutoLoading(false);
+      }
+      return;
+    }
+
+    // ── FIRST-TIME PATH: try AI API, fall back to local ────────────────────
     try {
       const res = await fetch(`${API_BASE}/suggest-outfits`, {
         method: "POST",
@@ -347,54 +454,53 @@ export default function OutfitBuilderScreen() {
           weather: condition,
           weatherCode,
           temperature,
+          lockedIds: [...lockedSlots]
+            .map((k) => assigned[k]?.id)
+            .filter((id): id is string => !!id),
         }),
       });
 
-      const data = await res.json() as { outfits: { name: string; mood: string; weatherNote?: string | null; items: { itemId: string; role: string }[] }[] };
+      const data = await res.json() as {
+        outfits: { name: string; mood: string; weatherNote?: string | null; items: { itemId: string; role: string }[] }[]
+      };
       const outfitList = (data.outfits ?? []).filter((o) => o.items.length > 0);
-
       if (outfitList.length === 0) throw new Error("no outfits");
 
-      const alreadyUsedName = Object.values(assigned).length > 0
-        ? outfitList.find((o) => o.items.some((x) => lastAutoIds.has(x.itemId)))?.name
-        : undefined;
-      const fresh = outfitList.filter((o) => o.name !== alreadyUsedName);
-      const outfit = fresh.length > 0 ? fresh[0]! : outfitList[0]!;
+      // Pick a combo that hasn't been seen in this session
+      const unseenOutfit = outfitList.find((o) => {
+        const proposed = { ...assigned };
+        const itemMap = new Map(items.map((i) => [i.id, i]));
+        for (const slot of o.items) {
+          const item = itemMap.get(slot.itemId);
+          if (!item) continue;
+          const slotKey = categoryToSlotKey(item.category);
+          if (!lockedSlots.has(slotKey)) proposed[slotKey] = item;
+        }
+        return !sessionCombos.current.has(makeComboKey(proposed));
+      }) ?? outfitList[0]!;
 
       const itemMap = new Map(items.map((i) => [i.id, i]));
       const next = { ...assigned };
-      const newAutoIds = new Set<string>();
-
-      for (const slot of outfit.items) {
+      for (const slot of unseenOutfit.items) {
         const item = itemMap.get(slot.itemId);
         if (!item) continue;
         const slotKey = categoryToSlotKey(item.category);
         if (lockedSlots.has(slotKey)) continue;
         next[slotKey] = item;
-        newAutoIds.add(item.id);
       }
-
-      setLastAutoIds(newAutoIds);
+      sessionCombos.current.add(makeComboKey(next));
       setHasDoneAuto(true);
       setPreviewImage(null);
       setAssigned(next);
-      if (outfit.weatherNote) setAutoWeatherNote(outfit.weatherNote);
+      if (unseenOutfit.weatherNote) setAutoWeatherNote(unseenOutfit.weatherNote);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
-      const season = getCurrentSeason();
-      const next = { ...assigned };
-      const newAutoIds = new Set<string>();
-      for (const cat of ["tops", "bottoms", "outerwear", "shoes", "accessories", "dresses"] as ClothingCategory[]) {
-        const slotKey = categoryToSlotKey(cat);
-        if (lockedSlots.has(slotKey)) continue;
-        const all = items.filter((i) => i.category === cat);
-        if (all.length === 0) continue;
-        const pool = all.filter((i) => i.seasons.includes(season) && !lastAutoIds.has(i.id));
-        const pick = (pool.length > 0 ? pool : all)[Math.floor(Math.random() * (pool.length > 0 ? pool.length : all.length))]!;
-        next[slotKey] = pick;
-        newAutoIds.add(pick.id);
-      }
-      setLastAutoIds(newAutoIds);
+      // Local fallback — weather-aware, season-aware, deduped
+      const next = localSmartFill(
+        assigned, items, lockedSlots, temperature,
+        sessionCombos.current, "reshuffle"
+      );
+      sessionCombos.current.add(makeComboKey(next));
       setHasDoneAuto(true);
       setPreviewImage(null);
       setAssigned(next);
@@ -408,8 +514,8 @@ export default function OutfitBuilderScreen() {
     setAssigned({});
     setPreviewImage(null);
     setLockedSlots(new Set());
-    setLastAutoIds(new Set());
     setHasDoneAuto(false);
+    sessionCombos.current.clear();
   };
 
   const handleGeneratePreview = async (forceRegenerate = false) => {
