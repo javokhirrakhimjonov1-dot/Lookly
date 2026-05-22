@@ -260,7 +260,7 @@ export default function OutfitBuilderScreen() {
   const insets = useSafeAreaInsets();
   const { items, saveOutfit, savedOutfits } = useWardrobe();
   const { addLook } = useSocial();
-  const { condition, temperature } = useWeather();
+  const { condition, temperature, weatherCode } = useWeather();
   const { bodyPhotoBase64, bodyPhotoMime, gender, age } = useUserProfile();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -352,12 +352,13 @@ export default function OutfitBuilderScreen() {
             fabricWeight: i.fabricWeight,
           })),
           weather: condition,
+          weatherCode,
           temperature,
         }),
       });
 
       const data = await res.json() as { outfits: { name: string; mood: string; weatherNote?: string | null; items: { itemId: string; role: string }[] }[] };
-      const outfitList = data.outfits ?? [];
+      const outfitList = (data.outfits ?? []).filter((o) => o.items.length > 0);
 
       if (outfitList.length === 0) throw new Error("no outfits");
 
