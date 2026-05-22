@@ -218,6 +218,10 @@ export default function ShuffleScreen() {
   const spinValues = useRef<Partial<Record<ClothingCategory, Animated.Value>>>(
     Object.fromEntries(SHUFFLE_SLOTS.map((s) => [s.key, new Animated.Value(0)]))
   ).current;
+  // Per-slot opacity: fades out on shuffle start, fades in after new content lands
+  const fadeValues = useRef<Partial<Record<ClothingCategory, Animated.Value>>>(
+    Object.fromEntries(SHUFFLE_SLOTS.map((s) => [s.key, new Animated.Value(1)]))
+  ).current;
 
   useEffect(() => {
     (async () => {
@@ -322,7 +326,13 @@ export default function ShuffleScreen() {
     showDiscoveryBanner();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
-    const animations = SHUFFLE_SLOTS.filter((s) => !locked.has(s.key)).map((s) => {
+    const unlocked = SHUFFLE_SLOTS.filter((s) => !locked.has(s.key));
+
+    // Fade out + bounce — run simultaneously so the exit feels snappy
+    const fadeOutAnims = unlocked.map((s) =>
+      Animated.timing(fadeValues[s.key]!, { toValue: 0.04, duration: 85, useNativeDriver: true })
+    );
+    const spinAnims = unlocked.map((s) => {
       const val = spinValues[s.key]!;
       return Animated.sequence([
         Animated.timing(val, { toValue: 1, duration: 120, useNativeDriver: true }),
@@ -332,9 +342,16 @@ export default function ShuffleScreen() {
       ]);
     });
 
-    Animated.parallel(animations).start();
+    Animated.parallel([...fadeOutAnims, ...spinAnims]).start();
     await doShuffle();
     setTagline(pickTagline(lang));
+
+    // New content is in state — fade items back in
+    Animated.parallel(
+      unlocked.map((s) =>
+        Animated.timing(fadeValues[s.key]!, { toValue: 1, duration: 210, useNativeDriver: true })
+      )
+    ).start();
 
     setTimeout(() => {
       setIsShuffling(false);
@@ -526,6 +543,7 @@ export default function ShuffleScreen() {
                       backgroundColor: colors.card,
                       borderColor: isLocked ? colors.accent : colors.border,
                       transform: [{ translateY }],
+                      opacity: isLocked ? 1 : fadeValues[slot.key],
                     },
                   ]}
                 >

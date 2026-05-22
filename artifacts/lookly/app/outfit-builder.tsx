@@ -17,6 +17,7 @@ import {
   View,
 } from "react-native";
 import Animated, {
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -479,6 +480,25 @@ export default function OutfitBuilderScreen() {
   const [assigned, setAssigned] = useState<Partial<Record<OutfitSlotKey, ClothingItem>>>({});
   const [lockedSlots, setLockedSlots] = useState<Set<OutfitSlotKey>>(new Set());
   const sessionCombos = useRef<Set<string>>(new Set());
+
+  // ── Canvas micro-fade on reshuffle ──────────────────────────────────────────
+  // Fades the entire outfit canvas to near-zero opacity (90 ms), lets React
+  // commit the new slot assignments in that gap, then fades back to full (210 ms).
+  // Since this runs on the Reanimated UI thread, state setters are dispatched
+  // via runOnJS so they execute on the JS thread at the right moment.
+  const canvasOpacity = useSharedValue(1);
+  const canvasAnimStyle = useAnimatedStyle(() => ({ opacity: canvasOpacity.value }));
+  const fadeSwapCanvas = useCallback(
+    (apply: () => void) => {
+      canvasOpacity.value = withTiming(0.08, { duration: 90 }, (finished) => {
+        if (finished) {
+          runOnJS(apply)();
+          canvasOpacity.value = withTiming(1, { duration: 210 });
+        }
+      });
+    },
+    [canvasOpacity]
+  );
   const [hasDoneAuto, setHasDoneAuto] = useState(false);
   const [filterCat, setFilterCat] = useState<"all" | ClothingCategory>("all");
 
@@ -566,8 +586,7 @@ export default function OutfitBuilderScreen() {
           sessionCombos.current, "reshuffle"
         );
         sessionCombos.current.add(makeComboKey(next));
-        setPreviewImage(null);
-        setAssigned(next);
+        fadeSwapCanvas(() => { setPreviewImage(null); setAssigned(next); });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } finally {
         setIsAutoLoading(false);
@@ -791,7 +810,7 @@ export default function OutfitBuilderScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.canvas}>
+        <Animated.View style={[styles.canvas, canvasAnimStyle]}>
           <View style={styles.canvasLabelRow}>
             <Text style={[styles.canvasLabel, { color: colors.mutedForeground }]}>
               {t("ob_outfit_canvas")}
@@ -970,7 +989,7 @@ export default function OutfitBuilderScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
 
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
