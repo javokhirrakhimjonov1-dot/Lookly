@@ -5,7 +5,6 @@ import { Image } from "expo-image";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Alert,
   Animated,
   Platform,
   ScrollView,
@@ -17,6 +16,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   type ClothingCategory,
   type ClothingItem,
@@ -26,7 +26,13 @@ import {
 } from "@/contexts/WardrobeContext";
 import { useWeather } from "@/contexts/WeatherContext";
 
-const SHUFFLE_SLOTS: { key: ClothingCategory; label: string; icon: React.ComponentProps<typeof Feather>["name"] }[] = [
+// ─── Slot definitions ─────────────────────────────────────────────────────────
+
+const SHUFFLE_SLOTS: {
+  key: ClothingCategory;
+  label: string;
+  icon: React.ComponentProps<typeof Feather>["name"];
+}[] = [
   { key: "outerwear", label: "Outerwear", icon: "layers" },
   { key: "tops", label: "Top", icon: "wind" },
   { key: "bottoms", label: "Bottom", icon: "minus" },
@@ -35,6 +41,8 @@ const SHUFFLE_SLOTS: { key: ClothingCategory; label: string; icon: React.Compone
 ];
 
 const DISLIKED_KEY = "@lookly_disliked_outfits";
+
+// ─── Pure helpers ─────────────────────────────────────────────────────────────
 
 function hashOutfit(slots: Partial<Record<ClothingCategory, ClothingItem | null>>): string {
   return Object.values(slots)
@@ -59,22 +67,110 @@ function getFabricWeightForTemp(temp: number): FabricWeight[] {
   return ["heavy"];
 }
 
-function isLight(hex: string): boolean {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return (r * 299 + g * 587 + b * 114) / 1000 > 128;
+// ─── Discovery engine utilities ───────────────────────────────────────────────
+
+/**
+ * True if a hex color is low-saturation (white, black, grey, beige, taupe, etc.)
+ * Used to identify "neutral base" items vs "accent / pop of colour" items.
+ */
+function isNeutralColor(hex: string): boolean {
+  const clean = hex.startsWith("#") ? hex : "#" + hex;
+  const r = parseInt(clean.slice(1, 3), 16);
+  const g = parseInt(clean.slice(3, 5), 16);
+  const b = parseInt(clean.slice(5, 7), 16);
+  if (isNaN(r) || isNaN(g) || isNaN(b)) return true;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  return max === 0 ? true : (max - min) / max < 0.22;
 }
 
-function pickRandom<T>(arr: T[]): T | null {
-  if (arr.length === 0) return null;
-  return arr[Math.floor(Math.random() * arr.length)] ?? null;
+/** Returns true if footwear is open-toe / sandal-type (inappropriate in cool weather). */
+function isSummerOnlyShoe(item: ClothingItem): boolean {
+  const n = item.name.toLowerCase();
+  const tags = item.tags.map((t) => t.toLowerCase());
+  const warmSeasonsOnly =
+    item.seasons.length > 0 &&
+    !item.seasons.includes("fall") &&
+    !item.seasons.includes("winter");
+  return (
+    n.includes("sandal") ||
+    n.includes("flip flop") ||
+    n.includes("flip-flop") ||
+    n.includes("slide") ||
+    n.includes("open toe") ||
+    n.includes("open-toe") ||
+    n.includes("slipper") ||
+    n.includes("espadrille") ||
+    tags.some((t) =>
+      ["sandals", "open-toe", "flip-flops", "slides", "summer-only", "open_toe"].includes(t)
+    ) ||
+    warmSeasonsOnly
+  );
 }
+
+/** Temperature threshold below which open-toe shoes are banned. */
+const SANDAL_TEMP_MIN = 22;
+
+/**
+ * Discovery pick: heavily biases toward unworn / rarely-worn items.
+ * This is the "forgotten clothes" engine — timesWorn=0 gets 6× weight,
+ * timesWorn≤2 gets 3×, everything else gets 1× (still eligible).
+ */
+function pickDiscovery(pool: ClothingItem[]): ClothingItem | null {
+  if (pool.length === 0) return null;
+  const weighted: ClothingItem[] = [];
+  for (const item of pool) {
+    const worn = item.timesWorn ?? 0;
+    const w = worn === 0 ? 6 : worn <= 2 ? 3 : 1;
+    for (let i = 0; i < w; i++) weighted.push(item);
+  }
+  return weighted[Math.floor(Math.random() * weighted.length)] ?? null;
+}
+
+/**
+ * Accent pick for accessories / outerwear.
+ * When the base outfit (tops + bottoms) is neutral/earthy, it pushes a
+ * non-neutral "pop of colour" piece to create complementary contrast.
+ * Still uses the discovery bias so forgotten items surface first.
+ */
+function pickAccent(pool: ClothingItem[], preferNonNeutral: boolean): ClothingItem | null {
+  if (pool.length === 0) return null;
+  const nonNeutral = pool.filter((i) => !isNeutralColor(i.colorHex));
+  const candidates = preferNonNeutral && nonNeutral.length > 0 ? nonNeutral : pool;
+  return pickDiscovery(candidates);
+}
+
+/**
+ * Returns true if the base outfit pieces (tops / bottoms / dresses currently
+ * in slots) are all low-saturation neutrals — signals that an accent piece
+ * should add a colour pop.
+ */
+function slotBaseIsNeutral(
+  slots: Partial<Record<ClothingCategory, ClothingItem | null>>
+): boolean {
+  const baseCats: ClothingCategory[] = ["tops", "bottoms", "dresses"];
+  const baseItems = baseCats.map((c) => slots[c]).filter(Boolean) as ClothingItem[];
+  if (baseItems.length === 0) return false;
+  return baseItems.every((i) => isNeutralColor(i.colorHex));
+}
+
+/** Climate safety check for the shuffle screen's SlotMap. */
+function shuffleClimateOk(
+  slots: Partial<Record<ClothingCategory, ClothingItem | null>>,
+  temp: number
+): boolean {
+  const shoes = slots["shoes"];
+  if (shoes && isSummerOnlyShoe(shoes) && temp < SANDAL_TEMP_MIN) return false;
+  return true;
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
 
 type SlotMap = Partial<Record<ClothingCategory, ClothingItem | null>>;
 
 export default function ShuffleScreen() {
   const colors = useColors();
+  const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const { items, markWorn, saveOutfit } = useWardrobe();
   const { temperature } = useWeather();
@@ -87,7 +183,9 @@ export default function ShuffleScreen() {
   const [dislikedHashes, setDislikedHashes] = useState<Set<string>>(new Set());
   const [isShuffling, setIsShuffling] = useState(false);
   const [hasSaved, setHasSaved] = useState(false);
+  const [discoveryBannerVisible, setDiscoveryBannerVisible] = useState(false);
 
+  const bannerOpacity = useRef(new Animated.Value(0)).current;
   const spinValues = useRef<Partial<Record<ClothingCategory, Animated.Value>>>(
     Object.fromEntries(SHUFFLE_SLOTS.map((s) => [s.key, new Animated.Value(0)]))
   ).current;
@@ -101,40 +199,73 @@ export default function ShuffleScreen() {
     })();
   }, []);
 
+  // ── Climate-safe pool builder ───────────────────────────────────────────────
   const buildPool = useCallback(
     (category: ClothingCategory): ClothingItem[] => {
       const season = getCurrentSeason();
       const allowedWeights = getFabricWeightForTemp(temperature);
       return items.filter((item) => {
         if (item.category !== category) return false;
-        if (workMode ? !item.isWorkwear && item.isWorkwear : item.isWorkwear && !workMode) {
-          // in casual mode, prefer non-workwear; in work mode, include workwear
-        }
         if (!workMode && item.isWorkwear) return false;
         if (!item.seasons.includes(season)) return false;
         const fw = item.fabricWeight ?? "medium";
         if (!allowedWeights.includes(fw)) return false;
+        if (category === "shoes" && temperature < SANDAL_TEMP_MIN && isSummerOnlyShoe(item))
+          return false;
         return true;
       });
     },
     [items, workMode, temperature]
   );
 
+  // ── Discovery engine core ──────────────────────────────────────────────────
+  //
+  // Three-pass selection:
+  //   Pass 1 — base items (tops / bottoms): discovery-biased (low-wear first)
+  //   Pass 2 — accent items (outerwear / accessories): complementary-contrast
+  //            pick if base is neutral, otherwise discovery pick
+  //   Pass 3 — shoes: discovery-biased from the climate-safe pool
+  //
+  // After each attempt: climate coherence check, then disliked-hash check.
   const doShuffle = useCallback(
     async (attempt = 0) => {
-      if (attempt > 6) return;
+      if (attempt > 8) return;
 
       const newSlots: SlotMap = { ...slots };
       const unlockedSlots = SHUFFLE_SLOTS.filter((s) => !locked.has(s.key));
 
-      for (const slot of unlockedSlots) {
+      // Pass 1: base items
+      const baseCats: ClothingCategory[] = ["tops", "bottoms"];
+      for (const slot of unlockedSlots.filter((s) => baseCats.includes(s.key))) {
         const pool = buildPool(slot.key);
-        const picked = pickRandom(pool);
-        newSlots[slot.key] = picked;
+        newSlots[slot.key] = pickDiscovery(pool);
       }
 
+      // Determine if base is neutral → accent should add a colour pop
+      const baseNeutral = slotBaseIsNeutral(newSlots);
+
+      // Pass 2: accent items (outerwear, accessories)
+      const accentCats: ClothingCategory[] = ["outerwear", "accessories"];
+      for (const slot of unlockedSlots.filter((s) => accentCats.includes(s.key))) {
+        const pool = buildPool(slot.key);
+        newSlots[slot.key] = pickAccent(pool, baseNeutral);
+      }
+
+      // Pass 3: shoes (discovery-biased, climate-safe pool already pre-filters sandals)
+      if (unlockedSlots.some((s) => s.key === "shoes")) {
+        const pool = buildPool("shoes");
+        newSlots["shoes"] = pickDiscovery(pool);
+      }
+
+      // Climate coherence guard
+      if (!shuffleClimateOk(newSlots, temperature) && attempt < 8) {
+        await doShuffle(attempt + 1);
+        return;
+      }
+
+      // Skip disliked combos
       const hash = hashOutfit(newSlots);
-      if (dislikedHashes.has(hash) && attempt < 6) {
+      if (dislikedHashes.has(hash) && attempt < 8) {
         await doShuffle(attempt + 1);
         return;
       }
@@ -142,12 +273,24 @@ export default function ShuffleScreen() {
       setSlots(newSlots);
       setHasSaved(false);
     },
-    [slots, locked, buildPool, dislikedHashes]
+    [slots, locked, buildPool, dislikedHashes, temperature]
   );
 
+  // ── Banner animation ───────────────────────────────────────────────────────
+  const showDiscoveryBanner = useCallback(() => {
+    setDiscoveryBannerVisible(true);
+    Animated.sequence([
+      Animated.timing(bannerOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.delay(1600),
+      Animated.timing(bannerOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+    ]).start(() => setDiscoveryBannerVisible(false));
+  }, [bannerOpacity]);
+
+  // ── Shuffle handler ────────────────────────────────────────────────────────
   const handleShuffle = async () => {
     if (isShuffling) return;
     setIsShuffling(true);
+    showDiscoveryBanner();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
     const animations = SHUFFLE_SLOTS.filter((s) => !locked.has(s.key)).map((s) => {
@@ -191,7 +334,10 @@ export default function ShuffleScreen() {
   };
 
   const handleSave = async () => {
-    const pieces = Object.entries(slots).filter(([, v]) => v) as [ClothingCategory, ClothingItem][];
+    const pieces = Object.entries(slots).filter(([, v]) => v) as [
+      ClothingCategory,
+      ClothingItem,
+    ][];
     if (pieces.length === 0) return;
     const outfitMap = Object.fromEntries(pieces) as Partial<Record<ClothingCategory, ClothingItem>>;
     await saveOutfit("Lucky Shuffle", outfitMap);
@@ -207,6 +353,7 @@ export default function ShuffleScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <View
         style={[
           styles.header,
@@ -221,9 +368,12 @@ export default function ShuffleScreen() {
           <Feather name="arrow-left" size={22} color={colors.foreground} />
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={[styles.headerTitle, { color: colors.foreground }]}>Lucky Shuffle</Text>
+          <Text style={[styles.headerTitle, { color: colors.foreground }]}>
+            {t("lucky_shuffle")}
+          </Text>
           <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
-            {temperature}° · {season.charAt(0).toUpperCase() + season.slice(1)} · {allowedWeights.join(", ")} fabrics
+            {temperature}° · {season.charAt(0).toUpperCase() + season.slice(1)} ·{" "}
+            {allowedWeights.join(", ")} fabrics
           </Text>
         </View>
         <View style={styles.modeToggle}>
@@ -239,12 +389,18 @@ export default function ShuffleScreen() {
             trackColor={{ false: colors.secondary, true: colors.secondary }}
             style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
           />
-          <Text style={[styles.modeLabel, { color: workMode ? colors.accent : colors.mutedForeground }]}>
+          <Text
+            style={[
+              styles.modeLabel,
+              { color: workMode ? colors.accent : colors.mutedForeground },
+            ]}
+          >
             Work
           </Text>
         </View>
       </View>
 
+      {/* ── Scrollable content ─────────────────────────────────────────────── */}
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[
@@ -254,7 +410,12 @@ export default function ShuffleScreen() {
         showsVerticalScrollIndicator={false}
       >
         {!hasAnyItems ? (
-          <View style={[styles.emptyState, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+          <View
+            style={[
+              styles.emptyState,
+              { backgroundColor: colors.secondary, borderColor: colors.border },
+            ]}
+          >
             <Feather name="layers" size={36} color={colors.border} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
               No items for this weather
@@ -268,15 +429,37 @@ export default function ShuffleScreen() {
               style={[styles.addBtn, { backgroundColor: colors.primary }]}
             >
               <Feather name="plus" size={14} color={colors.primaryForeground} />
-              <Text style={[styles.addBtnText, { color: colors.primaryForeground }]}>Add clothes</Text>
+              <Text style={[styles.addBtnText, { color: colors.primaryForeground }]}>
+                Add clothes
+              </Text>
             </TouchableOpacity>
           </View>
         ) : (
           <>
             <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-              Each shuffle picks random items from your wardrobe that match today's weather and season. Lock any item you want to keep, then shuffle the rest.
+              {t("lucky_hint")} — surfaces rarely-worn pieces &amp; bold colour contrasts.
             </Text>
 
+            {/* ── Discovery banner ─────────────────────────────────────────── */}
+            {discoveryBannerVisible && (
+              <Animated.View
+                style={[
+                  styles.discoveryBanner,
+                  {
+                    backgroundColor: colors.accent + "1A",
+                    borderColor: colors.accent + "55",
+                    opacity: bannerOpacity,
+                  },
+                ]}
+              >
+                <Feather name="zap" size={13} color={colors.accent} />
+                <Text style={[styles.discoveryBannerText, { color: colors.accent }]}>
+                  {t("lucky_discovery_banner")}
+                </Text>
+              </Animated.View>
+            )}
+
+            {/* ── Outfit slots ─────────────────────────────────────────────── */}
             {SHUFFLE_SLOTS.map((slot) => {
               const item = slots[slot.key];
               const isLocked = locked.has(slot.key);
@@ -326,11 +509,26 @@ export default function ShuffleScreen() {
                           {item.name}
                         </Text>
                         <View style={styles.slotMeta}>
-                          <Text style={[styles.slotMetaText, { color: colors.mutedForeground }]}>
-                            {item.color} · {item.fabricWeight ?? "medium"}
+                          {/* colour swatch */}
+                          <View
+                            style={[
+                              styles.colorDot,
+                              { backgroundColor: item.colorHex },
+                            ]}
+                          />
+                          <Text
+                            style={[styles.slotMetaText, { color: colors.mutedForeground }]}
+                          >
+                            {item.color} · {item.fabricWeight ?? "medium"} ·{" "}
+                            {item.timesWorn ?? 0}× worn
                           </Text>
                           {item.isWorkwear && (
-                            <View style={[styles.workBadge, { backgroundColor: colors.secondary }]}>
+                            <View
+                              style={[
+                                styles.workBadge,
+                                { backgroundColor: colors.secondary },
+                              ]}
+                            >
                               <Feather name="briefcase" size={9} color={colors.accent} />
                             </View>
                           )}
@@ -348,7 +546,9 @@ export default function ShuffleScreen() {
                     style={[
                       styles.lockBtn,
                       {
-                        backgroundColor: isLocked ? colors.accent + "22" : colors.secondary,
+                        backgroundColor: isLocked
+                          ? colors.accent + "22"
+                          : colors.secondary,
                       },
                     ]}
                   >
@@ -365,6 +565,7 @@ export default function ShuffleScreen() {
         )}
       </ScrollView>
 
+      {/* ── Footer actions ─────────────────────────────────────────────────── */}
       {hasAnyItems && (
         <View
           style={[
@@ -380,7 +581,10 @@ export default function ShuffleScreen() {
             <View style={styles.footerActions}>
               <TouchableOpacity
                 onPress={handleDislike}
-                style={[styles.rejectBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+                style={[
+                  styles.rejectBtn,
+                  { backgroundColor: colors.secondary, borderColor: colors.border },
+                ]}
               >
                 <Feather name="thumbs-down" size={16} color={colors.mutedForeground} />
                 <Text style={[styles.rejectBtnText, { color: colors.mutedForeground }]}>
@@ -393,7 +597,7 @@ export default function ShuffleScreen() {
                 style={[
                   styles.saveBtn,
                   {
-                    backgroundColor: hasSaved ? colors.secondary : colors.secondary,
+                    backgroundColor: colors.secondary,
                     borderColor: hasSaved ? colors.border : colors.accent,
                   },
                 ]}
@@ -434,7 +638,11 @@ export default function ShuffleScreen() {
                 { color: isShuffling ? colors.mutedForeground : colors.primaryForeground },
               ]}
             >
-              {isShuffling ? "Shuffling..." : locked.size > 0 ? `Shuffle (${SHUFFLE_SLOTS.length - locked.size} unlocked)` : "Shuffle All"}
+              {isShuffling
+                ? "Discovering..."
+                : locked.size > 0
+                  ? `Shuffle (${SHUFFLE_SLOTS.length - locked.size} unlocked)`
+                  : "Shuffle All"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -442,6 +650,8 @@ export default function ShuffleScreen() {
     </View>
   );
 }
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
@@ -466,6 +676,22 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   hint: { fontSize: 12, fontWeight: "500", marginBottom: 4 },
+  discoveryBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 2,
+  },
+  discoveryBannerText: {
+    fontSize: 13,
+    fontWeight: "600",
+    flex: 1,
+    fontStyle: "italic",
+  },
   slotRow: {
     flexDirection: "row",
     alignItems: "center",

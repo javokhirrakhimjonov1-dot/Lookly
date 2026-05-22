@@ -150,9 +150,39 @@ function isClimateCompatible(
   return true;
 }
 
+// ─── Stable-stylist color & wear utilities ────────────────────────────────────
+
+/** True if a hex color is a low-saturation neutral (white, black, grey, beige, taupe…) */
+function isNeutralColor(hex: string): boolean {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  return max === 0 ? true : (max - min) / max < 0.22;
+}
+
+/**
+ * Weighted pick biased toward frequently-worn items + neutral tones.
+ * Worn count contributes up to 6× weight; neutrals get an extra 2× bonus.
+ * This is the "AI Suggestions / Reliable Stylist" pick strategy.
+ */
+function weightedPickStable(pool: ClothingItem[]): ClothingItem | null {
+  if (pool.length === 0) return null;
+  const weighted: ClothingItem[] = [];
+  for (const item of pool) {
+    const wornWeight = Math.max(1, Math.min(item.timesWorn ?? 0, 6));
+    const neutralBonus = isNeutralColor(item.colorHex) ? 2 : 1;
+    for (let k = 0; k < wornWeight * neutralBonus; k++) weighted.push(item);
+  }
+  return weighted[Math.floor(Math.random() * weighted.length)] ?? null;
+}
+
 // ─── Local smart fill ────────────────────────────────────────────────────────
 // mode "fill-empty"  → only touches slots that are currently empty AND unlocked
 // mode "reshuffle"   → replaces every unlocked slot with a fresh pick
+// strategy "stable"  → favours high-timesWorn + neutral-toned items (AI Suggestions)
+// strategy "creative"→ pure random from the climate-safe pool
 // Each attempt is validated for cross-category climate coherence via
 // isClimateCompatible before being accepted or recorded.
 function localSmartFill(
@@ -162,6 +192,7 @@ function localSmartFill(
   temperature: number,
   sessionCombos: Set<string>,
   mode: "fill-empty" | "reshuffle",
+  strategy: "stable" | "creative" = "stable",
   maxAttempts = 40
 ): Partial<Record<OutfitSlotKey, ClothingItem>> {
   const season = getCurrentSeason();
@@ -222,7 +253,11 @@ function localSmartFill(
         if (others.length > 0) candidates = others;
       }
 
-      next[slotKey] = candidates[Math.floor(Math.random() * candidates.length)]!;
+      const picked =
+        strategy === "stable"
+          ? weightedPickStable(candidates)
+          : candidates[Math.floor(Math.random() * candidates.length)] ?? null;
+      if (picked) next[slotKey] = picked;
     }
 
     lastAttempt = next;
