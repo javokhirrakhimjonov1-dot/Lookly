@@ -9,7 +9,8 @@ A fashion-tech mobile app for Tashkent that helps users organize their wardrobe,
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Required env: `GEMINI_API_KEY` — Google Gemini API key (see `artifacts/api-server/.env.example`)
+- Optional env: `DATABASE_URL` — Postgres connection string (if using DB features)
 
 ## Stack
 

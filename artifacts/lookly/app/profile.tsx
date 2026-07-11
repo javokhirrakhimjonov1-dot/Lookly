@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { getTopPadding, getBottomPadding } from "@/constants/layout";
 import { useColors } from "@/hooks/useColors";
 import { useWardrobe } from "@/contexts/WardrobeContext";
 import { useSocial } from "@/contexts/SocialContext";
@@ -63,7 +64,7 @@ export default function ProfileScreen() {
   const [localName, setLocalName] = useState(fullName);
   const [localAge, setLocalAge] = useState(age != null ? String(age) : "");
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = getTopPadding(insets.top);
   const myLooks = looks.filter((l) => l.isOwn);
   const initials = fullName ? getInitials(fullName) : "?";
   const displayName = fullName || "Your Profile";
@@ -114,7 +115,7 @@ export default function ProfileScreen() {
       style={{ flex: 1, backgroundColor: colors.background }}
       contentContainerStyle={[
         styles.content,
-        { paddingTop: topPad + 16, paddingBottom: Platform.OS === "web" ? 60 : insets.bottom + 40 },
+        { paddingTop: topPad + 16, paddingBottom: getBottomPadding(insets.bottom, 40) },
       ]}
       showsVerticalScrollIndicator={false}
     >
@@ -292,8 +293,8 @@ export default function ProfileScreen() {
                   onPress={handleClear}
                   style={[styles.photoActionBtn, { borderColor: "#FECACA" }]}
                 >
-                  <Feather name="trash-2" size={13} color="#DC2626" />
-                  <Text style={[styles.photoActionText, { color: "#DC2626" }]}>{t("remove_btn")}</Text>
+                  <Feather name="trash-2" size={13} color={colors.destructive} />
+                  <Text style={[styles.photoActionText, { color: colors.destructive }]}>{t("remove_btn")}</Text>
                 </TouchableOpacity>
               </View>
             </View>

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { geminiChat } from "@workspace/integrations-gemini-ai-server";
 
 const router = Router();
 
@@ -93,16 +93,11 @@ Suggest 2–3 best matching items — make this combination feel fresh, differen
   const tierNote = weatherTierNote(temperature);
   const systemPrompt = tierNote ? `${BASE_SYSTEM_PROMPT}\n\n${tierNote}` : BASE_SYSTEM_PROMPT;
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-5.1",
-    max_completion_tokens: 512,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userMessage },
-    ],
-  });
-
-  const raw = response.choices[0]?.message?.content ?? "[]";
+  const raw = await geminiChat({
+    system: systemPrompt,
+    user: userMessage,
+    maxOutputTokens: 512,
+  }).catch(() => "");
 
   let parsed: { id: string; reason: string; vibe: string }[];
   try {

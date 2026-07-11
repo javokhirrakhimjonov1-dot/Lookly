@@ -6,14 +6,4 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export * from './errorResult';
-export * from './extractedText';
 export * from './healthStatus';
-export * from './imageInput';
-export * from './imageInputMimeType';
-export * from './jobStatus';
-export * from './jobStatusStatus';
-export * from './passageInput';
-export * from './scene';
-export * from './visualizeResult';
-export * from './visualizeResultStatus';

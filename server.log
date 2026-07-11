@@ -1,0 +1,28 @@
+[17:25:22.794] [32mINFO[39m (15224): [36mServing web app from[39m
+    [35mwebDist[39m: "C:\Users\Owner\OneDrive\Desktop\codes\Style-Organizer (1)\Style-Organizer\artifacts\lookly\dist"
+[17:25:22.804] [32mINFO[39m (15224): [36mServer listening[39m
+    [35mport[39m: 5000
+[17:25:25.579] [32mINFO[39m (15224): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 1,
+      "method": "GET",
+      "url": "/api/healthz"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 16
+[17:25:25.631] [32mINFO[39m (15224): [36mStatic serve request[39m
+    [35mpath[39m: "/assets/__node_modules/.pnpm/@expo+vector-icons@15.1.1_e_2740e675501621396d5942ff373dfc3f/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Feather.ca4b48e04dc1ce10bfbddb262c8b835f.ttf"
+    [35mdecodedPath[39m: "/assets/__node_modules/.pnpm/@expo+vector-icons@15.1.1_e_2740e675501621396d5942ff373dfc3f/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Feather.ca4b48e04dc1ce10bfbddb262c8b835f.ttf"
+    [35mfilePathLen[39m: 306
+[17:25:25.727] [32mINFO[39m (15224): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 2,
+      "method": "GET",
+      "url": "/assets/__node_modules/.pnpm/@expo+vector-icons@15.1.1_e_2740e675501621396d5942ff373dfc3f/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Feather.ca4b48e04dc1ce10bfbddb262c8b835f.ttf"
+    }
+    [35mres[39m: {
+      "statusCode": 404
+    }
+    [35mresponseTime[39m: 98

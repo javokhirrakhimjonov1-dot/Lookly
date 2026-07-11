@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { geminiChatWithImage } from "@workspace/integrations-gemini-ai-server";
 
 const router = Router();
 
@@ -9,7 +9,7 @@ Return a JSON object with a single key "items" containing an array. Each element
 - name: specific descriptive name (e.g. "White linen button-down shirt", "Navy blue slim-fit jeans", "Brown leather loafers")
 - category: exactly one of "tops", "bottoms", "dresses", "outerwear", "shoes", "accessories"
 - colorName: dominant color name, pick the closest from: Black, White, Beige, Navy, Camel, Burgundy, Olive, Gray, Blush, Denim, Terracotta, Cream. If none match, pick the nearest.
-- colorHex: hex code matching colorName — Black:#1C1512, White:#FAF8F5, Beige:#E8D5B7, Navy:#1E3A5F, Camel:#C19A6B, Burgundy:#800020, Olive:#6B7C4D, Gray:#8A8A8A, Blush:#E8A0A0, Denim:#5B7FA6, Terracotta:#C8906A, Cream:#FAF0E6
+- colorHex: hex code matching colorName — Black:#1C1512, White:#F9F8F6, Beige:#E8D5B7, Navy:#1E3A5F, Camel:#C19A6B, Burgundy:#800020, Olive:#6B7C4D, Gray:#8A8A8A, Blush:#E8A0A0, Denim:#5B7FA6, Terracotta:#C8906A, Cream:#FAF0E6
 - material: fabric composition (e.g. "100% cotton", "80% polyester 20% elastane", "genuine leather", "silk blend", "wool knit", "linen"). Guess from appearance if not obvious.
 - fabricWeight: exactly one of "light", "medium", "heavy" based on the material (light=linen/cotton voile, medium=denim/knit/wool, heavy=leather/puffer/thick coat)
 - seasons: array of suitable seasons from ["spring", "summer", "fall", "winter"] (can include multiple)
@@ -30,7 +30,7 @@ Example — photo showing only a hoodie being held up:
 {"items":[{"name":"Grey zip-up hoodie","category":"tops","colorName":"Gray","colorHex":"#8A8A8A","material":"80% cotton 20% polyester fleece","fabricWeight":"medium","seasons":["fall","winter","spring"],"tags":["casual","streetwear","sporty"],"locationHint":"center of image"}]}
 
 Example — flat-lay with shirt, jeans, and sneakers all fully visible:
-{"items":[{"name":"White oversized cotton tee","category":"tops","colorName":"White","colorHex":"#FAF8F5","material":"100% cotton jersey","fabricWeight":"light","seasons":["spring","summer"],"tags":["casual","minimal","streetwear"],"locationHint":"top of flat lay"},{"name":"Blue slim-fit jeans","category":"bottoms","colorName":"Denim","colorHex":"#5B7FA6","material":"98% cotton 2% elastane denim","fabricWeight":"medium","seasons":["spring","summer","fall"],"tags":["casual","minimal"],"locationHint":"middle of flat lay"},{"name":"White leather sneakers","category":"shoes","colorName":"White","colorHex":"#FAF8F5","material":"genuine leather upper","fabricWeight":"medium","seasons":["spring","summer","fall"],"tags":["casual","streetwear","sporty"],"locationHint":"bottom of flat lay"}]}`;
+{"items":[{"name":"White oversized cotton tee","category":"tops","colorName":"White","colorHex":"#F9F8F6","material":"100% cotton jersey","fabricWeight":"light","seasons":["spring","summer"],"tags":["casual","minimal","streetwear"],"locationHint":"top of flat lay"},{"name":"Blue slim-fit jeans","category":"bottoms","colorName":"Denim","colorHex":"#5B7FA6","material":"98% cotton 2% elastane denim","fabricWeight":"medium","seasons":["spring","summer","fall"],"tags":["casual","minimal"],"locationHint":"middle of flat lay"},{"name":"White leather sneakers","category":"shoes","colorName":"White","colorHex":"#F9F8F6","material":"genuine leather upper","fabricWeight":"medium","seasons":["spring","summer","fall"],"tags":["casual","streetwear","sporty"],"locationHint":"bottom of flat lay"}]}`;
 
 router.post("/identify-clothing", async (req, res) => {
   const { image, mimeType = "image/jpeg" } = req.body as {
@@ -43,30 +43,28 @@ router.post("/identify-clothing", async (req, res) => {
     return;
   }
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-5.1",
-    max_completion_tokens: 1024,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "image_url",
-            image_url: {
-              url: `data:${mimeType};base64,${image}`,
-              detail: "high",
-            },
-          },
-          {
-            type: "text",
-            text: SYSTEM_PROMPT,
-          },
-        ],
-      },
-    ],
-  });
+  const cleanImage = image.includes(",") ? image.split(",")[1] : image;
 
-  const raw = response.choices[0]?.message?.content ?? "";
+  let raw: string;
+  try {
+    raw = await geminiChatWithImage({
+      imageBase64: cleanImage,
+      mimeType,
+      text: SYSTEM_PROMPT,
+      maxOutputTokens: 8192,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[identify-clothing] Gemini error:", msg.slice(0, 500));
+    if (msg.includes("quota") || msg.includes("429") || msg.includes("exceeded") || msg.includes("limit")) {
+      res.status(429).json({ error: "AI identification is temporarily unavailable due to high demand. Please add items manually." });
+    } else if (msg.includes("not support image") || msg.includes("does not support image") || msg.includes("Unable to process input image")) {
+      res.status(503).json({ error: "AI identification is temporarily unavailable. Please add items manually." });
+    } else {
+      res.status(502).json({ error: "Identification service unavailable. Please add items manually." });
+    }
+    return;
+  }
 
   interface RawBrandLogo {
     brand?: string;

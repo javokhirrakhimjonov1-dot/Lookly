@@ -83,7 +83,7 @@ function getGenericSuggestion(temp: number, weatherCode: number): {
       { category: "Shoes", suggestion: "Sandals or open-toe flats", icon: "chevrons-up" },
       { category: "Accessory", suggestion: "Sunhat & sunglasses", icon: "sun" },
     ],
-    palette: ["#FAF8F5", "#E8C9A0", "#F5DEB3"],
+    palette: ["#F9F8F6", "#E8C9A0", "#F5DEB3"],
   };
 }
 
@@ -145,8 +145,8 @@ export default function OutfitSuggestion() {
             <View style={styles.labelRow}>
               <Text style={[styles.label, { color: colors.mutedForeground }]}>TODAY'S OUTFIT</Text>
               <View style={[styles.fromWardrobeBadge, { backgroundColor: colors.accent }]}>
-                <Feather name="layers" size={9} color="#FFF" />
-                <Text style={styles.fromWardrobeBadgeText}>From your wardrobe</Text>
+                <Feather name="layers" size={9} color={colors.primaryForeground} />
+                <Text style={[styles.fromWardrobeBadgeText, { color: colors.primaryForeground }]}>From your wardrobe</Text>
               </View>
             </View>
             <Text style={[styles.headline, { color: colors.foreground }]}>{generic.headline}</Text>
@@ -273,7 +273,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   fromWardrobeBadgeText: {
-    color: "#FFFFFF",
     fontSize: 9,
     fontWeight: "700",
   },

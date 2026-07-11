@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { openai } from "@workspace/integrations-openai-ai-server";
 
 const router = Router();
 
@@ -14,7 +13,61 @@ interface WardrobeItem {
   tags?: string[];
 }
 
-function weatherDesc(temp: number, code: number): string {
+interface OutfitEntry {
+  name: string;
+  mood: string;
+  weatherNote: string | null;
+  items: { itemId: string; role: string }[];
+}
+
+const MOODS = ["casual", "minimal", "streetwear", "formal", "sporty", "boho", "chic"];
+
+function isNeutralColor(hex: string): boolean {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  return max === 0 ? true : (max - min) / max < 0.22;
+}
+
+function getColorGroup(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const max = Math.max(r, g, b);
+  if (max === 0) return "dark";
+  if ((max - Math.min(r, g, b)) / max < 0.22) return "neutral";
+  if (r === max && g < 120 && b < 120) return "warm";
+  if (b === max && r < 120 && g < 120) return "cool";
+  if (g === max && r < 120 && b < 120) return "fresh";
+  if (r > 140 && g > 140 && b < 100) return "bright";
+  return "mixed";
+}
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function pickRandom<T>(arr: T[]): T | null {
+  if (arr.length === 0) return null;
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function getCurrentSeason(): string {
+  const m = new Date().getMonth();
+  if (m >= 2 && m <= 4) return "spring";
+  if (m >= 5 && m <= 7) return "summer";
+  if (m >= 8 && m <= 10) return "autumn";
+  return "winter";
+}
+
+function describeWeather(temp: number, code: number): string {
   if (code >= 71 && code <= 77) return "snowy";
   if (code >= 61 && code <= 67) return "rainy";
   if (code >= 51 && code <= 57) return "drizzly";
@@ -24,247 +77,313 @@ function weatherDesc(temp: number, code: number): string {
   return "variable";
 }
 
-function weatherTierInstructions(temp: number, code: number): string {
-  const isRain = code >= 51 && code <= 82;
+function getWeatherTier(temp: number, code: number): string {
   const isSnow = code >= 71 && code <= 77;
+  if (isSnow || temp <= 0) return "freezing";
+  if (temp <= 10) return "cold";
+  if (temp <= 17) return "cool";
+  if (temp <= 24) return "mild";
+  if (temp <= 30) return "hot";
+  return "scorching";
+}
 
-  if (isSnow || temp <= 0) return (
-    `FREEZING (${temp}°C). MANDATORY: heavy outerwear (coat/puffer) is REQUIRED in every outfit. ` +
-    `ONLY use heavy or medium fabric items. NEVER suggest light fabrics or shorts. ` +
-    `Prioritise warmth — layer tops, use boots, avoid exposed skin.`
-  );
-  if (temp <= 10) return (
-    `COLD (${temp}°C). Outerwear (jacket/coat) is REQUIRED in every outfit. ` +
-    `Prefer heavy or medium fabrics. Avoid light fabrics and bare legs. ` +
-    `Closed shoes preferred.`
-  );
-  if (temp <= 17) return (
-    `COOL (${temp}°C). A light jacket, blazer, or cardigan should be included where available. ` +
-    `Medium fabrics work well. Avoid very heavy coats — they are too warm. ` +
-    (isRain ? "Rain expected — include waterproof or water-resistant outerwear if available." : "")
-  );
-  if (temp <= 24) return (
-    `MILD / WARM (${temp}°C). No outerwear needed unless it's raining. ` +
-    `Light to medium fabrics are ideal. Jeans, chinos, midi skirts all work. ` +
-    (isRain ? "Rain expected — suggest a light raincoat or water-resistant layer if available." : "")
-  );
-  if (temp <= 30) return (
-    `HOT (${temp}°C). NEVER include heavy coats, puffers, or heavy-fabric outerwear. ` +
-    `STRONGLY prefer light-fabric items (linen, cotton, etc.). Shorts, light trousers, and breathable tops. ` +
-    `Minimal layering. Sandals or light shoes preferred.`
-  );
+function isHeavyOuterwearRequired(temp: number): boolean {
+  return temp <= 0;
+}
+
+function isOuterwearRequired(temp: number): boolean {
+  return temp <= 10;
+}
+
+function isLightOuterwearNice(temp: number): boolean {
+  return temp <= 17;
+}
+
+function isHeavyFabricBanned(temp: number): boolean {
+  return temp > 24;
+}
+
+function isHot(temp: number): boolean {
+  return temp > 24;
+}
+
+function isCold(temp: number): boolean {
+  return temp < 12;
+}
+
+function isSummerOnlyShoe(item: WardrobeItem): boolean {
+  const name = item.name.toLowerCase();
+  const cat = item.category.toLowerCase();
+  if (cat !== "shoes") return false;
   return (
-    `VERY HOT / SCORCHING (${temp}°C — Tashkent summer heat). ` +
-    `ONLY light-fabric items are acceptable — linen, cotton, breathable synthetics. ` +
-    `NEVER suggest outerwear, heavy fabrics, or anything that traps heat. ` +
-    `Maximise breathability: loose fits, open weaves, sandals. Keep it minimal.`
+    name.includes("sandal") ||
+    name.includes("slide") ||
+    name.includes("flip") ||
+    name.includes("open") ||
+    name.includes("mule")
   );
 }
 
-const AESTHETIC_LABELS: Record<string, string> = {
-  minimalist: "Minimalist (clean lines, neutral tones, understated elegance)",
-  streetwear: "Streetwear (bold, urban, expressive, layered graphics)",
-  smart_casual: "Smart Casual (polished yet relaxed, office-ready but not formal)",
-  boho: "Boho / Free Spirit (flowy fabrics, earthy textures, relaxed patterns)",
-  classic: "Classic / Preppy (timeless tailored basics, clean silhouettes)",
-  sporty: "Sport & Active (functional, clean, athleisure-influenced)",
-};
-
-function buildPersonalisation(
-  gender?: string,
-  age?: number,
-  styleAesthetics?: string[],
-  heatAdaptation?: string,
-  colorPalette?: string
-): string {
-  const parts: string[] = [];
-
-  if (gender && gender !== "prefer_not_to_say") {
-    const g = gender === "male" ? "male" : gender === "female" ? "female" : "non-binary";
-    parts.push(`Gender: ${g} — only suggest outfits appropriate for this gender`);
-  }
-  if (age) parts.push(`Age: ${age} years old`);
-
-  if (styleAesthetics && styleAesthetics.length > 0) {
-    const labels = styleAesthetics.map((a) => AESTHETIC_LABELS[a] ?? a);
-    if (labels.length === 1) {
-      parts.push(`Style aesthetic: ${labels[0]}`);
-    } else {
-      parts.push(`Style aesthetics (user wears all of these depending on the day): ${labels.join("; ")}`);
-    }
-  }
-
-  if (heatAdaptation) {
-    const heatLabel =
-      heatAdaptation === "light_linen" ? "In hot weather prefers loose linen and breathable open-weave fabrics"
-      : heatAdaptation === "shorts_casual" ? "In hot weather prefers casual shorts and light cotton t-shirts"
-      : heatAdaptation === "sport_active" ? "In hot weather prefers moisture-wicking sport/athletic wear and shorts"
-      : "In hot weather prefers cotton basics and comfortable casual pieces";
-    parts.push(heatLabel);
-  }
-
-  if (colorPalette) {
-    const paletteLabel =
-      colorPalette === "earthy_neutrals" ? "Colour preference: earthy neutrals (camel, beige, terracotta, olive)"
-      : colorPalette === "monochrome" ? "Colour preference: monochrome (black, white, grey — minimal colour)"
-      : colorPalette === "vivid_colors" ? "Colour preference: vivid colours (bold, saturated pops of colour)"
-      : colorPalette === "pastels" ? "Colour preference: soft pastels (muted lavender, blush, sage, sky blue)"
-      : colorPalette === "desert_sand" ? "Colour preference: desert/sand palette (warm sand, clay, rust, nude)"
-      : `Colour preference: ${colorPalette}`;
-    parts.push(paletteLabel);
-  }
-
-  if (parts.length === 0) return "";
-  return `\nUSER PROFILE:\n${parts.map((p) => `- ${p}`).join("\n")}\nUse this profile to prioritise outfit compositions, moods, and colour combinations that suit this person. WEATHER RULES still override all style preferences.\n`;
+function filterByWeather(items: WardrobeItem[], temperature: number): WardrobeItem[] {
+  return items.filter((i) => {
+    if (isHot(temperature) && i.fabricWeight === "heavy") return false;
+    if (isCold(temperature) && i.fabricWeight === "light") return false;
+    if (isCold(temperature) && isSummerOnlyShoe(i)) return false;
+    return true;
+  });
 }
 
-const GENERIC_OUTFITS = [
-  { name: "Effortless daytime", mood: "casual", weatherNote: "General everyday look", items: [] as { itemId: string; role: string }[] },
-  { name: "Polished minimalist", mood: "minimal", weatherNote: "Clean, simple fit", items: [] as { itemId: string; role: string }[] },
-  { name: "Street casual", mood: "streetwear", weatherNote: "Casual street style", items: [] as { itemId: string; role: string }[] },
-];
+function getCategoryPool(items: WardrobeItem[], category: string): WardrobeItem[] {
+  const cat = items.filter((i) => i.category.toLowerCase() === category.toLowerCase());
+  const season = getCurrentSeason();
+  const seasonPool = cat.filter((i) => i.seasons.includes(season));
+  return seasonPool.length > 0 ? seasonPool : cat;
+}
 
-router.post("/suggest-outfits", async (req, res) => {
+function pickItem(
+  pool: WardrobeItem[],
+  usedIds: Set<string>,
+  preferColor?: string,
+  avoidColor?: string
+): WardrobeItem | null {
+  let candidates = pool.filter((i) => !usedIds.has(i.id));
+  if (candidates.length === 0) {
+    candidates = pool;
+  }
+  if (candidates.length === 0) return null;
+
+  if (preferColor) {
+    const colored = candidates.filter((i) => getColorGroup(i.colorHex) === preferColor);
+    if (colored.length > 0) return pickRandom(colored)!;
+  }
+
+  if (avoidColor) {
+    const filtered = candidates.filter((i) => getColorGroup(i.colorHex) !== avoidColor);
+    if (filtered.length > 0) candidates = filtered;
+  }
+
+  return pickRandom(candidates);
+}
+
+function generateOutfitName(mood: string, items: WardrobeItem[]): string {
+  const names: Record<string, string[]> = {
+    casual: ["Effortless Day", "Casual Comfort", "Everyday Cool", "Relaxed Fit", "Easy Going"],
+    minimal: ["Clean Minimal", "Quiet Elegance", "Subtle Edge", "Pure Form", "Soft Minimal"],
+    streetwear: ["Urban Edge", "Street Vibe", "City Flow", "Bold Layer", "Cruise Control"],
+    formal: ["Polished Look", "Refined Edge", "Tailored Fit", "Classic Form", "Sharp Dressed"],
+    sporty: ["Active Pulse", "Sport Mode", "Energy Fit", "Fresh Move", "On The Go"],
+    boho: ["Free Spirit", "Earthy Flow", "Wanderlust", "Natural Vibe", "Desert Rose"],
+    chic: ["Chic Statement", "Parisian Cool", "Effortless Chic", "Modern Glow", "Style Edit"],
+  };
+  const pool = names[mood] ?? names.casual;
+  return pickRandom(pool) ?? "Today's Look";
+}
+
+function generateWeatherNote(temperature: number, mood: string): string {
+  const tier = getWeatherTier(temperature, 0);
+  const notes: Record<string, string[]> = {
+    freezing: ["Bundled up but still stylish for the cold", "Heavy layers keep you warm in the freeze"],
+    cold: ["Warm layers with a smart finish for the chill", "Cozy and polished despite the cold"],
+    cool: ["Light layers for the cool breeze", "Comfortable coverage for a crisp day"],
+    mild: ["Perfect balance of style and comfort", "Ideal for the mild weather"],
+    hot: ["Light and breathable for the heat", "Staying cool while looking sharp"],
+    scorching: ["Maximum breathability in the scorching heat", "Keeps you cool when it really counts"],
+  };
+  const pool = notes[tier] ?? notes.mild;
+  return pickRandom(pool) ?? "Designed for today's weather";
+}
+
+function assignMood(
+  items: WardrobeItem[],
+  preferredMoods: string[],
+  usedMoods: Set<string>
+): string {
+  const hasNeutral = items.some((i) => isNeutralColor(i.colorHex));
+  const hasWarm = items.some((i) => getColorGroup(i.colorHex) === "warm");
+  const hasCool = items.some((i) => getColorGroup(i.colorHex) === "cool");
+  const hasBold = items.some((i) => getColorGroup(i.colorHex) === "bright" || getColorGroup(i.colorHex) === "warm");
+
+  for (const m of preferredMoods) {
+    if (!usedMoods.has(m)) return m;
+  }
+
+  if (hasBold && !usedMoods.has("streetwear")) return "streetwear";
+  if (hasNeutral && !usedMoods.has("minimal")) return "minimal";
+  if (hasCool && !usedMoods.has("chic")) return "chic";
+  if (hasWarm && !usedMoods.has("boho")) return "boho";
+
+  const available = preferredMoods[preferredMoods.length - 1];
+  return available;
+}
+
+function generateOutfitsLocally(
+  items: WardrobeItem[],
+  temperature: number
+): OutfitEntry[] {
+  const weatherFiltered = filterByWeather(items, temperature);
+  const season = getCurrentSeason();
+
+  // Build category pools
+  const tops = getCategoryPool(weatherFiltered, "top");
+  const bottoms = getCategoryPool(weatherFiltered, "bottom");
+  const outerwear = getCategoryPool(weatherFiltered, "outerwear");
+  const dresses = getCategoryPool(weatherFiltered, "dress");
+  const shoes = getCategoryPool(weatherFiltered, "shoes");
+  const accessories = getCategoryPool(weatherFiltered, "accessory");
+
+  const isHotWeather = isHot(temperature);
+  const isColdWeather = isCold(temperature);
+  const needsOuterwear = isOuterwearRequired(temperature);
+  const needsHeavyOuterwear = isHeavyOuterwearRequired(temperature);
+
+  const usedIds = new Set<string>();
+  const usedMoods = new Set<string>();
+  const outfits: OutfitEntry[] = [];
+
+  const numOutfits = Math.min(5, Math.max(3, Math.floor(items.length / 3)));
+
+  // Build preferred mood pool based on available items
+  const moodPool: string[] = [];
+  const hasDress = dresses.length > 0;
+  const hasOuterwear = outerwear.length > 0;
+  const hasAccessories = accessories.length > 0;
+  const neutralCount = items.filter((i) => isNeutralColor(i.colorHex)).length;
+  const warmCount = items.filter((i) => getColorGroup(i.colorHex) === "warm").length;
+  const coolCount = items.filter((i) => getColorGroup(i.colorHex) === "cool").length;
+
+  if (hasDress) moodPool.push("chic", "minimal", "casual", "boho");
+  if (hasOuterwear) moodPool.push("streetwear", "formal", "casual");
+  if (neutralCount > warmCount + coolCount) moodPool.push("minimal", "formal");
+  if (warmCount > coolCount) moodPool.push("boho", "casual");
+  if (coolCount > warmCount) moodPool.push("chic", "minimal");
+  moodPool.push(...MOODS);
+
+  const uniqueMoods = [...new Set(moodPool)];
+
+  for (let o = 0; o < numOutfits; o++) {
+    const outfitItems: { itemId: string; role: string }[] = [];
+    const selected: WardrobeItem[] = [];
+
+    // Determine if this outfit uses a dress (if available)
+    const useDress = hasDress && o % 2 === 0 && o < dresses.length * 2;
+
+    if (useDress) {
+      const dress = pickItem(dresses, usedIds);
+      if (dress) {
+        usedIds.add(dress.id);
+        outfitItems.push({ itemId: dress.id, role: "dress" });
+        selected.push(dress);
+      }
+    } else {
+      // Pick top
+      if (tops.length > 0) {
+        const top = pickItem(tops, usedIds);
+        if (top) {
+          usedIds.add(top.id);
+          outfitItems.push({ itemId: top.id, role: "top" });
+          selected.push(top);
+        }
+      }
+
+      // Pick bottom
+      if (bottoms.length > 0) {
+        const topColor = selected.length > 0 ? getColorGroup(selected[0].colorHex) : undefined;
+        const bottom = pickItem(bottoms, usedIds, "neutral", topColor === "neutral" ? undefined : topColor);
+        if (bottom) {
+          usedIds.add(bottom.id);
+          outfitItems.push({ itemId: bottom.id, role: "bottom" });
+          selected.push(bottom);
+        }
+      }
+    }
+
+    // Pick outerwear if weather requires or available
+    if (outerwear.length > 0 && (needsOuterwear || (!isHotWeather && Math.random() < 0.4))) {
+      const ow = pickItem(outerwear, usedIds);
+      if (ow) {
+        usedIds.add(ow.id);
+        outfitItems.push({ itemId: ow.id, role: "outerwear" });
+        selected.push(ow);
+      }
+    }
+
+    // Pick shoes
+    if (shoes.length > 0) {
+      const shoe = pickItem(shoes, usedIds);
+      if (shoe) {
+        usedIds.add(shoe.id);
+        outfitItems.push({ itemId: shoe.id, role: "shoes" });
+        selected.push(shoe);
+      }
+    }
+
+    // Pick accessory
+    if (accessories.length > 0 && Math.random() < 0.5) {
+      const acc = pickItem(accessories, usedIds);
+      if (acc) {
+        usedIds.add(acc.id);
+        outfitItems.push({ itemId: acc.id, role: "accessory" });
+        selected.push(acc);
+      }
+    }
+
+    if (outfitItems.length < 2) {
+      // Try harder: use items already used
+      if (tops.length > 0 && outfitItems.length < 2) {
+        const fallback = pickRandom(tops);
+        if (fallback) {
+          outfitItems.push({ itemId: fallback.id, role: "top" });
+          selected.push(fallback);
+        }
+      }
+      if (bottoms.length > 0 && outfitItems.length < 2) {
+        const fallback = pickRandom(bottoms);
+        if (fallback) {
+          outfitItems.push({ itemId: fallback.id, role: "bottom" });
+          selected.push(fallback);
+        }
+      }
+      if (shoes.length > 0 && outfitItems.length < 2) {
+        const fallback = pickRandom(shoes);
+        if (fallback) {
+          outfitItems.push({ itemId: fallback.id, role: "shoes" });
+          selected.push(fallback);
+        }
+      }
+    }
+
+    const mood = assignMood(selected, uniqueMoods, usedMoods);
+    usedMoods.add(mood);
+
+    outfits.push({
+      name: generateOutfitName(mood, selected),
+      mood,
+      weatherNote: generateWeatherNote(temperature, mood),
+      items: outfitItems,
+    });
+  }
+
+  return outfits;
+}
+
+router.post("/suggest-outfits", (req, res) => {
   const {
     items,
     temperature,
     weatherCode,
-    userGender,
-    userAge,
-    styleAesthetics,
-    heatAdaptation,
-    colorPalette,
   } = req.body as {
     items: WardrobeItem[];
     temperature: number;
     weatherCode: number;
-    userGender?: string;
-    userAge?: number;
-    styleAesthetics?: string[];
-    heatAdaptation?: string;
-    colorPalette?: string;
   };
 
   if (!items || items.length < 2) {
-    res.json({ outfits: GENERIC_OUTFITS });
+    res.json({ outfits: [] });
     return;
   }
 
-  const wDesc = weatherDesc(temperature, weatherCode);
-  const tierInstructions = weatherTierInstructions(temperature, weatherCode);
-  const personalisationBlock = buildPersonalisation(userGender, userAge, styleAesthetics, heatAdaptation, colorPalette);
-
-  const itemList = items
-    .slice(0, 40)
-    .map((i) => `${i.id}|${i.name}|${i.category}|${i.color}|${i.fabricWeight ?? "medium"}|${i.seasons.join(",")}`)
-    .join("\n");
-
-  const MOODS = ["casual", "minimal", "streetwear", "formal", "sporty", "boho", "chic"];
-
-  // Bias mood selection toward the user's aesthetics (union of all selected)
-  let moodPool = [...MOODS];
-  const hasAesthetic = (a: string) => styleAesthetics?.includes(a) ?? false;
-  if (hasAesthetic("minimalist") && !hasAesthetic("streetwear")) {
-    moodPool = ["minimal", "chic", "casual", "formal", "boho", "sporty", "streetwear"];
-  } else if (hasAesthetic("streetwear") && !hasAesthetic("minimalist")) {
-    moodPool = ["streetwear", "casual", "sporty", "minimal", "chic", "boho", "formal"];
-  } else if (hasAesthetic("smart_casual") && !hasAesthetic("sporty")) {
-    moodPool = ["chic", "minimal", "casual", "formal", "sporty", "boho", "streetwear"];
-  } else if (hasAesthetic("sporty")) {
-    moodPool = ["sporty", "casual", "streetwear", "minimal", "chic", "boho", "formal"];
-  } else if (hasAesthetic("boho")) {
-    moodPool = ["boho", "casual", "minimal", "chic", "sporty", "streetwear", "formal"];
-  } else if (hasAesthetic("classic")) {
-    moodPool = ["formal", "chic", "minimal", "casual", "boho", "sporty", "streetwear"];
-  }
-
-  const shuffledMoods = [...moodPool].sort(() => Math.random() - 0.5).slice(0, 4);
-  const variationSeed = Math.floor(Math.random() * 10000);
-
-  const STYLE_DIRECTIVES = [
-    "Lean into bold colour contrasts this round.",
-    "Focus on monochrome or tonal dressing this time.",
-    "Mix textures — pair lightweight with structured pieces.",
-    "Go for the most unexpected combinations that still work.",
-    "Prioritise comfort-first looks with a polished finish.",
-    "Think editorial — what would look good in a magazine spread?",
-    "Emphasise layering and dimension.",
-    "Go minimal: fewer pieces, maximum impact.",
-  ];
-  const styleDirective = STYLE_DIRECTIVES[variationSeed % STYLE_DIRECTIVES.length];
-
-  const prompt = `You are a fashion stylist for a Tashkent-based wardrobe app. Variation seed: ${variationSeed}.
-
-CURRENT WEATHER IN TASHKENT: ${temperature}°C, ${wDesc}.
-WEATHER RULE FOR TODAY (ABSOLUTE — overrides everything else): ${tierInstructions}
-${personalisationBlock}
-Available wardrobe items (id|name|category|color|fabricWeight|seasons):
-${itemList}
-
-Create exactly 3 to 5 FRESH, UNIQUE outfit combinations using ONLY the item IDs listed above.
-Each outfit MUST strictly follow the weather rule above — this is the top priority.
-Style directive for this session: ${styleDirective}
-Prioritise these moods (but use your judgment): ${shuffledMoods.join(", ")}.
-
-CRITICAL: Generate genuinely different outfit combinations every time. Mix items in new ways.
-Do not default to the same "safe" combinations — explore what the wardrobe can do.
-
-Return ONLY valid JSON with this exact structure:
-{
-  "outfits": [
-    {
-      "name": "Short evocative outfit name (2-4 words)",
-      "mood": "one of: casual, minimal, streetwear, formal, sporty, boho, chic",
-      "weatherNote": "One short sentence explaining why this outfit suits today's weather (e.g. 'Light linen keeps you cool in the 31°C heat')",
-      "items": [
-        { "itemId": "exact item id from list", "role": "top|bottom|outerwear|shoes|accessory|dress" }
-      ]
-    }
-  ]
-}
-
-Rules:
-- Use ONLY item IDs from the list — no made-up IDs
-- Each outfit: 2 to 5 items
-- WEATHER RULES ARE ABSOLUTE — ignore them and the outfit is wrong
-- Prefer items whose fabricWeight matches the temperature tier (light for hot, heavy for cold)
-- Make outfits clearly distinct (different categories of items or different vibes)
-- No explanation, no markdown — pure JSON only`;
-
-  try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-5.1",
-      max_completion_tokens: 800,
-      temperature: 1.2,
-      messages: [{ role: "user", content: prompt }],
-    });
-
-    const raw = response.choices[0]?.message?.content ?? "";
-
-    let parsed: { outfits: { name: string; mood: string; weatherNote?: string; items: { itemId: string; role: string }[] }[] };
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      const match = raw.match(/\{[\s\S]*\}/);
-      if (!match) {
-        res.json({ outfits: GENERIC_OUTFITS });
-        return;
-      }
-      parsed = JSON.parse(match[0]);
-    }
-
-    const validIds = new Set(items.map((i) => i.id));
-    const outfits = (parsed.outfits ?? []).map((o) => ({
-      name: o.name ?? "Today's Look",
-      mood: o.mood ?? "casual",
-      weatherNote: o.weatherNote ?? null,
-      items: (o.items ?? []).filter((x) => validIds.has(x.itemId)),
-    })).filter((o) => o.items.length >= 1);
-
-    res.json({ outfits: outfits.length > 0 ? outfits : GENERIC_OUTFITS });
-  } catch {
-    res.json({ outfits: GENERIC_OUTFITS });
-  }
+  const outfits = generateOutfitsLocally(items, temperature);
+  res.json({ outfits });
 });
 
 export default router;

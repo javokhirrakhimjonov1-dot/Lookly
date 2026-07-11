@@ -85,9 +85,9 @@ export default function SquadVoteCard({ poll }: Props) {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <View style={[styles.badge, { backgroundColor: "#C8906A" }]}>
-            <Feather name="users" size={10} color="#FAF8F5" />
-            <Text style={styles.badgeText}>SQUAD VOTE</Text>
+          <View style={[styles.badge, { backgroundColor: colors.accent }]}>
+            <Feather name="users" size={10} color={colors.primaryForeground} />
+            <Text style={[styles.badgeText, { color: colors.primaryForeground }]}>SQUAD VOTE</Text>
           </View>
           <Text style={[styles.timeLeft, { color: colors.mutedForeground }]}>
             {timeLeft}
@@ -135,15 +135,15 @@ export default function SquadVoteCard({ poll }: Props) {
         )}
 
         {/* Mood pill */}
-        <View style={[styles.moodPill, { backgroundColor: "#C8906A" }]}>
-          <Text style={styles.moodText}>{poll.outfitData.mood.toUpperCase()}</Text>
+        <View style={[styles.moodPill, { backgroundColor: colors.accent }]}>
+          <Text style={[styles.moodText, { color: colors.primaryForeground }]}>{poll.outfitData.mood.toUpperCase()}</Text>
         </View>
       </View>
 
       {/* Info row */}
       <View style={styles.info}>
         <View style={[styles.avatar, { backgroundColor: avatarBg }]}>
-          <Text style={styles.avatarText}>{initials}</Text>
+          <Text style={[styles.avatarText, { color: colors.primaryForeground }]}>{initials}</Text>
         </View>
         <View style={{ flex: 1 }}>
           <Text style={[styles.outfitName, { color: colors.foreground }]} numberOfLines={1}>
@@ -160,8 +160,8 @@ export default function SquadVoteCard({ poll }: Props) {
         <View style={styles.resultSection}>
           <View style={styles.resultLabels}>
             <View style={styles.resultLabel}>
-              <Feather name="heart" size={12} color="#C8906A" />
-              <Text style={[styles.resultPct, { color: "#C8906A" }]}>
+              <Feather name="heart" size={12} color={colors.accent} />
+              <Text style={[styles.resultPct, { color: colors.accent }]}>
                 {Math.round(heartRatio * 100)}%
               </Text>
             </View>
@@ -177,7 +177,7 @@ export default function SquadVoteCard({ poll }: Props) {
               style={[
                 styles.barFill,
                 {
-                  backgroundColor: "#C8906A",
+backgroundColor: colors.accent,
                   width: barAnim.interpolate({
                     inputRange: [0, 1],
                     outputRange: ["0%", "100%"],
@@ -197,11 +197,11 @@ export default function SquadVoteCard({ poll }: Props) {
             style={({ pressed }) => [
               styles.voteBtn,
               styles.heartBtn,
-              { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.96 : 1 }] },
+              { backgroundColor: colors.accent, opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.96 : 1 }] },
             ]}
           >
-            <Feather name="heart" size={18} color="#FAF8F5" />
-            <Text style={styles.voteBtnText}>Love It</Text>
+            <Feather name="heart" size={18} color={colors.primaryForeground} />
+            <Text style={[styles.voteBtnText, { color: colors.primaryForeground }]}>Love It</Text>
           </Pressable>
           <Pressable
             onPress={() => handleVote("dislike")}
@@ -261,7 +261,6 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 9,
     fontWeight: "800",
-    color: "#FAF8F5",
     letterSpacing: 0.8,
   },
   timeLeft: {
@@ -304,7 +303,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   moodText: {
-    color: "#FAF8F5",
     fontSize: 9,
     fontWeight: "800",
     letterSpacing: 0.8,
@@ -325,7 +323,6 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   avatarText: {
-    color: "#FAF8F5",
     fontSize: 12,
     fontWeight: "700",
   },
@@ -354,13 +351,11 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   heartBtn: {
-    backgroundColor: "#C8906A",
   },
   skipBtn: {},
   voteBtnText: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#FAF8F5",
   },
   resultSection: {
     paddingHorizontal: 14,

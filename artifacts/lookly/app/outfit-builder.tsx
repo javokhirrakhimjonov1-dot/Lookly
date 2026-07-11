@@ -24,6 +24,8 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { getTopPadding, getBottomPadding } from "@/constants/layout";
+import { getApiBase } from "@/constants/api";
 import { useColors } from "@/hooks/useColors";
 import {
   type ClothingCategory,
@@ -57,7 +59,7 @@ function categoryToSlotKey(cat: ClothingCategory): OutfitSlotKey {
   return cat as OutfitSlotKey;
 }
 
-const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
+const API_BASE = getApiBase();
 
 // ─── Combo fingerprint ───────────────────────────────────────────────────────
 function makeComboKey(assigned: Partial<Record<OutfitSlotKey, ClothingItem>>): string {
@@ -352,8 +354,8 @@ function SlotCard({ slotKey: _slotKey, label, icon, assignedItem, onClear, flex 
         animStyle,
         {
           flex,
-          backgroundColor: "#FFFFFF",
-          borderColor: assignedItem ? "#EAEAEA" : colors.border,
+          backgroundColor: colors.card,
+          borderColor: colors.border,
           borderStyle: assignedItem ? "solid" : "dashed",
         },
       ]}
@@ -373,7 +375,7 @@ function SlotCard({ slotKey: _slotKey, label, icon, assignedItem, onClear, flex 
           )}
           {isLocked && (
             <View style={[styles.lockBadge, { backgroundColor: "rgba(28,21,18,0.12)" }]}>
-              <Feather name="lock" size={9} color="#1C1512" />
+              <Feather name="lock" size={9} color={colors.foreground} />
             </View>
           )}
           <TouchableOpacity
@@ -381,7 +383,7 @@ function SlotCard({ slotKey: _slotKey, label, icon, assignedItem, onClear, flex 
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             style={[styles.clearBtn, { backgroundColor: "rgba(28,21,18,0.10)" }]}
           >
-            <Feather name="x" size={12} color="#1C1512" />
+            <Feather name="x" size={12} color={colors.foreground} />
           </TouchableOpacity>
         </>
       ) : (
@@ -425,7 +427,7 @@ function DraggableItem({ item, isAssigned, onTap }: DraggableItemProps) {
       style={styles.draggableWrap}
     >
       <Animated.View style={animStyle}>
-        <View style={[styles.itemCard, { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#EAEAEA" }]}>
+        <View style={[styles.itemCard, { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }]}>
           {item.imageUri ? (
             <Image
               source={{ uri: item.imageUri }}
@@ -439,7 +441,7 @@ function DraggableItem({ item, isAssigned, onTap }: DraggableItemProps) {
           )}
           {isAssigned && (
             <View style={[styles.assignedOverlay, { backgroundColor: "rgba(28,21,18,0.18)" }]}>
-              <Feather name="check" size={18} color="#FAF8F5" />
+              <Feather name="check" size={18} color={colors.primaryForeground} />
             </View>
           )}
         </View>
@@ -475,7 +477,7 @@ export default function OutfitBuilderScreen() {
     { key: "accessories", label: t("cat_accessories") },
   ];
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = getTopPadding(insets.top);
 
   const [assigned, setAssigned] = useState<Partial<Record<OutfitSlotKey, ClothingItem>>>({});
   const [lockedSlots, setLockedSlots] = useState<Set<OutfitSlotKey>>(new Set());
@@ -806,7 +808,7 @@ export default function OutfitBuilderScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: Platform.OS === "web" ? 80 : insets.bottom + 80 },
+          { paddingBottom: getBottomPadding(insets.bottom, 80) },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -903,18 +905,18 @@ export default function OutfitBuilderScreen() {
             ]}
           >
             {isGenerating ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
+              <ActivityIndicator size="small" color={colors.card} />
             ) : (
               <Feather
                 name={previewImage ? "image" : "eye"}
                 size={16}
-                color={pieceCount > 0 ? "#FFFFFF" : colors.mutedForeground}
+                color={pieceCount > 0 ? colors.card : colors.mutedForeground}
               />
             )}
             <Text
               style={[
                 styles.previewBtnText,
-                { color: pieceCount > 0 ? "#FFFFFF" : colors.mutedForeground },
+                { color: pieceCount > 0 ? colors.card : colors.mutedForeground },
               ]}
             >
               {isGenerating
@@ -1613,7 +1615,7 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     borderWidth: 1.5,
-    borderColor: "#FAF8F5",
+    borderColor: "#F9F8F6",
   },
   savedOutfitInfo: { flex: 1, paddingVertical: 14 },
   savedOutfitName: { fontSize: 15, fontWeight: "600" },

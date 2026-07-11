@@ -15,6 +15,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { getApiBase } from "@/constants/api";
 import { useColors } from "@/hooks/useColors";
 import { useWardrobe, type ClothingItem } from "@/contexts/WardrobeContext";
 import { useWeather } from "@/contexts/WeatherContext";
@@ -26,7 +27,7 @@ import {
 } from "@/contexts/SquadVoteContext";
 
 // cardWidth and cardH are computed dynamically via useWindowDimensions inside each component
-const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
+const API_BASE = getApiBase();
 
 const MOOD_COLORS: Record<string, string> = {
   casual: "#C8906A",
@@ -88,7 +89,7 @@ function SquadModal({ visible, outfitName, onClose, onSend }: SquadModalProps) {
         </View>
 
         <View style={[squadStyles.outfitChip, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
-          <Feather name="scissors" size={13} color="#C8906A" />
+          <Feather name="scissors" size={13} color={colors.accent} />
           <Text style={[squadStyles.outfitChipText, { color: colors.foreground }]} numberOfLines={1}>
             {outfitName}
           </Text>
@@ -109,12 +110,12 @@ function SquadModal({ visible, outfitName, onClose, onSend }: SquadModalProps) {
                   squadStyles.friendRow,
                   {
                     backgroundColor: isSelected ? "#C8906A14" : colors.card,
-                    borderColor: isSelected ? "#C8906A" : colors.border,
+                    borderColor: isSelected ? colors.accent : colors.border,
                   },
                 ]}
               >
-                <View style={[squadStyles.friendAvatar, { backgroundColor: isSelected ? "#C8906A" : colors.secondary }]}>
-                  <Text style={[squadStyles.friendAvatarText, { color: isSelected ? "#FAF8F5" : colors.mutedForeground }]}>
+                <View style={[squadStyles.friendAvatar, { backgroundColor: isSelected ? colors.accent : colors.secondary }]}>
+                  <Text style={[squadStyles.friendAvatarText, { color: isSelected ? colors.primaryForeground : colors.mutedForeground }]}>
                     {friend.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
                   </Text>
                 </View>
@@ -126,12 +127,12 @@ function SquadModal({ visible, outfitName, onClose, onSend }: SquadModalProps) {
                   style={[
                     squadStyles.checkbox,
                     {
-                      backgroundColor: isSelected ? "#C8906A" : "transparent",
-                      borderColor: isSelected ? "#C8906A" : colors.border,
+                      backgroundColor: isSelected ? colors.accent : "transparent",
+borderColor: isSelected ? colors.accent : colors.border,
                     },
                   ]}
                 >
-                  {isSelected && <Feather name="check" size={12} color="#FAF8F5" />}
+                  {isSelected && <Feather name="check" size={12} color={colors.primaryForeground} />}
                 </View>
               </Pressable>
             );
@@ -145,15 +146,15 @@ function SquadModal({ visible, outfitName, onClose, onSend }: SquadModalProps) {
             style={[
               squadStyles.sendBtn,
               {
-                backgroundColor: selected.size > 0 ? "#C8906A" : colors.secondary,
+                backgroundColor: selected.size > 0 ? colors.accent : colors.secondary,
               },
             ]}
           >
-            <Feather name="send" size={16} color={selected.size > 0 ? "#FAF8F5" : colors.mutedForeground} />
+            <Feather name="send" size={16} color={selected.size > 0 ? colors.primaryForeground : colors.mutedForeground} />
             <Text
               style={[
                 squadStyles.sendBtnText,
-                { color: selected.size > 0 ? "#FAF8F5" : colors.mutedForeground },
+                { color: selected.size > 0 ? colors.primaryForeground : colors.mutedForeground },
               ]}
             >
               {selected.size > 0
@@ -224,6 +225,7 @@ function OutfitCard({
         items: itemsForApi,
         weather: weatherDesc,
         temperature,
+        mood: outfit.mood,
         ...(userBodyPhotoBase64 ? { userBodyPhotoBase64, userBodyPhotoMime } : {}),
         ...(userGender ? { userGender } : {}),
         ...(userAge != null ? { userAge } : {}),
@@ -296,7 +298,7 @@ function OutfitCard({
         ) : null}
 
         <View style={[styles.moodPill, { backgroundColor: moodColor }]}>
-          <Text style={styles.moodText}>{outfit.mood.toUpperCase()}</Text>
+          <Text style={[styles.moodText, { color: colors.primaryForeground }]}>{outfit.mood.toUpperCase()}</Text>
         </View>
 
         {previewImage && (
@@ -324,9 +326,9 @@ function OutfitCard({
           ]}
         >
           {pollSent ? (
-            <Feather name="check" size={14} color="#C8906A" />
+            <Feather name="check" size={14} color={colors.accent} />
           ) : (
-            <Feather name="users" size={14} color="#C8906A" />
+            <Feather name="users" size={14} color={colors.accent} />
           )}
         </TouchableOpacity>
 
@@ -599,7 +601,6 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   moodText: {
-    color: "#FAF8F5",
     fontSize: 9,
     fontWeight: "800",
     letterSpacing: 1,

@@ -8,6 +8,8 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { getBottomPadding } from "@/constants/layout";
+import { getTopPadding } from "@/constants/layout";
 import CategoryPill from "@/components/CategoryPill";
 import DealCard from "@/components/DealCard";
 import { useColors } from "@/hooks/useColors";
@@ -20,7 +22,7 @@ export default function DealsScreen() {
   const insets = useSafeAreaInsets();
   const { filteredDeals, activeCategory, setActiveCategory, deals } = useDeals();
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = getTopPadding(insets.top);
   const newCount = deals.filter((d) => d.isNew).length;
   const CATEGORIES: { key: string; label: string }[] = [
     { key: "All", label: t("cat_all") },
@@ -46,8 +48,8 @@ export default function DealsScreen() {
             <Text style={[styles.label, { color: colors.mutedForeground }]}>{t("tashkent")}</Text>
             <Text style={[styles.title, { color: colors.foreground }]}>{t("local_deals")}</Text>
           </View>
-          <View style={[styles.newBadge, { backgroundColor: "#DC2626" }]}>
-            <Text style={styles.newBadgeText}>{newCount} {t("new_count")}</Text>
+          <View style={[styles.newBadge, { backgroundColor: colors.destructive }]}>
+            <Text style={[styles.newBadgeText, { color: colors.destructiveForeground }]}>{newCount} {t("new_count")}</Text>
           </View>
         </View>
         <View style={[styles.infoCard, { backgroundColor: colors.secondary }]}>
@@ -75,7 +77,7 @@ export default function DealsScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: Platform.OS === "web" ? 100 : insets.bottom + 100 },
+          { paddingBottom: getBottomPadding(insets.bottom, 100) },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -129,7 +131,6 @@ const styles = StyleSheet.create({
     borderRadius: 100,
   },
   newBadgeText: {
-    color: "#FFFFFF",
     fontSize: 12,
     fontWeight: "700",
   },

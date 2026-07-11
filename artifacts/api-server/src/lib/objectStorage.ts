@@ -321,15 +321,3 @@ export async function serverDeleteFile(storagePath: string): Promise<void> {
     throw err;
   }
 }
-
-/**
- * Build the storage path for a SAT visualizer video.
- * Keeps video storage under a consistent prefix within the private object dir.
- */
-export function satVisualizerVideoPath(jobId: string): string {
-  const privateObjectDir = process.env.PRIVATE_OBJECT_DIR ?? "";
-  if (!privateObjectDir) {
-    throw new Error("PRIVATE_OBJECT_DIR is not set. Object storage may not be provisioned.");
-  }
-  return `${privateObjectDir}/sat-visualizer/${jobId}/output.mp4`;
-}

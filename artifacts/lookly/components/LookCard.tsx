@@ -60,7 +60,7 @@ export default function LookCard({ look, onLike, onDelete }: Props) {
     <View style={[styles.container, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <View style={styles.header}>
         <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
-          <Text style={styles.initials}>{getInitials(look.userName)}</Text>
+          <Text style={[styles.initials, { color: colors.card }]}>{getInitials(look.userName)}</Text>
         </View>
         <View style={styles.userInfo}>
           <Text style={[styles.userName, { color: colors.foreground }]}>{look.userName}</Text>
@@ -108,13 +108,13 @@ export default function LookCard({ look, onLike, onDelete }: Props) {
             <Feather
               name="heart"
               size={18}
-              color={look.isLiked ? "#E05B5B" : colors.mutedForeground}
+              color={look.isLiked ? colors.destructive : colors.mutedForeground}
             />
           </Animated.View>
           <Text
             style={[
               styles.actionCount,
-              { color: look.isLiked ? "#E05B5B" : colors.mutedForeground },
+              { color: look.isLiked ? colors.destructive : colors.mutedForeground },
             ]}
           >
             {look.likes}
@@ -156,7 +156,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   initials: {
-    color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "700",
   },

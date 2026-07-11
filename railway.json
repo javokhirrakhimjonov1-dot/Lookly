@@ -1,0 +1,10 @@
+{
+  "build": {
+    "builder": "NIXPACKS"
+  },
+  "deploy": {
+    "startCommand": "node artifacts/api-server/dist/index.mjs",
+    "healthcheckPath": "/api/healthz",
+    "restartPolicyType": "ON_FAILURE"
+  }
+}

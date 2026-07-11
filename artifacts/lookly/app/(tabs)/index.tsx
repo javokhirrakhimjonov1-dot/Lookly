@@ -10,6 +10,8 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { getBottomPadding } from "@/constants/layout";
+import { getTopPadding } from "@/constants/layout";
 import OutfitCarousel from "@/components/OutfitCarousel";
 import WeatherWidget from "@/components/WeatherWidget";
 import { useColors } from "@/hooks/useColors";
@@ -71,7 +73,7 @@ export default function HomeScreen() {
     return t("greeting_evening");
   }
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = getTopPadding(insets.top);
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
@@ -94,7 +96,7 @@ export default function HomeScreen() {
         styles.content,
         {
           paddingTop: topPad + 16,
-          paddingBottom: Platform.OS === "web" ? 100 : insets.bottom + 100,
+          paddingBottom: getBottomPadding(insets.bottom, 100),
         },
       ]}
       showsVerticalScrollIndicator={false}
@@ -163,14 +165,14 @@ export default function HomeScreen() {
       >
         <View style={styles.weatherLookLeft}>
           <Text style={styles.weatherLookLabel}>{t("today_weather")}</Text>
-          <Text style={styles.weatherLookTitle}>{t("make_your_look")}</Text>
-          <Text style={styles.weatherLookSub}>
+          <Text style={[styles.weatherLookTitle, { color: colors.primaryForeground }]}>{t("make_your_look")}</Text>
+          <Text style={[styles.weatherLookSub, { color: colors.primaryForeground + "CC" }]}>
             {t("ai_outfit_desc")} {temperature}°C · {condition}
           </Text>
         </View>
         <View style={styles.weatherLookIconWrap}>
           <Feather name="cloud" size={22} color="rgba(250,248,245,0.7)" />
-          <Feather name="arrow-right" size={20} color="#FAF8F5" style={{ marginTop: 6 }} />
+          <Feather name="arrow-right" size={20} color={colors.primaryForeground} style={{ marginTop: 6 }} />
         </View>
       </TouchableOpacity>
 
@@ -217,25 +219,25 @@ export default function HomeScreen() {
           onPress={() => router.push("/(tabs)/deals")}
           style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
         >
-          <Text style={[styles.statNumber, { color: "#DC2626" }]}>{urgentDeals.length}</Text>
+          <Text style={[styles.statNumber, { color: colors.destructive }]}>{urgentDeals.length}</Text>
           <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{t("deals_expiring")}</Text>
-          <Feather name="tag" size={16} color="#DC2626" style={{ marginTop: 2 }} />
+          <Feather name="tag" size={16} color={colors.destructive} style={{ marginTop: 2 }} />
         </TouchableOpacity>
       </View>
 
       {urgentDeals.length > 0 && (
-        <View style={[styles.dealsAlert, { backgroundColor: "#FEF2F2", borderColor: "#FECACA" }]}>
-          <Feather name="bell" size={16} color="#DC2626" />
+        <View style={[styles.dealsAlert, { backgroundColor: colors.destructive + "15", borderColor: colors.destructive + "40" }]}>
+          <Feather name="bell" size={16} color={colors.destructive} />
           <View style={{ flex: 1 }}>
-            <Text style={[styles.alertTitle, { color: "#DC2626" }]}>
+            <Text style={[styles.alertTitle, { color: colors.destructive }]}>
               {t("flash_deals_ending")}
             </Text>
-            <Text style={[styles.alertBody, { color: "#991B1B" }]}>
+            <Text style={[styles.alertBody, { color: colors.destructive }]}>
               {urgentDeals.map((d) => d.brandName).join(", ")} — {t("dont_miss_out")}
             </Text>
           </View>
           <TouchableOpacity onPress={() => router.push("/(tabs)/deals")}>
-            <Feather name="arrow-right" size={16} color="#DC2626" />
+            <Feather name="arrow-right" size={16} color={colors.destructive} />
           </TouchableOpacity>
         </View>
       )}
@@ -246,8 +248,8 @@ export default function HomeScreen() {
           onPress={() => router.push("/calendar")}
           style={[styles.utilCard, { backgroundColor: colors.card, borderColor: colors.border }]}
         >
-          <View style={[styles.utilIcon, { backgroundColor: "#EFF6FF" }]}>
-            <Feather name="calendar" size={18} color="#3B82F6" />
+          <View style={[styles.utilIcon, { backgroundColor: colors.accent + "22" }]}>
+            <Feather name="calendar" size={18} color={colors.accent} />
           </View>
           <Text style={[styles.utilTitle, { color: colors.foreground }]}>{t("outfit_calendar")}</Text>
           <Text style={[styles.utilSub, { color: colors.mutedForeground }]}>{t("track_wore")}</Text>
@@ -269,9 +271,9 @@ export default function HomeScreen() {
         <View style={[styles.squadCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.squadCardHeader}>
             <View style={styles.squadCardLeft}>
-              <View style={[styles.squadBadge, { backgroundColor: "#C8906A" }]}>
-                <Feather name="users" size={10} color="#FAF8F5" />
-                <Text style={styles.squadBadgeText}>{t("live_votes")}</Text>
+              <View style={[styles.squadBadge, { backgroundColor: colors.accent }]}>
+                <Feather name="users" size={10} color={colors.accentForeground} />
+                <Text style={[styles.squadBadgeText, { color: colors.accentForeground }]}>{t("live_votes")}</Text>
               </View>
             </View>
             <TouchableOpacity onPress={() => router.push("/(tabs)/looks")}>
@@ -299,14 +301,14 @@ export default function HomeScreen() {
                     <View
                       style={[
                         styles.squadBarFill,
-                        { backgroundColor: "#C8906A", width: `${heartPct}%` as `${number}%` },
+                        { backgroundColor: colors.accent, width: `${heartPct}%` as `${number}%` },
                       ]}
                     />
                   </View>
                   <View style={styles.squadBarLabels}>
                     <View style={styles.squadBarLabel}>
-                      <Feather name="heart" size={10} color="#C8906A" />
-                      <Text style={[styles.squadBarPct, { color: "#C8906A" }]}>{heartPct}%</Text>
+                      <Feather name="heart" size={10} color={colors.accent} />
+                      <Text style={[styles.squadBarPct, { color: colors.accent }]}>{heartPct}%</Text>
                     </View>
                     <View style={styles.squadBarLabel}>
                       <Text style={[styles.squadBarPct, { color: colors.mutedForeground }]}>
@@ -371,7 +373,7 @@ export default function HomeScreen() {
                   { backgroundColor: avatarColors[idx], borderColor: colors.background },
                 ]}
               >
-                <Text style={styles.lookAvatarText}>{initials}</Text>
+                <Text style={[styles.lookAvatarText, { color: colors.card }]}>{initials}</Text>
               </View>
               <View style={styles.lookCardBottom}>
                 <Text
@@ -476,8 +478,8 @@ const styles = StyleSheet.create({
   },
   weatherLookLeft: { gap: 4, flex: 1, paddingRight: 16 },
   weatherLookLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 1.2, color: "rgba(250,248,245,0.7)" },
-  weatherLookTitle: { fontSize: 22, fontWeight: "800", color: "#FAF8F5", flexWrap: "wrap" },
-  weatherLookSub: { fontSize: 12, fontWeight: "400", color: "rgba(250,248,245,0.8)", lineHeight: 17, flexWrap: "wrap" },
+  weatherLookTitle: { fontSize: 22, fontWeight: "800", flexWrap: "wrap" },
+  weatherLookSub: { fontSize: 12, fontWeight: "400", lineHeight: 17, flexWrap: "wrap" },
   weatherLookIconWrap: { alignItems: "center", justifyContent: "center", flexShrink: 0 },
   shuffleCard: {
     borderRadius: 20,
@@ -596,7 +598,6 @@ const styles = StyleSheet.create({
     left: 10,
   },
   lookAvatarText: {
-    color: "#FFFFFF",
     fontSize: 10,
     fontWeight: "700",
   },
@@ -659,7 +660,6 @@ const styles = StyleSheet.create({
   squadBadgeText: {
     fontSize: 9,
     fontWeight: "800",
-    color: "#FAF8F5",
     letterSpacing: 0.8,
   },
   squadPollRow: {

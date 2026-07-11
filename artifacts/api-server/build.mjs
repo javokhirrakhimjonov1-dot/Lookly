@@ -30,6 +30,8 @@ async function buildAll() {
     external: [
       "*.node",
       "sharp",
+      "@imgly/background-removal-node",
+      "sql.js",
       "better-sqlite3",
       "sqlite3",
       "canvas",

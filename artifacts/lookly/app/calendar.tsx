@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { getTopPadding, getBottomPadding } from "@/constants/layout";
 import { useColors } from "@/hooks/useColors";
 import { useCalendar } from "@/contexts/CalendarContext";
 import { useWardrobe, type ClothingCategory, type ClothingItem } from "@/contexts/WardrobeContext";
@@ -68,7 +69,7 @@ export default function CalendarScreen() {
     }
   }, []);
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = getTopPadding(insets.top);
 
   const firstDayOfMonth = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -134,8 +135,8 @@ export default function CalendarScreen() {
             onPress={() => setShowLogModal(true)}
             style={[styles.logBtn, { backgroundColor: colors.accent }]}
           >
-            <Feather name="plus" size={14} color="#FAF8F5" />
-            <Text style={[styles.logBtnText, { color: "#FAF8F5" }]}>Log today</Text>
+            <Feather name="plus" size={14} color={colors.primaryForeground} />
+            <Text style={[styles.logBtnText, { color: colors.primaryForeground }]}>Log today</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -144,7 +145,7 @@ export default function CalendarScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: Platform.OS === "web" ? 80 : insets.bottom + 80 },
+          { paddingBottom: getBottomPadding(insets.bottom, 80) },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -216,7 +217,7 @@ export default function CalendarScreen() {
             </Text>
             {selectedLog ? (
               <TouchableOpacity onPress={handleRemoveLog}>
-                <Feather name="trash-2" size={16} color="#DC2626" />
+                <Feather name="trash-2" size={16} color={colors.destructive} />
               </TouchableOpacity>
             ) : (
               <TouchableOpacity

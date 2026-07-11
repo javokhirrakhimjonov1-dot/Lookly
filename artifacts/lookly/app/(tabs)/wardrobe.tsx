@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { getBottomPadding, getTopPadding } from "@/constants/layout";
 import CategoryPill from "@/components/CategoryPill";
 import ClothingItemCard from "@/components/ClothingItemCard";
 import ItemDetailSheet from "@/components/ItemDetailSheet";
@@ -44,8 +45,8 @@ export default function WardrobeScreen() {
     { key: "accessories", label: t("cat_accessories") },
   ];
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPad = Platform.OS === "web" ? 100 : insets.bottom + 100;
+  const topPad = getTopPadding(insets.top);
+  const bottomPad = getBottomPadding(insets.bottom, 100);
 
   const filtered =
     activeCategory === "all"
@@ -155,13 +156,13 @@ export default function WardrobeScreen() {
         style={[
           styles.fab,
           {
-            backgroundColor: "#C8906A",
-            bottom: Platform.OS === "web" ? 32 : insets.bottom + 24,
+            backgroundColor: colors.accent,
+            bottom: getBottomPadding(insets.bottom, 24),
           },
         ]}
         activeOpacity={0.85}
       >
-        <Feather name="plus" size={26} color="#FFFFFF" />
+        <Feather name="plus" size={26} color={colors.card} />
       </TouchableOpacity>
 
       <ItemDetailSheet

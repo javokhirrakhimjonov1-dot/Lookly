@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "lookly",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/icon.png",
@@ -14,19 +14,28 @@
       "backgroundColor": "#FAF8F5"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.lookly.app",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Allow Lookly to access your photo library to add wardrobe items.",
+        "NSCameraUsageDescription": "Allow Lookly to access your camera to photograph clothing items.",
+        "NSLocationWhenInUseUsageDescription": "Lookly uses your location to show weather-based outfit recommendations."
+      }
     },
-    "android": {},
+    "android": {
+      "package": "com.lookly.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#FAF8F5"
+      }
+    },
     "web": {
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/images/icon.png",
+      "bundler": "metro",
+      "output": "single",
+      "backgroundColor": "#FAF8F5"
     },
     "plugins": [
-      [
-        "expo-router",
-        {
-          "origin": "https://replit.com/"
-        }
-      ],
+      "expo-router",
       "expo-font",
       "expo-web-browser"
     ],

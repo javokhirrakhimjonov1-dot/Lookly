@@ -8,6 +8,7 @@ import React, {
   useState,
 } from "react";
 import { Alert } from "react-native";
+import { fetchServerItems, syncItemToServer, deleteItemOnServer } from "./serverSync";
 
 export type ClothingCategory =
   | "tops"
@@ -134,10 +135,13 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const [storedItems, storedOutfits] = await Promise.all([
+        const [storedItems, storedOutfits, serverItems] = await Promise.all([
           AsyncStorage.getItem(ITEMS_KEY),
           AsyncStorage.getItem(OUTFITS_KEY),
+          fetchServerItems(),
         ]);
+
+        let merged: ClothingItem[] = [];
 
         if (storedItems) {
           const parsed: ClothingItem[] = JSON.parse(storedItems);
@@ -147,8 +151,22 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
               return uri ? { ...item, imageUri: uri } : item;
             })
           );
-          setItems(withImages);
-          itemsRef.current = withImages;
+          merged = withImages;
+        }
+
+        // Merge server items: new IDs from server get added, matching IDs keep local (newer)
+        if (serverItems.length > 0) {
+          const localIds = new Set(merged.map((i) => i.id));
+          for (const serverItem of serverItems) {
+            if (!localIds.has(serverItem.id)) {
+              merged.push(serverItem);
+            }
+          }
+        }
+
+        if (merged.length > 0) {
+          setItems(merged);
+          itemsRef.current = merged;
         }
 
         if (storedOutfits) {
@@ -245,6 +263,7 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
       if (newItem.imageUri) {
         await persistImage(newItem.id, newItem.imageUri);
       }
+      syncItemToServer(newItem);
     },
     [persistItems, persistImage]
   );
@@ -267,6 +286,7 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
           item.imageUri ? persistImage(item.id, item.imageUri) : Promise.resolve()
         )
       );
+      built.forEach((item) => syncItemToServer(item));
     },
     [persistItems, persistImage]
   );
@@ -278,6 +298,7 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
       setItems(next);
       await persistItems(next);
       await persistImage(id, undefined);
+      deleteItemOnServer(id);
     },
     [persistItems, persistImage]
   );
@@ -291,6 +312,8 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
       if (updates.imageUri !== undefined) {
         await persistImage(id, updates.imageUri);
       }
+      const updated = next.find((i) => i.id === id);
+      if (updated) syncItemToServer(updated);
     },
     [persistItems, persistImage]
   );
@@ -304,6 +327,7 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
       itemsRef.current = next;
       setItems(next);
       await persistItems(next);
+      next.filter((i) => idSet.has(i.id)).forEach((i) => syncItemToServer(i));
     },
     [persistItems]
   );

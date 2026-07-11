@@ -1,0 +1,11 @@
+NotFoundError: Not Found
+    at createHttpError (C:\Users\Owner\OneDrive\Desktop\codes\Style-Organizer (1)\Style-Organizer\node_modules\.pnpm\send@1.2.1\node_modules\send\index.js:861:12)
+    at SendStream.error (C:\Users\Owner\OneDrive\Desktop\codes\Style-Organizer (1)\Style-Organizer\node_modules\.pnpm\send@1.2.1\node_modules\send\index.js:168:31)
+    at SendStream.pipe (C:\Users\Owner\OneDrive\Desktop\codes\Style-Organizer (1)\Style-Organizer\node_modules\.pnpm\send@1.2.1\node_modules\send\index.js:468:14)
+    at sendfile (C:\Users\Owner\OneDrive\Desktop\codes\Style-Organizer (1)\Style-Organizer\node_modules\.pnpm\express@5.2.1\node_modules\express\lib\response.js:1014:8)
+    at ServerResponse.sendFile (C:\Users\Owner\OneDrive\Desktop\codes\Style-Organizer (1)\Style-Organizer\node_modules\.pnpm\express@5.2.1\node_modules\express\lib\response.js:411:3)
+    at serveStatic (C:\Users\Owner\OneDrive\Desktop\codes\Style-Organizer (1)\Style-Organizer\artifacts\api-server\src\app.ts:68:11)
+    at <anonymous> (C:\Users\Owner\OneDrive\Desktop\codes\Style-Organizer (1)\Style-Organizer\artifacts\api-server\src\app.ts:81:31)
+    at Layer.handleRequest (C:\Users\Owner\OneDrive\Desktop\codes\Style-Organizer (1)\Style-Organizer\node_modules\.pnpm\router@2.2.0\node_modules\router\lib\layer.js:152:17)
+    at trimPrefix (C:\Users\Owner\OneDrive\Desktop\codes\Style-Organizer (1)\Style-Organizer\node_modules\.pnpm\router@2.2.0\node_modules\router\index.js:342:13)
+    at <anonymous> (C:\Users\Owner\OneDrive\Desktop\codes\Style-Organizer (1)\Style-Organizer\node_modules\.pnpm\router@2.2.0\node_modules\router\index.js:297:9)

@@ -26,6 +26,8 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { getTopPadding, getBottomPadding } from "@/constants/layout";
+import { getApiBase } from "@/constants/api";
 import { useColors } from "@/hooks/useColors";
 import {
   type BrandLogo,
@@ -59,7 +61,7 @@ const FABRIC_WEIGHTS: { key: FabricWeight; label: string; hint: string }[] = [
 
 const COLOR_SWATCHES: { name: string; hex: string }[] = [
   { name: "Black", hex: "#1C1512" },
-  { name: "White", hex: "#FAF8F5" },
+  { name: "White", hex: "#F9F8F6" },
   { name: "Beige", hex: "#E8D5B7" },
   { name: "Navy", hex: "#1E3A5F" },
   { name: "Camel", hex: "#C19A6B" },
@@ -88,7 +90,7 @@ function isLight(hex: string): boolean {
   return (r * 299 + g * 587 + b * 114) / 1000 > 128;
 }
 
-const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
+const API_BASE = getApiBase();
 
 interface DetectedItem {
   name: string;
@@ -102,6 +104,8 @@ interface DetectedItem {
   locationHint: string;
   brandLogo?: BrandLogo | null;
   _photoUri?: string;
+  _photoBase64?: string;
+  _photoMime?: string;
   _extractedUri?: string;
   _isDuplicate?: boolean;
   _duplicateOf?: { name: string; color: string; category: string; fabricWeight: string };
@@ -138,7 +142,11 @@ async function scanClothingItems(base64: string, mimeType: string): Promise<Dete
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ image: base64, mimeType }),
   });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) {
+    let msg = `API error ${res.status}`;
+    try { const body = await res.json(); if (body.error) msg = body.error; } catch {}
+    throw new Error(msg);
+  }
   const data = await res.json() as { items: DetectedItem[] };
   return data.items ?? [];
 }
@@ -169,9 +177,10 @@ async function removeBg(
       }),
     });
     if (!res.ok) return null;
-    const data = await res.json() as { image?: string };
-    if (!data.image) return null;
-    return `data:image/png;base64,${data.image}`;
+    const data = await res.json() as { image?: string; url?: string };
+    if (data.url) return `${API_BASE}${data.url}`;
+    if (data.image) return `data:image/png;base64,${data.image}`;
+    return null;
   } catch {
     return null;
   }
@@ -231,7 +240,7 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
             styles.pickerSheet,
             {
               backgroundColor: colors.background,
-              paddingBottom: Platform.OS === "web" ? 24 : insets.bottom + 16,
+              paddingBottom: getBottomPadding(insets.bottom, 16),
             },
           ]}
         >
@@ -357,7 +366,7 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
                       },
                     ]}
                   >
-                    {isSelected && <Feather name="check" size={12} color="#FFFFFF" />}
+                    {isSelected && <Feather name="check" size={12} color={colors.card} />}
                   </View>
                 </TouchableOpacity>
               );
@@ -441,7 +450,7 @@ export default function AddItemScreen() {
   const scanScale = useSharedValue(1);
   const scanCardOpacity = useSharedValue(0);
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = getTopPadding(insets.top);
 
   const scanAnimStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scanScale.value }],
@@ -528,8 +537,8 @@ export default function AddItemScreen() {
       const items = await scanClothingItems(base64, mimeType);
 
       if (items.length === 0) {
-        Alert.alert("Nothing detected", "No clothing items were found in the photo. Try a clearer image or fill in the details manually.");
-        setScannedImage(null);
+        // AI unavailable — keep photo, let user fill in manually
+        setScanDone(true);
         return;
       }
 
@@ -580,8 +589,8 @@ export default function AddItemScreen() {
       ).then(() => setIsRemovingBg(false));
 
     } catch {
-      Alert.alert("Scan failed", "Could not identify items. Please fill in the details manually.");
-      setScannedImage(null);
+      // AI unavailable — keep the photo, let user fill in details manually
+      setScanDone(true);
     } finally {
       setIsScanning(false);
     }
@@ -632,6 +641,8 @@ export default function AddItemScreen() {
           allItems.push({
             ...item,
             _photoUri: asset.uri,
+            _photoBase64: asset.base64,
+            _photoMime: mime,
             _isDuplicate: !!wardrobeDup,
             _duplicateOf: wardrobeDup
               ? { name: wardrobeDup.name, color: wardrobeDup.color, category: wardrobeDup.category, fabricWeight: wardrobeDup.fabricWeight }
@@ -644,8 +655,11 @@ export default function AddItemScreen() {
     setScanPhotoTotal(0);
 
     if (allItems.length === 0) {
-      Alert.alert("Nothing detected", "No clothing items were found in the selected photos. Try clearer images or fill in manually.");
-      setScannedImage(null);
+      // AI unavailable — keep last photo visible, let user fill manually
+      if (result.assets.length > 0) {
+        setScannedImage(result.assets[0]!.uri);
+      }
+      setScanDone(true);
       return;
     }
 
@@ -665,7 +679,7 @@ export default function AddItemScreen() {
     Promise.allSettled(
       allItems.map((item, idx) => {
         const color = resolveColor(item.colorName, item.colorHex);
-        return removeBg(item.name, item.category, color.name, color.hex, item.material, item.brandLogo)
+        return removeBg(item.name, item.category, color.name, color.hex, item.material, item.brandLogo, item._photoBase64, item._photoMime)
           .then((cleanUri) => {
             if (!cleanUri) return;
             setDetectedItems((prev) => {
@@ -777,7 +791,7 @@ export default function AddItemScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: Platform.OS === "web" ? 60 : insets.bottom + 40 },
+          { paddingBottom: getBottomPadding(insets.bottom, 40) },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -792,10 +806,10 @@ export default function AddItemScreen() {
               <Image source={{ uri: scannedImage }} style={styles.scannedImage} contentFit="cover" />
               {isScanning && (
                 <View style={[styles.scanOverlay, { backgroundColor: "rgba(28,21,18,0.7)" }]}>
-                  <ActivityIndicator size="large" color="#FAF8F5" />
+                  <ActivityIndicator size="large" color={colors.primaryForeground} />
                   {scanPhotoTotal > 1 ? (
                     <>
-                      <Text style={styles.scanOverlayText}>
+                      <Text style={[styles.scanOverlayText, { color: colors.primaryForeground }]}>
                         Analyzing photo {scanPhotoIndex} of {scanPhotoTotal}…
                       </Text>
                       <View style={styles.scanDots}>
@@ -813,29 +827,29 @@ export default function AddItemScreen() {
                       </View>
                     </>
                   ) : (
-                    <Text style={styles.scanOverlayText}>Detecting items…</Text>
+                    <Text style={[styles.scanOverlayText, { color: colors.primaryForeground }]}>Detecting items…</Text>
                   )}
                 </View>
               )}
               {isRemovingBg && !isScanning && (
                 <View style={[styles.isolatingBadge, { backgroundColor: "rgba(28,21,18,0.82)" }]}>
                   <ActivityIndicator size="small" color={colors.accent} />
-                  <Text style={styles.isolatingText}>Isolating garment…</Text>
+                  <Text style={[styles.isolatingText, { color: colors.primaryForeground }]}>Isolating garment…</Text>
                 </View>
               )}
-              {scanDone && !isScanning && (
+              {scanDone && !isScanning && name ? (
                 <View style={[styles.scanDoneBadge, { backgroundColor: colors.accent }]}>
-                  <Feather name="check" size={12} color="#FFFFFF" />
-                  <Text style={styles.scanDoneText}>Filled automatically</Text>
+                  <Feather name="check" size={12} color={colors.card} />
+                  <Text style={[styles.scanDoneText, { color: colors.card }]}>Filled automatically</Text>
                 </View>
-              )}
+              ) : null}
               {detectedItems.length > 1 && !isScanning && (
                 <TouchableOpacity
                   onPress={() => setShowPicker(true)}
                   style={[styles.rePickBadge, { backgroundColor: colors.primary + "EE" }]}
                 >
-                  <Feather name="list" size={12} color="#FAF8F5" />
-                  <Text style={styles.rePickText}>{detectedItems.length} items found · tap to repick</Text>
+                  <Feather name="list" size={12} color={colors.primaryForeground} />
+                  <Text style={[styles.rePickText, { color: colors.primaryForeground }]}>{detectedItems.length} items found · tap to repick</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -1092,7 +1106,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
   },
-  scanOverlayText: { color: "#FAF8F5", fontSize: 14, fontWeight: "600" },
+  scanOverlayText: { color: "#F9F8F6", fontSize: 14, fontWeight: "600" },
   scanDots: { flexDirection: "row", gap: 7, marginTop: 4 },
   scanDot: { width: 8, height: 8, borderRadius: 4 },
   isolatingBadge: {
@@ -1106,7 +1120,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 100,
   },
-  isolatingText: { color: "#FAF8F5", fontSize: 11, fontWeight: "600" },
+  isolatingText: { color: "#F9F8F6", fontSize: 11, fontWeight: "600" },
   scanDoneBadge: {
     position: "absolute",
     bottom: 10,
@@ -1130,7 +1144,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 100,
   },
-  rePickText: { color: "#FAF8F5", fontSize: 11, fontWeight: "600" },
+  rePickText: { color: "#F9F8F6", fontSize: 11, fontWeight: "600" },
   scanButtons: { flexDirection: "row", gap: 10 },
   scanBtn: {
     flex: 1,

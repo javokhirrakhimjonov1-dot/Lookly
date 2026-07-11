@@ -5,415 +5,85 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import {
-  useMutation,
-  useQuery
-} from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import type {
-  MutationFunction,
   QueryFunction,
   QueryKey,
-  UseMutationOptions,
-  UseMutationResult,
   UseQueryOptions,
-  UseQueryResult
+  UseQueryResult,
 } from '@tanstack/react-query';
 
-import type {
-  ErrorResult,
-  ExtractedText,
-  HealthStatus,
-  ImageInput,
-  JobStatus,
-  PassageInput,
-  VisualizeResult
-} from './api.schemas';
+import type { HealthStatus } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
-import type { ErrorType , BodyType } from '../custom-fetch';
+import type { ErrorType } from '../custom-fetch';
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
-      type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
-
+type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
-
-
 export const getHealthCheckUrl = () => {
-
-
-
-
-  return `/api/healthz`
-}
+  return `/api/healthz`;
+};
 
 /**
  * Returns server health status
  * @summary Health check
  */
-export const healthCheck = async ( options?: RequestInit): Promise<HealthStatus> => {
-
-  return customFetch<HealthStatus>(getHealthCheckUrl(),
-  {
+export const healthCheck = async (options?: RequestInit): Promise<HealthStatus> => {
+  return customFetch<HealthStatus>(getHealthCheckUrl(), {
     ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
+    method: 'GET',
+  });
+};
 
 export const getHealthCheckQueryKey = () => {
-    return [
-    `/api/healthz`
-    ] as const;
-    }
+  return [`/api/healthz`] as const;
+};
 
-
-export const getHealthCheckQueryOptions = <TData = Awaited<ReturnType<typeof healthCheck>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getHealthCheckQueryOptions = <
+  TData = Awaited<ReturnType<typeof healthCheck>>,
+  TError = ErrorType<unknown>,
+>(
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
 ) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
 
-const {query: queryOptions, request: requestOptions} = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getHealthCheckQueryKey();
 
-  const queryKey =  queryOptions?.queryKey ?? getHealthCheckQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof healthCheck>>> = ({ signal }) =>
+    healthCheck({ signal, ...requestOptions });
 
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof healthCheck>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
 
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof healthCheck>>> = ({ signal }) => healthCheck({ signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type HealthCheckQueryResult = NonNullable<Awaited<ReturnType<typeof healthCheck>>>
-export type HealthCheckQueryError = ErrorType<unknown>
-
+export type HealthCheckQueryResult = NonNullable<Awaited<ReturnType<typeof healthCheck>>>;
+export type HealthCheckQueryError = ErrorType<unknown>;
 
 /**
  * @summary Health check
  */
+export function useHealthCheck<
+  TData = Awaited<ReturnType<typeof healthCheck>>,
+  TError = ErrorType<unknown>,
+>(
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getHealthCheckQueryOptions(options);
 
-export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getHealthCheckQueryOptions(options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
-
-
-
-
-
-
-
-export const getExtractTextFromImageUrl = () => {
-
-
-
-
-  return `/api/sat-visualizer/extract-text`
-}
-
-/**
- * Uses AI vision to read and return the text from an uploaded image
- * @summary Extract text from a screenshot of an SAT passage
- */
-export const extractTextFromImage = async (imageInput: ImageInput, options?: RequestInit): Promise<ExtractedText> => {
-
-  return customFetch<ExtractedText>(getExtractTextFromImageUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      imageInput,)
-  }
-);}
-
-
-
-
-export const getExtractTextFromImageMutationOptions = <TError = ErrorType<ErrorResult>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof extractTextFromImage>>, TError,{data: BodyType<ImageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof extractTextFromImage>>, TError,{data: BodyType<ImageInput>}, TContext> => {
-
-const mutationKey = ['extractTextFromImage'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof extractTextFromImage>>, {data: BodyType<ImageInput>}> = (props) => {
-          const {data} = props ?? {};
-
-          return  extractTextFromImage(data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type ExtractTextFromImageMutationResult = NonNullable<Awaited<ReturnType<typeof extractTextFromImage>>>
-    export type ExtractTextFromImageMutationBody = BodyType<ImageInput>
-    export type ExtractTextFromImageMutationError = ErrorType<ErrorResult>
-
-    /**
- * @summary Extract text from a screenshot of an SAT passage
- */
-export const useExtractTextFromImage = <TError = ErrorType<ErrorResult>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof extractTextFromImage>>, TError,{data: BodyType<ImageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof extractTextFromImage>>,
-        TError,
-        {data: BodyType<ImageInput>},
-        TContext
-      > => {
-      return useMutation(getExtractTextFromImageMutationOptions(options));
-    }
-
-export const getVisualizePassageUrl = () => {
-
-
-
-
-  return `/api/sat-visualizer/visualize`
-}
-
-/**
- * Analyzes an SAT passage with AI, generates images for each scene, and assembles a video
- * @summary Visualize an SAT passage
- */
-export const visualizePassage = async (passageInput: PassageInput, options?: RequestInit): Promise<VisualizeResult> => {
-
-  return customFetch<VisualizeResult>(getVisualizePassageUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      passageInput,)
-  }
-);}
-
-
-
-
-export const getVisualizePassageMutationOptions = <TError = ErrorType<ErrorResult>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof visualizePassage>>, TError,{data: BodyType<PassageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof visualizePassage>>, TError,{data: BodyType<PassageInput>}, TContext> => {
-
-const mutationKey = ['visualizePassage'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof visualizePassage>>, {data: BodyType<PassageInput>}> = (props) => {
-          const {data} = props ?? {};
-
-          return  visualizePassage(data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type VisualizePassageMutationResult = NonNullable<Awaited<ReturnType<typeof visualizePassage>>>
-    export type VisualizePassageMutationBody = BodyType<PassageInput>
-    export type VisualizePassageMutationError = ErrorType<ErrorResult>
-
-    /**
- * @summary Visualize an SAT passage
- */
-export const useVisualizePassage = <TError = ErrorType<ErrorResult>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof visualizePassage>>, TError,{data: BodyType<PassageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof visualizePassage>>,
-        TError,
-        {data: BodyType<PassageInput>},
-        TContext
-      > => {
-      return useMutation(getVisualizePassageMutationOptions(options));
-    }
-
-export const getGetVisualizationStatusUrl = (jobId: string,) => {
-
-
-
-
-  return `/api/sat-visualizer/status/${jobId}`
-}
-
-/**
- * @summary Get the status of a visualization job
- */
-export const getVisualizationStatus = async (jobId: string, options?: RequestInit): Promise<JobStatus> => {
-
-  return customFetch<JobStatus>(getGetVisualizationStatusUrl(jobId),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
-
-export const getGetVisualizationStatusQueryKey = (jobId: string,) => {
-    return [
-    `/api/sat-visualizer/status/${jobId}`
-    ] as const;
-    }
-
-
-export const getGetVisualizationStatusQueryOptions = <TData = Awaited<ReturnType<typeof getVisualizationStatus>>, TError = ErrorType<ErrorResult>>(jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVisualizationStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getGetVisualizationStatusQueryKey(jobId);
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVisualizationStatus>>> = ({ signal }) => getVisualizationStatus(jobId, { signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, enabled: !!(jobId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVisualizationStatus>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetVisualizationStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getVisualizationStatus>>>
-export type GetVisualizationStatusQueryError = ErrorType<ErrorResult>
-
-
-/**
- * @summary Get the status of a visualization job
- */
-
-export function useGetVisualizationStatus<TData = Awaited<ReturnType<typeof getVisualizationStatus>>, TError = ErrorType<ErrorResult>>(
- jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVisualizationStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetVisualizationStatusQueryOptions(jobId,options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  return { ...query, queryKey: queryOptions.queryKey };
-}
-
-
-
-
-
-
-
-export const getGetVisualizationVideoUrl = (jobId: string,) => {
-
-
-
-
-  return `/api/sat-visualizer/video/${jobId}`
-}
-
-/**
- * @summary Get the generated video file for a completed job
- */
-export const getVisualizationVideo = async (jobId: string, options?: RequestInit): Promise<Blob> => {
-
-  return customFetch<Blob>(getGetVisualizationVideoUrl(jobId),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
-
-export const getGetVisualizationVideoQueryKey = (jobId: string,) => {
-    return [
-    `/api/sat-visualizer/video/${jobId}`
-    ] as const;
-    }
-
-
-export const getGetVisualizationVideoQueryOptions = <TData = Awaited<ReturnType<typeof getVisualizationVideo>>, TError = ErrorType<ErrorResult>>(jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVisualizationVideo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getGetVisualizationVideoQueryKey(jobId);
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVisualizationVideo>>> = ({ signal }) => getVisualizationVideo(jobId, { signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, enabled: !!(jobId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVisualizationVideo>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetVisualizationVideoQueryResult = NonNullable<Awaited<ReturnType<typeof getVisualizationVideo>>>
-export type GetVisualizationVideoQueryError = ErrorType<ErrorResult>
-
-
-/**
- * @summary Get the generated video file for a completed job
- */
-
-export function useGetVisualizationVideo<TData = Awaited<ReturnType<typeof getVisualizationVideo>>, TError = ErrorType<ErrorResult>>(
- jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVisualizationVideo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetVisualizationVideoQueryOptions(jobId,options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  return { ...query, queryKey: queryOptions.queryKey };
-}
-
-
-
-
-
-
-

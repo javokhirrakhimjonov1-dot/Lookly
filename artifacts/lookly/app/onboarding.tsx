@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
@@ -24,18 +24,9 @@ import {
   type HeatAdaptation,
   type ColorPalette,
 } from "@/contexts/UserProfileContext";
+import { useColors } from "@/hooks/useColors";
 
 const { width: SCREEN_W } = Dimensions.get("window");
-
-const C = {
-  bg: "#FAF8F5",
-  primary: "#1C1512",
-  accent: "#C8906A",
-  muted: "#78716C",
-  border: "#E8E2DA",
-  card: "#F4F0EA",
-  white: "#FFFFFF",
-};
 
 const CARD_W = SCREEN_W * 0.58;
 const CARD_H = CARD_W * 1.55;
@@ -48,7 +39,6 @@ const GENDERS: { label: string; value: Gender }[] = [
   { label: "Prefer not to say", value: "prefer_not_to_say" },
 ];
 
-// Two separate image sets so quiz photos match the user's gender
 const AESTHETICS: {
   label: string;
   value: StyleAesthetic;
@@ -214,31 +204,33 @@ function StyleImageCard<T extends string>({
   multiSelect?: boolean;
   onPress: (v: T) => void;
 }) {
+  const colors = useColors();
+  const s = useMemo(() => makeStyles(colors), [colors]);
   return (
     <TouchableOpacity
       onPress={() => onPress(value)}
       activeOpacity={0.88}
-      style={[styles.imgCard, selected && styles.imgCardSelected]}
+      style={[s.imgCard, selected && s.imgCardSelected]}
     >
       <Image
         source={{ uri: imageUri }}
-        style={styles.imgCardPhoto}
+        style={s.imgCardPhoto}
         contentFit="cover"
         transition={200}
       />
       <LinearGradient
         colors={["transparent", "rgba(28,21,18,0.88)"]}
-        style={styles.imgCardGradient}
+        style={s.imgCardGradient}
       />
-      {selected && <View style={styles.imgCardSelectedOverlay} />}
+      {selected && <View style={s.imgCardSelectedOverlay} />}
       {selected && (
-        <View style={styles.imgCardCheckBadge}>
-          <Feather name={multiSelect ? "check" : "check"} size={13} color={C.white} />
+        <View style={s.imgCardCheckBadge}>
+          <Feather name={multiSelect ? "check" : "check"} size={13} color={colors.card} />
         </View>
       )}
-      <View style={styles.imgCardLabel}>
-        <Text style={styles.imgCardLabelText}>{label}</Text>
-        <Text style={styles.imgCardDescText}>{desc}</Text>
+      <View style={s.imgCardLabel}>
+        <Text style={s.imgCardLabelText}>{label}</Text>
+        <Text style={s.imgCardDescText}>{desc}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -246,6 +238,8 @@ function StyleImageCard<T extends string>({
 
 export default function OnboardingScreen() {
   const { completeOnboarding } = useUserProfile();
+  const colors = useColors();
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
   const [step, setStep] = useState(0);
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -257,7 +251,6 @@ export default function OnboardingScreen() {
   const [ageError, setAgeError] = useState(false);
   const [genderError, setGenderError] = useState(false);
 
-  // multi-select for style
   const [aesthetics, setAesthetics] = useState<StyleAesthetic[]>([]);
   const [heat, setHeat] = useState<HeatAdaptation | null>(null);
   const [palette, setPalette] = useState<ColorPalette | null>(null);
@@ -311,83 +304,81 @@ export default function OnboardingScreen() {
   const progressPercent = (step / 4) * 100 + 25;
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.progressTrack}>
-        <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={s.progressTrack}>
+        <View style={[s.progressFill, { width: `${progressPercent}%` }]} />
       </View>
 
-      <Animated.View style={[styles.container, { transform: [{ translateX: slideAnim }] }]}>
+      <Animated.View style={[s.container, { transform: [{ translateX: slideAnim }] }]}>
 
-        {/* ── STEP 0: Demographics ── */}
         {step === 0 && (
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-              <View style={styles.header}>
-                <Text style={styles.tagline}>WELCOME TO</Text>
-                <Text style={styles.appName}>Lookly</Text>
-                <Text style={styles.subtitle}>Let's personalise your style in under a minute.</Text>
+            <ScrollView contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
+              <View style={s.header}>
+                <Text style={s.tagline}>WELCOME TO</Text>
+                <Text style={s.appName}>Lookly</Text>
+                <Text style={s.subtitle}>Let's personalise your style in under a minute.</Text>
               </View>
 
-              <View style={styles.section}>
-                <Text style={styles.label}>Your name</Text>
+              <View style={s.section}>
+                <Text style={s.label}>Your name</Text>
                 <TextInput
                   value={name}
                   onChangeText={(t) => { setName(t); setNameError(false); }}
                   placeholder="e.g. Aziz"
-                  placeholderTextColor={C.muted}
-                  style={[styles.input, nameError && styles.inputError]}
+                  placeholderTextColor={colors.mutedForeground}
+                  style={[s.input, nameError && s.inputError]}
                   autoCapitalize="words"
                 />
-                {nameError && <Text style={styles.errorText}>Please enter your name</Text>}
+                {nameError && <Text style={s.errorText}>Please enter your name</Text>}
               </View>
 
-              <View style={styles.section}>
-                <Text style={styles.label}>Your age</Text>
+              <View style={s.section}>
+                <Text style={s.label}>Your age</Text>
                 <TextInput
                   value={age}
                   onChangeText={(t) => { setAge(t.replace(/[^0-9]/g, "")); setAgeError(false); }}
                   placeholder="e.g. 24"
-                  placeholderTextColor={C.muted}
+                  placeholderTextColor={colors.mutedForeground}
                   keyboardType="number-pad"
                   maxLength={2}
-                  style={[styles.input, styles.inputShort, ageError && styles.inputError]}
+                  style={[s.input, s.inputShort, ageError && s.inputError]}
                 />
-                {ageError && <Text style={styles.errorText}>Enter a valid age (10–99)</Text>}
+                {ageError && <Text style={s.errorText}>Enter a valid age (10–99)</Text>}
               </View>
 
-              <View style={styles.section}>
-                <Text style={styles.label}>Gender</Text>
-                <View style={styles.genderGrid}>
+              <View style={s.section}>
+                <Text style={s.label}>Gender</Text>
+                <View style={s.genderGrid}>
                   {GENDERS.map((g) => (
                     <Pressable
                       key={g.value}
                       onPress={() => { setGender(g.value); setGenderError(false); }}
-                      style={[styles.genderBtn, gender === g.value && styles.genderBtnSelected, genderError && !gender && styles.genderBtnError]}
+                      style={[s.genderBtn, gender === g.value && s.genderBtnSelected, genderError && !gender && s.genderBtnError]}
                     >
-                      <Text style={[styles.genderBtnText, gender === g.value && styles.genderBtnTextSelected]}>
+                      <Text style={[s.genderBtnText, gender === g.value && s.genderBtnTextSelected]}>
                         {g.label}
                       </Text>
                     </Pressable>
                   ))}
                 </View>
-                {genderError && <Text style={styles.errorText}>Please select a gender</Text>}
+                {genderError && <Text style={s.errorText}>Please select a gender</Text>}
               </View>
 
-              <TouchableOpacity onPress={handleDemographicsNext} style={styles.primaryBtn} activeOpacity={0.85}>
-                <Text style={styles.primaryBtnText}>Next</Text>
-                <Feather name="arrow-right" size={18} color={C.white} />
+              <TouchableOpacity onPress={handleDemographicsNext} style={s.primaryBtn} activeOpacity={0.85}>
+                <Text style={s.primaryBtnText}>Next</Text>
+                <Feather name="arrow-right" size={18} color={colors.card} />
               </TouchableOpacity>
             </ScrollView>
           </KeyboardAvoidingView>
         )}
 
-        {/* ── STEP 1: Style Aesthetic (multi-select) ── */}
         {step === 1 && (
           <View style={{ flex: 1 }}>
-            <View style={styles.quizHeader}>
-              <Text style={styles.quizStep}>STEP 1 OF 3 · YOUR STYLE</Text>
-              <Text style={styles.quizTitle}>How do you dress?</Text>
-              <Text style={styles.quizSub}>
+            <View style={s.quizHeader}>
+              <Text style={s.quizStep}>STEP 1 OF 3 · YOUR STYLE</Text>
+              <Text style={s.quizTitle}>How do you dress?</Text>
+              <Text style={s.quizSub}>
                 Pick every style you wear — you can mix and match.
               </Text>
             </View>
@@ -397,7 +388,7 @@ export default function OnboardingScreen() {
               showsHorizontalScrollIndicator={false}
               snapToInterval={CARD_W + CARD_GAP}
               decelerationRate="fast"
-              contentContainerStyle={styles.imgRow}
+              contentContainerStyle={s.imgRow}
             >
               {AESTHETICS.map((a) => (
                 <StyleImageCard
@@ -413,40 +404,39 @@ export default function OnboardingScreen() {
               ))}
             </ScrollView>
 
-            <View style={styles.selectionRow}>
+            <View style={s.selectionRow}>
               {aesthetics.length > 0 ? (
-                <Text style={styles.selectionLabel}>
+                <Text style={s.selectionLabel}>
                   Selected: {aesthetics.map((a) => AESTHETICS.find((x) => x.value === a)?.label).join(", ")}
                 </Text>
               ) : (
-                <Text style={styles.swipeHint}>← Swipe · tap to select</Text>
+                <Text style={s.swipeHint}>← Swipe · tap to select</Text>
               )}
             </View>
 
-            <View style={styles.navRow}>
-              <TouchableOpacity onPress={() => goToStep(0)} style={styles.backBtn}>
-                <Feather name="arrow-left" size={16} color={C.muted} />
-                <Text style={styles.backBtnText}>Back</Text>
+            <View style={s.navRow}>
+              <TouchableOpacity onPress={() => goToStep(0)} style={s.backBtn}>
+                <Feather name="arrow-left" size={16} color={colors.mutedForeground} />
+                <Text style={s.backBtnText}>Back</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => aesthetics.length > 0 && goToStep(2)}
-                style={[styles.primaryBtn, styles.primaryBtnCompact, aesthetics.length === 0 && styles.primaryBtnDisabled]}
+                style={[s.primaryBtn, s.primaryBtnCompact, aesthetics.length === 0 && s.primaryBtnDisabled]}
                 activeOpacity={0.85}
               >
-                <Text style={styles.primaryBtnText}>Next</Text>
-                <Feather name="arrow-right" size={16} color={C.white} />
+                <Text style={s.primaryBtnText}>Next</Text>
+                <Feather name="arrow-right" size={16} color={colors.card} />
               </TouchableOpacity>
             </View>
           </View>
         )}
 
-        {/* ── STEP 2: Heat Adaptation ── */}
         {step === 2 && (
           <View style={{ flex: 1 }}>
-            <View style={styles.quizHeader}>
-              <Text style={styles.quizStep}>STEP 2 OF 3 · SUMMER</Text>
-              <Text style={styles.quizTitle}>Tashkent summer heat</Text>
-              <Text style={styles.quizSub}>30°C+ outside — which look fits you best?</Text>
+            <View style={s.quizHeader}>
+              <Text style={s.quizStep}>STEP 2 OF 3 · SUMMER</Text>
+              <Text style={s.quizTitle}>Tashkent summer heat</Text>
+              <Text style={s.quizSub}>30°C+ outside — which look fits you best?</Text>
             </View>
 
             <ScrollView
@@ -454,7 +444,7 @@ export default function OnboardingScreen() {
               showsHorizontalScrollIndicator={false}
               snapToInterval={CARD_W + CARD_GAP}
               decelerationRate="fast"
-              contentContainerStyle={styles.imgRow}
+              contentContainerStyle={s.imgRow}
             >
               {HEATS.map((h) => (
                 <StyleImageCard
@@ -468,32 +458,31 @@ export default function OnboardingScreen() {
                 />
               ))}
             </ScrollView>
-            <Text style={styles.swipeHint}>← Swipe to browse</Text>
+            <Text style={s.swipeHint}>← Swipe to browse</Text>
 
-            <View style={styles.navRow}>
-              <TouchableOpacity onPress={() => goToStep(1)} style={styles.backBtn}>
-                <Feather name="arrow-left" size={16} color={C.muted} />
-                <Text style={styles.backBtnText}>Back</Text>
+            <View style={s.navRow}>
+              <TouchableOpacity onPress={() => goToStep(1)} style={s.backBtn}>
+                <Feather name="arrow-left" size={16} color={colors.mutedForeground} />
+                <Text style={s.backBtnText}>Back</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => heat && goToStep(3)}
-                style={[styles.primaryBtn, styles.primaryBtnCompact, !heat && styles.primaryBtnDisabled]}
+                style={[s.primaryBtn, s.primaryBtnCompact, !heat && s.primaryBtnDisabled]}
                 activeOpacity={0.85}
               >
-                <Text style={styles.primaryBtnText}>Next</Text>
-                <Feather name="arrow-right" size={16} color={C.white} />
+                <Text style={s.primaryBtnText}>Next</Text>
+                <Feather name="arrow-right" size={16} color={colors.card} />
               </TouchableOpacity>
             </View>
           </View>
         )}
 
-        {/* ── STEP 3: Colour Palette ── */}
         {step === 3 && (
           <View style={{ flex: 1 }}>
-            <View style={styles.quizHeader}>
-              <Text style={styles.quizStep}>STEP 3 OF 3 · COLOUR</Text>
-              <Text style={styles.quizTitle}>Your colour palette</Text>
-              <Text style={styles.quizSub}>Pick the palette that feels most like you.</Text>
+            <View style={s.quizHeader}>
+              <Text style={s.quizStep}>STEP 3 OF 3 · COLOUR</Text>
+              <Text style={s.quizTitle}>Your colour palette</Text>
+              <Text style={s.quizSub}>Pick the palette that feels most like you.</Text>
             </View>
 
             <ScrollView
@@ -501,7 +490,7 @@ export default function OnboardingScreen() {
               showsHorizontalScrollIndicator={false}
               snapToInterval={CARD_W + CARD_GAP}
               decelerationRate="fast"
-              contentContainerStyle={styles.imgRow}
+              contentContainerStyle={s.imgRow}
             >
               {PALETTES.map((p) => (
                 <StyleImageCard
@@ -515,21 +504,21 @@ export default function OnboardingScreen() {
                 />
               ))}
             </ScrollView>
-            <Text style={styles.swipeHint}>← Swipe to browse</Text>
+            <Text style={s.swipeHint}>← Swipe to browse</Text>
 
-            <View style={styles.navRow}>
-              <TouchableOpacity onPress={() => goToStep(2)} style={styles.backBtn}>
-                <Feather name="arrow-left" size={16} color={C.muted} />
-                <Text style={styles.backBtnText}>Back</Text>
+            <View style={s.navRow}>
+              <TouchableOpacity onPress={() => goToStep(2)} style={s.backBtn}>
+                <Feather name="arrow-left" size={16} color={colors.mutedForeground} />
+                <Text style={s.backBtnText}>Back</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleComplete}
                 disabled={!palette || completing}
-                style={[styles.primaryBtn, styles.primaryBtnCompact, (!palette || completing) && styles.primaryBtnDisabled]}
+                style={[s.primaryBtn, s.primaryBtnCompact, (!palette || completing) && s.primaryBtnDisabled]}
                 activeOpacity={0.85}
               >
-                <Text style={styles.primaryBtnText}>{completing ? "Setting up…" : "Complete"}</Text>
-                {!completing && <Feather name="check" size={16} color={C.white} />}
+                <Text style={s.primaryBtnText}>{completing ? "Setting up…" : "Complete"}</Text>
+                {!completing && <Feather name="check" size={16} color={colors.card} />}
               </TouchableOpacity>
             </View>
           </View>
@@ -540,189 +529,187 @@ export default function OnboardingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
-  progressTrack: { height: 3, backgroundColor: C.border },
-  progressFill: { height: 3, backgroundColor: C.accent },
-  container: { flex: 1 },
+function makeStyles(colors: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
+    progressTrack: { height: 3, backgroundColor: colors.border },
+    progressFill: { height: 3, backgroundColor: colors.accent },
+    container: { flex: 1 },
 
-  scrollContent: {
-    paddingHorizontal: 24,
-    paddingTop: 32,
-    paddingBottom: 40,
-    gap: 24,
-  },
+    scrollContent: {
+      paddingHorizontal: 24,
+      paddingTop: 32,
+      paddingBottom: 40,
+      gap: 24,
+    },
 
-  header: { gap: 6 },
-  tagline: { fontSize: 11, fontWeight: "700", letterSpacing: 2, color: C.accent },
-  appName: { fontSize: 40, fontWeight: "800", color: C.primary, letterSpacing: -1 },
-  subtitle: { fontSize: 15, color: C.muted, lineHeight: 22, marginTop: 4 },
+    header: { gap: 6 },
+    tagline: { fontSize: 11, fontWeight: "700", letterSpacing: 2, color: colors.accent },
+    appName: { fontSize: 40, fontWeight: "800", color: colors.text, letterSpacing: -1 },
+    subtitle: { fontSize: 15, color: colors.mutedForeground, lineHeight: 22, marginTop: 4 },
 
-  section: { gap: 8 },
-  label: { fontSize: 13, fontWeight: "600", color: C.primary, letterSpacing: 0.2 },
-  input: {
-    borderWidth: 1.5,
-    borderColor: C.border,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: C.primary,
-    backgroundColor: C.white,
-  },
-  inputShort: { maxWidth: 120 },
-  inputError: { borderColor: "#DC2626" },
-  errorText: { fontSize: 12, color: "#DC2626", marginTop: 2 },
+    section: { gap: 8 },
+    label: { fontSize: 13, fontWeight: "600", color: colors.text, letterSpacing: 0.2 },
+    input: {
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      borderRadius: 14,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      fontSize: 16,
+      color: colors.text,
+      backgroundColor: colors.card,
+    },
+    inputShort: { maxWidth: 120 },
+    inputError: { borderColor: colors.destructive },
+    errorText: { fontSize: 12, color: colors.destructive, marginTop: 2 },
 
-  genderGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  genderBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 100,
-    borderWidth: 1.5,
-    borderColor: C.border,
-    backgroundColor: C.white,
-  },
-  genderBtnSelected: { backgroundColor: C.primary, borderColor: C.primary },
-  genderBtnError: { borderColor: "#DC2626" },
-  genderBtnText: { fontSize: 13, fontWeight: "600", color: C.primary },
-  genderBtnTextSelected: { color: C.white },
+    genderGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    genderBtn: {
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 100,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+    },
+    genderBtnSelected: { backgroundColor: colors.foreground, borderColor: colors.foreground },
+    genderBtnError: { borderColor: colors.destructive },
+    genderBtnText: { fontSize: 13, fontWeight: "600", color: colors.text },
+    genderBtnTextSelected: { color: colors.card },
 
-  // ── Quiz ──
-  quizHeader: {
-    paddingHorizontal: 24,
-    paddingTop: 28,
-    paddingBottom: 18,
-    gap: 5,
-  },
-  quizStep: { fontSize: 11, fontWeight: "700", letterSpacing: 2, color: C.accent },
-  quizTitle: { fontSize: 26, fontWeight: "800", color: C.primary, letterSpacing: -0.5 },
-  quizSub: { fontSize: 14, color: C.muted, lineHeight: 20 },
+    quizHeader: {
+      paddingHorizontal: 24,
+      paddingTop: 28,
+      paddingBottom: 18,
+      gap: 5,
+    },
+    quizStep: { fontSize: 11, fontWeight: "700", letterSpacing: 2, color: colors.accent },
+    quizTitle: { fontSize: 26, fontWeight: "800", color: colors.text, letterSpacing: -0.5 },
+    quizSub: { fontSize: 14, color: colors.mutedForeground, lineHeight: 20 },
 
-  imgRow: {
-    paddingLeft: 24,
-    paddingRight: 24,
-    gap: CARD_GAP,
-    alignItems: "flex-start",
-  },
+    imgRow: {
+      paddingLeft: 24,
+      paddingRight: 24,
+      gap: CARD_GAP,
+      alignItems: "flex-start",
+    },
 
-  // ── Image Card ──
-  imgCard: {
-    width: CARD_W,
-    height: CARD_H,
-    borderRadius: 20,
-    overflow: "hidden",
-    borderWidth: 3,
-    borderColor: "transparent",
-    position: "relative",
-  },
-  imgCardSelected: { borderColor: C.accent },
-  imgCardPhoto: {
-    width: "100%",
-    height: "100%",
-    position: "absolute",
-    top: 0,
-    left: 0,
-  },
-  imgCardGradient: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: "60%",
-  },
-  imgCardSelectedOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(200,144,106,0.18)",
-  },
-  imgCardCheckBadge: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: C.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  imgCardLabel: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 16,
-    gap: 3,
-  },
-  imgCardLabelText: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: C.white,
-    letterSpacing: -0.3,
-  },
-  imgCardDescText: {
-    fontSize: 12,
-    color: "rgba(250,248,245,0.75)",
-    lineHeight: 16,
-  },
+    imgCard: {
+      width: CARD_W,
+      height: CARD_H,
+      borderRadius: 20,
+      overflow: "hidden",
+      borderWidth: 3,
+      borderColor: "transparent",
+      position: "relative",
+    },
+    imgCardSelected: { borderColor: colors.accent },
+    imgCardPhoto: {
+      width: "100%",
+      height: "100%",
+      position: "absolute",
+      top: 0,
+      left: 0,
+    },
+    imgCardGradient: {
+      position: "absolute",
+      bottom: 0,
+      left: 0,
+      right: 0,
+      height: "60%",
+    },
+    imgCardSelectedOverlay: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: colors.secondary,
+    },
+    imgCardCheckBadge: {
+      position: "absolute",
+      top: 12,
+      right: 12,
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: colors.accent,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    imgCardLabel: {
+      position: "absolute",
+      bottom: 0,
+      left: 0,
+      right: 0,
+      padding: 16,
+      gap: 3,
+    },
+    imgCardLabelText: {
+      fontSize: 17,
+      fontWeight: "800",
+      color: colors.card,
+      letterSpacing: -0.3,
+    },
+    imgCardDescText: {
+      fontSize: 12,
+      color: "rgba(255,255,255,0.75)",
+      lineHeight: 16,
+    },
 
-  selectionRow: {
-    minHeight: 26,
-    paddingHorizontal: 24,
-    marginTop: 10,
-    justifyContent: "center",
-  },
-  selectionLabel: {
-    fontSize: 12,
-    color: C.accent,
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  swipeHint: {
-    textAlign: "center",
-    fontSize: 11,
-    color: C.muted,
-    marginTop: 10,
-    letterSpacing: 0.5,
-  },
+    selectionRow: {
+      minHeight: 26,
+      paddingHorizontal: 24,
+      marginTop: 10,
+      justifyContent: "center",
+    },
+    selectionLabel: {
+      fontSize: 12,
+      color: colors.accent,
+      fontWeight: "600",
+      textAlign: "center",
+    },
+    swipeHint: {
+      textAlign: "center",
+      fontSize: 11,
+      color: colors.mutedForeground,
+      marginTop: 10,
+      letterSpacing: 0.5,
+    },
 
-  // ── Nav ──
-  navRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    paddingHorizontal: 24,
-    paddingTop: 14,
-    paddingBottom: 24,
-  },
-  backBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 13,
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: C.border,
-  },
-  backBtnText: { fontSize: 14, fontWeight: "600", color: C.muted },
-  primaryBtn: {
-    backgroundColor: C.primary,
-    borderRadius: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginTop: 8,
-  },
-  primaryBtnCompact: { paddingVertical: 13, paddingHorizontal: 20, marginTop: 0, flex: 1, maxWidth: 160 },
-  primaryBtnDisabled: { backgroundColor: C.border },
-  primaryBtnText: { color: C.white, fontSize: 15, fontWeight: "700" },
-});
+    navRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+      paddingHorizontal: 24,
+      paddingTop: 14,
+      paddingBottom: 24,
+    },
+    backBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingVertical: 13,
+      paddingHorizontal: 16,
+      borderRadius: 14,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+    },
+    backBtnText: { fontSize: 14, fontWeight: "600", color: colors.mutedForeground },
+    primaryBtn: {
+      backgroundColor: colors.foreground,
+      borderRadius: 16,
+      paddingVertical: 16,
+      paddingHorizontal: 24,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      marginTop: 8,
+    },
+    primaryBtnCompact: { paddingVertical: 13, paddingHorizontal: 20, marginTop: 0, flex: 1, maxWidth: 160 },
+    primaryBtnDisabled: { backgroundColor: colors.border },
+    primaryBtnText: { color: colors.card, fontSize: 15, fontWeight: "700" },
+  });
+}

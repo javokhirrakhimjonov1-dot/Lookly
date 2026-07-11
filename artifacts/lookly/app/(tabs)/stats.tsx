@@ -8,6 +8,8 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { getBottomPadding } from "@/constants/layout";
+import { getTopPadding } from "@/constants/layout";
 import { useColors } from "@/hooks/useColors";
 import { type ClothingCategory, type ClothingItem, useWardrobe } from "@/contexts/WardrobeContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -70,9 +72,9 @@ function CostPerWearCard({ item }: { item: ClothingItem }) {
           <Text style={[styles.cpwLabel, { color: colors.mutedForeground }]}>{t("stat_worn")}</Text>
         </View>
       ) : (
-        <View style={[styles.cpwBadge, { backgroundColor: "#FEF2F2" }]}>
-          <Text style={[styles.cpwValue, { color: "#DC2626" }]}>0×</Text>
-          <Text style={[styles.cpwLabel, { color: "#DC2626" }]}>{t("stat_unworn_badge")}</Text>
+        <View style={[styles.cpwBadge, { backgroundColor: colors.destructive + "15" }]}>
+          <Text style={[styles.cpwValue, { color: colors.destructive }]}>0×</Text>
+          <Text style={[styles.cpwLabel, { color: colors.destructive }]}>{t("stat_unworn_badge")}</Text>
         </View>
       )}
     </View>
@@ -85,7 +87,7 @@ export default function StatsScreen() {
   const { items } = useWardrobe();
   const { t } = useLanguage();
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = getTopPadding(insets.top);
 
   const stats = useMemo(() => {
     const total = items.length;
@@ -140,7 +142,7 @@ export default function StatsScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: Platform.OS === "web" ? 100 : insets.bottom + 100 },
+          { paddingBottom: getBottomPadding(insets.bottom, 100) },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -157,9 +159,9 @@ export default function StatsScreen() {
             <View style={styles.summaryGrid}>
               {[
                 { label: t("stat_total_items"), value: stats.total, icon: "layers" as const, color: colors.accent },
-                { label: t("stat_total_value"), value: stats.totalValue ? `$${stats.totalValue}` : "—", icon: "dollar-sign" as const, color: "#6B7C4D" },
-                { label: t("stat_total_wears"), value: stats.totalWears, icon: "trending-up" as const, color: "#1E3A5F" },
-                { label: t("stat_unworn"), value: stats.unworn, icon: "alert-circle" as const, color: stats.unworn > 0 ? "#DC2626" : colors.mutedForeground },
+                { label: t("stat_total_value"), value: stats.totalValue ? `$${stats.totalValue}` : "—", icon: "dollar-sign" as const, color: colors.accent },
+                { label: t("stat_total_wears"), value: stats.totalWears, icon: "trending-up" as const, color: colors.accent },
+                { label: t("stat_unworn"), value: stats.unworn, icon: "alert-circle" as const, color: stats.unworn > 0 ? colors.destructive : colors.mutedForeground },
               ].map((s) => (
                 <View
                   key={s.label}

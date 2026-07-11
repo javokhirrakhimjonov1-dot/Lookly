@@ -1,107 +1,45 @@
 import { Router } from "express";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import path from "node:path";
+import fs from "node:fs";
+import crypto from "node:crypto";
+import { removeBackground } from "@imgly/background-removal-node";
 
 const router = Router();
 
-interface BrandLogo {
-  brand: string;
-  description: string;
-  position: string;
-  size: "small" | "medium" | "large";
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.resolve(import.meta.dirname, "../../../uploads");
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
 router.post("/remove-bg", async (req, res) => {
-  const {
-    photoBase64,
-    mimeType,
-    itemName,
-    category,
-    colorName,
-    colorHex,
-    material,
-    brandLogo,
-  } = req.body as {
+  const { photoBase64, mimeType = "image/jpeg" } = req.body as {
     photoBase64?: string;
     mimeType?: string;
-    itemName?: string;
-    category?: string;
-    colorName?: string;
-    colorHex?: string;
-    material?: string;
-    brandLogo?: BrandLogo;
   };
 
-  const itemLabel = itemName || category || "clothing item";
-  const colorPart = [colorName, colorHex ? `(${colorHex})` : ""].filter(Boolean).join(" ");
-  const materialPart = material ? `, ${material}` : "";
-
-  const logoPart = brandLogo
-    ? ` The item has a ${brandLogo.size} ${brandLogo.description} (${brandLogo.brand} logo) at the ${brandLogo.position} — render it faithfully.`
-    : " No logos, no brand marks, no text, no graphics on the item.";
+  if (!photoBase64) {
+    res.status(400).json({ error: "photoBase64 is required" });
+    return;
+  }
 
   try {
-    // ── Path A: actual photo provided → remove background from real image ──
-    if (photoBase64) {
-      const buffer = Buffer.from(photoBase64, "base64");
-      const photoMime = mimeType ?? "image/jpeg";
-
-      // Node 24 has native File / Blob
-      const file = new File([buffer], "garment.jpg", { type: photoMime });
-
-      const editPrompt =
-        `Clean professional fashion product photo. ` +
-        `Remove the background completely and replace it with pure white (#FFFFFF). ` +
-        `Keep only the ${colorPart ? `${colorPart} ` : ""}${itemLabel}${materialPart} exactly as it appears — do not alter the garment shape, colour, or texture. ` +
-        `Crisp edges, no drop shadows, no reflections, no mannequin, no model body parts.` +
-        logoPart;
-
-      const response = await (openai.images.edit as Function)({
-        model: "gpt-image-1",
-        image: file,
-        prompt: editPrompt,
-        n: 1,
-        size: "1024x1024",
-        output_format: "jpeg",
-        output_compression: 80,
-      });
-
-      const b64 = (response.data?.[0] as { b64_json?: string } | undefined)?.b64_json;
-      if (!b64) {
-        res.status(500).json({ error: "No image data returned from edit" });
-        return;
-      }
-
-      res.json({ image: b64 });
-      return;
-    }
-
-    // ── Path B: no photo — generate an AI product illustration from metadata ──
-    const genPrompt =
-      `Clean product photo of a ${colorPart ? `${colorPart} ` : ""}${itemLabel}${materialPart}. ` +
-      `Pure white (#FFFFFF) background. Flat-lay or standing view. ` +
-      `Professional fashion photography, soft even lighting, no shadows, no people, no mannequin. ` +
-      `Item centred and fills 80% of the frame. Highly detailed, true-to-life colours and textures.` +
-      logoPart;
-
-    const response = await (openai.images.generate as Function)({
-      model: "gpt-image-1",
-      prompt: genPrompt,
-      size: "1024x1024",
-      n: 1,
-      output_format: "jpeg",
-      output_compression: 80,
+    const raw = photoBase64.includes(",") ? photoBase64.split(",")[1] : photoBase64;
+    const inputBuffer = Buffer.from(raw, "base64");
+    const inputBlob = new Blob([inputBuffer], { type: mimeType });
+    const resultBlob = await removeBackground(inputBlob as any, {
+      model: "medium",
+      output: { format: "image/png", quality: 0.8 },
     });
-
-    const b64 = (response.data?.[0] as { b64_json?: string } | undefined)?.b64_json;
-    if (!b64) {
-      res.status(500).json({ error: "No image data returned" });
-      return;
-    }
-
-    res.json({ image: b64 });
+    const resultBuffer = Buffer.from(await resultBlob.arrayBuffer());
+    const filename = `${crypto.randomUUID()}.png`;
+    const filePath = path.join(UPLOADS_DIR, filename);
+    fs.writeFileSync(filePath, resultBuffer);
+    const url = `/uploads/${filename}`;
+    const resultBase64 = resultBuffer.toString("base64");
+    res.json({ image: resultBase64, mimeType: "image/png", url });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: msg || "Image processing failed" });
+    res.status(500).json({ error: msg || "Background removal failed" });
   }
 });
 

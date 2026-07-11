@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { getTopPadding, getBottomPadding } from "@/constants/layout";
 import { useColors } from "@/hooks/useColors";
 import { useWardrobe, type ClothingItem } from "@/contexts/WardrobeContext";
 
@@ -355,15 +356,15 @@ function DateRangePicker({ start, end, onChange, colors }: DateRangePickerProps)
                     disabled={isPast}
                     style={[
                       drStyles.dayCell,
-                      inRange && { backgroundColor: "#C8906A22" },
-                      filled && { backgroundColor: "#C8906A", borderRadius: 20 },
-                      isToday && !filled && { borderWidth: 1.5, borderColor: "#C8906A", borderRadius: 20 },
+                      inRange && { backgroundColor: colors.accent + "22" },
+                      filled && { backgroundColor: colors.accent, borderRadius: 20 },
+                      isToday && !filled && { borderWidth: 1.5, borderColor: colors.accent, borderRadius: 20 },
                     ]}
                   >
                     <Text style={[
                       drStyles.dayText,
                       { color: isPast ? colors.border : colors.foreground },
-                      filled && { color: "#fff", fontWeight: "700" },
+                      filled && { color: colors.card, fontWeight: "700" },
                     ]}>
                       {day.getDate()}
                     </Text>
@@ -439,13 +440,14 @@ function PackItemCard({
   checked: boolean;
   onToggle: () => void;
 }) {
+  const colors = useColors();
   const categoryLabel = item.category.charAt(0).toUpperCase() + item.category.slice(1);
   return (
     <Pressable
       onPress={onToggle}
       style={({ pressed }) => [
         pkStyles.card,
-        { opacity: pressed ? 0.88 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] },
+        { backgroundColor: colors.card, borderColor: colors.border, shadowColor: colors.foreground, opacity: pressed ? 0.88 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] },
       ]}
     >
       {/* Image zone */}
@@ -464,16 +466,16 @@ function PackItemCard({
         )}
         {/* Check badge — top right, toggleable */}
         <View style={[pkStyles.checkBadge, checked ? pkStyles.checkBadgeOn : pkStyles.checkBadgeOff]}>
-          <Feather name="check" size={11} color={checked ? "#fff" : "#C8B9AE"} />
+          <Feather name="check" size={11} color={checked ? colors.card : "#C8B9AE"} />
         </View>
       </View>
 
       {/* Info strip */}
       <View style={pkStyles.info}>
-        <Text style={pkStyles.name} numberOfLines={1}>{item.name}</Text>
+        <Text style={[pkStyles.name, { color: colors.foreground }]} numberOfLines={1}>{item.name}</Text>
         <View style={pkStyles.metaRow}>
           <View style={[pkStyles.swatch, { backgroundColor: item.colorHex }]} />
-          <Text style={pkStyles.metaText} numberOfLines={1}>{categoryLabel}</Text>
+          <Text style={[pkStyles.metaText, { color: colors.mutedForeground }]} numberOfLines={1}>{categoryLabel}</Text>
         </View>
       </View>
     </Pressable>
@@ -551,7 +553,7 @@ export default function PackTripScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { items: wardrobe } = useWardrobe();
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = getTopPadding(insets.top);
 
   // Destination input + suggestions
   const [city, setCity] = useState("");
@@ -730,7 +732,7 @@ export default function PackTripScreen() {
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={[styles.content, { paddingBottom: Platform.OS === "web" ? 80 : insets.bottom + 80 }]}
+        contentContainerStyle={[styles.content, { paddingBottom: getBottomPadding(insets.bottom, 80) }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -800,8 +802,8 @@ export default function PackTripScreen() {
 
           {error && (
             <View style={styles.errorRow}>
-              <Feather name="alert-circle" size={14} color="#DC2626" />
-              <Text style={styles.errorText}>{error}</Text>
+              <Feather name="alert-circle" size={14} color={colors.destructive} />
+              <Text style={[styles.errorText, { color: colors.destructive }]}>{error}</Text>
             </View>
           )}
 

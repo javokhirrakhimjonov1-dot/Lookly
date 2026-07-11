@@ -13,6 +13,8 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { getBottomPadding } from "@/constants/layout";
+import { getTopPadding } from "@/constants/layout";
 import LookCard from "@/components/LookCard";
 import SquadVoteCard from "@/components/SquadVoteCard";
 import { useColors } from "@/hooks/useColors";
@@ -32,7 +34,7 @@ export default function LooksScreen() {
   const [caption, setCaption] = useState("");
   const [tagInput, setTagInput] = useState("");
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = getTopPadding(insets.top);
 
   const handlePost = async () => {
     if (!caption.trim()) return;
@@ -93,7 +95,7 @@ export default function LooksScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: Platform.OS === "web" ? 100 : insets.bottom + 100 },
+          { paddingBottom: getBottomPadding(insets.bottom, 100) },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -101,9 +103,9 @@ export default function LooksScreen() {
         {pendingPolls.length > 0 && (
           <View style={styles.votesSection}>
             <View style={styles.votesSectionHeader}>
-              <View style={[styles.votesBadge, { backgroundColor: "#C8906A" }]}>
-                <Feather name="users" size={11} color="#FAF8F5" />
-                <Text style={styles.votesBadgeText}>{t("squad_vote_badge")}</Text>
+              <View style={[styles.votesBadge, { backgroundColor: colors.accent }]}>
+                <Feather name="users" size={11} color={colors.accentForeground} />
+                <Text style={[styles.votesBadgeText, { color: colors.accentForeground }]}>{t("squad_vote_badge")}</Text>
               </View>
               <Text style={[styles.votesSectionCount, { color: colors.mutedForeground }]}>
                 {pendingPolls.length} {t("pending")}
@@ -275,7 +277,6 @@ const styles = StyleSheet.create({
   votesBadgeText: {
     fontSize: 9,
     fontWeight: "800",
-    color: "#FAF8F5",
     letterSpacing: 0.8,
   },
   votesSectionCount: {

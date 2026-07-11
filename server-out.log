@@ -1,0 +1,108 @@
+[01:26:37.129] [32mINFO[39m (26172): [36mServing web app from[39m
+    [35mwebDist[39m: "C:\Users\Owner\OneDrive\Desktop\codes\Style-Organizer (1)\Style-Organizer\artifacts\lookly\dist"
+[01:26:37.191] [32mINFO[39m (26172): [36mSQLite database initialized[39m
+[01:26:37.191] [32mINFO[39m (26172): [36mPre-caching background-removal model...[39m
+[01:26:37.202] [32mINFO[39m (26172): [36mServer listening[39m
+    [35mport[39m: 5000
+[01:26:37.203] [33mWARN[39m (26172): [36mBackground-removal model warmup failed[39m
+    err: "ENOENT: no such file or directory, open 'C:\\Users\\Owner\\OneDrive\\Desktop\\codes\\Style-Organizer (1)\\Style-Organizer\\node_modules\\@imgly\\background-removal-node\\dist\\resources.json'"
+[01:27:01.598] [32mINFO[39m (26172): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 1,
+      "method": "GET",
+      "url": "/api/healthz"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 16
+[01:27:18.488] [32mINFO[39m (26172): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 2,
+      "method": "POST",
+      "url": "/api/identify-clothing"
+    }
+    [35mres[39m: {
+      "statusCode": 400
+    }
+    [35mresponseTime[39m: 13
+[01:27:23.179] [32mINFO[39m (26172): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 3,
+      "method": "POST",
+      "url": "/api/identify-clothing"
+    }
+    [35mres[39m: {
+      "statusCode": 400
+    }
+    [35mresponseTime[39m: 120
+[01:34:58.742] [32mINFO[39m (26172): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 4,
+      "method": "GET",
+      "url": "/api/healthz"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 2
+[01:37:25.116] [32mINFO[39m (26172): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 5,
+      "method": "GET",
+      "url": "/"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 8
+[01:38:21.341] [32mINFO[39m (26172): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 6,
+      "method": "GET",
+      "url": "/api/healthz"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 2
+[01:39:18.259] [32mINFO[39m (26172): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 7,
+      "method": "GET",
+      "url": "/"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 3
+[01:39:23.200] [32mINFO[39m (26172): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 8,
+      "method": "GET",
+      "url": "/api/healthz"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 2
+[01:41:33.984] [32mINFO[39m (26172): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 9,
+      "method": "GET",
+      "url": "/"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 4
+[01:42:58.867] [32mINFO[39m (26172): [36mrequest aborted[39m
+    [35mreq[39m: {
+      "id": 10,
+      "method": "GET",
+      "url": "/_expo/static/js/web/entry-6ba2873bdb1075440bbd9754a1ee3d0e.js"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 848

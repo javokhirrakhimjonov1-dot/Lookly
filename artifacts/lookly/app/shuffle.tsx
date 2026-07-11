@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { getTopPadding, getBottomPadding } from "@/constants/layout";
 import { useColors } from "@/hooks/useColors";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
@@ -203,7 +204,7 @@ export default function ShuffleScreen() {
   const { items, markWorn, saveOutfit } = useWardrobe();
   const { temperature } = useWeather();
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = getTopPadding(insets.top);
 
   const [workMode, setWorkMode] = useState(false);
   const [locked, setLocked] = useState<Set<ClothingCategory>>(new Set());
@@ -452,7 +453,7 @@ export default function ShuffleScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: Platform.OS === "web" ? 120 : insets.bottom + 120 },
+          { paddingBottom: getBottomPadding(insets.bottom, 120) },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -547,7 +548,7 @@ export default function ShuffleScreen() {
                     },
                   ]}
                 >
-                  <View style={[styles.slotIcon, { backgroundColor: "#FFFFFF" }]}>
+                  <View style={[styles.slotIcon, { backgroundColor: colors.card }]}>
                     {item?.imageUri ? (
                       <Image
                         source={{ uri: item.imageUri }}
@@ -638,7 +639,7 @@ export default function ShuffleScreen() {
             {
               backgroundColor: colors.background,
               borderTopColor: colors.border,
-              paddingBottom: Platform.OS === "web" ? 20 : insets.bottom + 12,
+              paddingBottom: getBottomPadding(insets.bottom, 12),
             },
           ]}
         >

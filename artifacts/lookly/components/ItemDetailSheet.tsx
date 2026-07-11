@@ -19,6 +19,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { getApiBase } from "@/constants/api";
 import { useColors } from "@/hooks/useColors";
 import { type ClothingItem, useWardrobe } from "@/contexts/WardrobeContext";
 
@@ -47,7 +48,7 @@ const CATEGORY_ICONS: Record<string, React.ComponentProps<typeof Feather>["name"
   accessories: "circle",
 };
 
-const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
+const API_BASE = getApiBase();
 
 interface Suggestion {
   id: string;
@@ -161,7 +162,7 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
             }}
             style={[styles.deleteBtn, { backgroundColor: colors.secondary }]}
           >
-            <Feather name="trash-2" size={14} color="#800020" />
+            <Feather name="trash-2" size={14} color={colors.destructive} />
           </TouchableOpacity>
         </View>
 
@@ -172,7 +173,7 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.itemHero, { backgroundColor: item.imageUri ? "#F5F3F0" : item.colorHex }]}>
+          <View style={[styles.itemHero, { backgroundColor: item.imageUri ? colors.secondary : item.colorHex }]}>
             {item.imageUri ? (
               <Image
                 source={{ uri: item.imageUri }}
@@ -227,8 +228,8 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
               onPress={handleStyleThisItem}
               style={[styles.actionBtn, { backgroundColor: colors.accent }]}
             >
-              <Feather name="zap" size={15} color="#FAF8F5" />
-              <Text style={[styles.actionBtnText, { color: "#FAF8F5" }]}>Style This Item</Text>
+              <Feather name="zap" size={15} color={colors.primaryForeground} />
+              <Text style={[styles.actionBtnText, { color: colors.primaryForeground }]}>Style This Item</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => handleFindMatches(hasFetched ? seenIds : [])}
@@ -281,7 +282,7 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
                     <View
                       style={[
                         styles.suggestionColorBlock,
-                        { backgroundColor: match.imageUri ? "#F5F3F0" : match.colorHex },
+                        { backgroundColor: match.imageUri ? colors.secondary : match.colorHex },
                       ]}
                     >
                       {match.imageUri ? (

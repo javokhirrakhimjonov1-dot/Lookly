@@ -5,10 +5,23 @@ import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
 import { Feather } from "@expo/vector-icons";
 import React from "react";
-import { Platform, StyleSheet, View, useColorScheme } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 
 import { useColors } from "@/hooks/useColors";
 import { useLanguage } from "@/contexts/LanguageContext";
+
+function TabLabel({ children }: { children: string }) {
+  return (
+    <Text
+      style={{ fontSize: 11, fontWeight: "600" }}
+      numberOfLines={1}
+      adjustsFontSizeToFit
+      ellipsizeMode="tail"
+    >
+      {children}
+    </Text>
+  );
+}
 
 function NativeTabLayout() {
   const { t } = useLanguage();
@@ -41,8 +54,6 @@ function NativeTabLayout() {
 function ClassicTabLayout() {
   const colors = useColors();
   const { t } = useLanguage();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
 
@@ -64,7 +75,7 @@ function ClassicTabLayout() {
           isIOS ? (
             <BlurView
               intensity={100}
-              tint={isDark ? "dark" : "light"}
+              tint="light"
               style={StyleSheet.absoluteFill}
             />
           ) : isWeb ? (
@@ -84,7 +95,7 @@ function ClassicTabLayout() {
     >
       <Tabs.Screen
         name="index"
-        options={{
+        options={() => ({
           title: t("tab_home"),
           tabBarIcon: ({ color }) =>
             isIOS ? (
@@ -92,11 +103,12 @@ function ClassicTabLayout() {
             ) : (
               <Feather name="home" size={22} color={color} />
             ),
-        }}
+          tabBarLabel: ({ color }) => <TabLabel>{t("tab_home")}</TabLabel>,
+        })}
       />
       <Tabs.Screen
         name="wardrobe"
-        options={{
+        options={() => ({
           title: t("tab_wardrobe"),
           tabBarIcon: ({ color }) =>
             isIOS ? (
@@ -104,11 +116,12 @@ function ClassicTabLayout() {
             ) : (
               <Feather name="layers" size={22} color={color} />
             ),
-        }}
+          tabBarLabel: ({ color }) => <TabLabel>{t("tab_wardrobe")}</TabLabel>,
+        })}
       />
       <Tabs.Screen
         name="looks"
-        options={{
+        options={() => ({
           title: t("tab_looks"),
           tabBarIcon: ({ color }) =>
             isIOS ? (
@@ -116,11 +129,12 @@ function ClassicTabLayout() {
             ) : (
               <Feather name="camera" size={22} color={color} />
             ),
-        }}
+          tabBarLabel: ({ color }) => <TabLabel>{t("tab_looks")}</TabLabel>,
+        })}
       />
       <Tabs.Screen
         name="deals"
-        options={{
+        options={() => ({
           title: t("tab_deals"),
           tabBarIcon: ({ color }) =>
             isIOS ? (
@@ -128,11 +142,12 @@ function ClassicTabLayout() {
             ) : (
               <Feather name="tag" size={22} color={color} />
             ),
-        }}
+          tabBarLabel: ({ color }) => <TabLabel>{t("tab_deals")}</TabLabel>,
+        })}
       />
       <Tabs.Screen
         name="stats"
-        options={{
+        options={() => ({
           title: t("tab_stats"),
           tabBarIcon: ({ color }) =>
             isIOS ? (
@@ -140,13 +155,17 @@ function ClassicTabLayout() {
             ) : (
               <Feather name="bar-chart-2" size={22} color={color} />
             ),
-        }}
+          tabBarLabel: ({ color }) => <TabLabel>{t("tab_stats")}</TabLabel>,
+        })}
       />
     </Tabs>
   );
 }
 
 export default function TabLayout() {
+  if (Platform.OS === "web") {
+    return <ClassicTabLayout />;
+  }
   if (isLiquidGlassAvailable()) {
     return <NativeTabLayout />;
   }

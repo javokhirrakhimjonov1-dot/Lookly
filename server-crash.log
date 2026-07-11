@@ -1,0 +1,21 @@
+[01:26:57.070] [32mINFO[39m (24792): [36mServing web app from[39m
+    [35mwebDist[39m: "C:\Users\Owner\OneDrive\Desktop\codes\Style-Organizer (1)\Style-Organizer\artifacts\lookly\dist"
+[01:26:57.123] [32mINFO[39m (24792): [36mSQLite database initialized[39m
+[01:26:57.123] [32mINFO[39m (24792): [36mPre-caching background-removal model...[39m
+[01:26:57.134] [31mERROR[39m (24792): [36mError listening on port[39m
+    err: {
+      "type": "Error",
+      "message": "listen EADDRINUSE: address already in use :::5000",
+      "stack":
+          Error: listen EADDRINUSE: address already in use :::5000
+              at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+              at listenInCluster (node:net:1997:12)
+              at Server.listen (node:net:2102:7)
+              at Function.listen (C:\Users\Owner\OneDrive\Desktop\codes\Style-Organizer (1)\Style-Organizer\node_modules\.pnpm\express@5.2.1\node_modules\express\lib\application.js:605:24)
+              at startup (C:\Users\Owner\OneDrive\Desktop\codes\Style-Organizer (1)\Style-Organizer\artifacts\api-server\src\index.ts:27:7)
+      "code": "EADDRINUSE",
+      "errno": -4091,
+      "syscall": "listen",
+      "address": "::",
+      "port": 5000
+    }

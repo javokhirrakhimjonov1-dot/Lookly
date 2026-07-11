@@ -20,7 +20,7 @@ export default function DealCard({ deal }: Props) {
   return (
     <View style={[styles.container, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <View style={[styles.discountBadge, { backgroundColor: deal.accentColor }]}>
-        <Text style={styles.discountText}>-{deal.discount}%</Text>
+        <Text style={[styles.discountText, { color: colors.card }]}>-{deal.discount}%</Text>
       </View>
       <View style={styles.content}>
         <View style={styles.topRow}>
@@ -32,7 +32,7 @@ export default function DealCard({ deal }: Props) {
           </View>
           {deal.isNew && (
             <View style={[styles.newBadge, { backgroundColor: colors.accent }]}>
-              <Text style={styles.newText}>NEW</Text>
+              <Text style={[styles.newText, { color: colors.card }]}>NEW</Text>
             </View>
           )}
         </View>
@@ -47,12 +47,12 @@ export default function DealCard({ deal }: Props) {
             <Feather
               name="clock"
               size={12}
-              color={isUrgent ? "#DC2626" : colors.mutedForeground}
+              color={isUrgent ? colors.destructive : colors.mutedForeground}
             />
             <Text
               style={[
                 styles.footerText,
-                { color: isUrgent ? "#DC2626" : colors.mutedForeground, fontWeight: isUrgent ? "700" : "400" },
+                { color: isUrgent ? colors.destructive : colors.mutedForeground, fontWeight: isUrgent ? "700" : "400" },
               ]}
             >
               {days === 0 ? "Ends today" : days === 1 ? "1 day left" : `${days} days left`}
@@ -79,7 +79,6 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   discountText: {
-    color: "#FFFFFF",
     fontSize: 18,
     fontWeight: "800",
   },
@@ -111,7 +110,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   newText: {
-    color: "#FFFFFF",
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.5,

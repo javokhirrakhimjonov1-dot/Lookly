@@ -7,83 +7,10 @@
  */
 import * as zod from 'zod';
 
-
 /**
  * Returns server health status
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
-  "status": zod.string()
-})
-
-
-/**
- * Uses AI vision to read and return the text from an uploaded image
- * @summary Extract text from a screenshot of an SAT passage
- */
-export const ExtractTextFromImageBody = zod.object({
-  "imageBase64": zod.string().describe('Base64-encoded image data'),
-  "mimeType": zod.enum(['image/jpeg', 'image/png', 'image/webp', 'image/gif']).describe('MIME type of the image')
-})
-
-export const ExtractTextFromImageResponse = zod.object({
-  "text": zod.string().describe('The text extracted from the image')
-})
-
-
-/**
- * Analyzes an SAT passage with AI, generates images for each scene, and assembles a video
- * @summary Visualize an SAT passage
- */
-export const visualizePassageBodyPassageMin = 50;
-export const visualizePassageBodyPassageMax = 3000;
-
-
-
-export const VisualizePassageBody = zod.object({
-  "passage": zod.string().min(visualizePassageBodyPassageMin).max(visualizePassageBodyPassageMax).describe('The SAT reading passage text to visualize')
-})
-
-export const VisualizePassageResponse = zod.object({
-  "jobId": zod.string().describe('Unique job identifier for polling'),
-  "status": zod.enum(['pending', 'processing', 'done', 'error']),
-  "scenes": zod.array(zod.object({
-  "index": zod.number().describe('Scene number (0-based)'),
-  "title": zod.string().describe('Short scene title'),
-  "description": zod.string().describe('Visual description for image generation'),
-  "caption": zod.string().describe('Caption text to overlay on the video')
-}))
-})
-
-
-/**
- * @summary Get the status of a visualization job
- */
-export const GetVisualizationStatusParams = zod.object({
-  "jobId": zod.coerce.string()
-})
-
-export const GetVisualizationStatusResponse = zod.object({
-  "jobId": zod.string(),
-  "status": zod.enum(['pending', 'processing', 'done', 'error']),
-  "progress": zod.number().describe('Completion percentage 0-100'),
-  "step": zod.string().nullish().describe('Current processing step label'),
-  "scenes": zod.array(zod.object({
-  "index": zod.number().describe('Scene number (0-based)'),
-  "title": zod.string().describe('Short scene title'),
-  "description": zod.string().describe('Visual description for image generation'),
-  "caption": zod.string().describe('Caption text to overlay on the video')
-})).optional(),
-  "thumbnails": zod.array(zod.string()).optional().describe('Base64-encoded JPEG thumbnail for each scene as it is generated (one per completed scene)'),
-  "error": zod.string().nullish().describe('Error message if status is error')
-})
-
-
-/**
- * @summary Get the generated video file for a completed job
- */
-export const GetVisualizationVideoParams = zod.object({
-  "jobId": zod.coerce.string()
-})
-
-
+  status: zod.string(),
+});
