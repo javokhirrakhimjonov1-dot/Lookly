@@ -28,6 +28,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getTopPadding, getBottomPadding } from "@/constants/layout";
 import { getApiBase } from "@/constants/api";
+import { apiAuthHeaders } from "@/lib/apiAuth";
 import { useColors } from "@/hooks/useColors";
 import {
   type BrandLogo,
@@ -91,6 +92,10 @@ function isLight(hex: string): boolean {
 }
 
 const API_BASE = getApiBase();
+// A practical wardrobe batch. Each photo is analysed separately and every
+// detected item remains selectable; processing is sequential so later photos
+// are never silently skipped.
+const MAX_SCAN_PHOTOS = 15;
 
 interface DetectedItem {
   name: string;
@@ -127,19 +132,10 @@ function isSimilarToWardrobe(
   return shared.length >= Math.max(1, Math.min(2, Math.floor(Math.min(da.size, db.size) * 0.5)));
 }
 
-function isSimilarToDetected(a: DetectedItem, b: DetectedItem): boolean {
-  if (a.category !== b.category) return false;
-  if (a.colorName.toLowerCase() !== b.colorName.toLowerCase()) return false;
-  const wa = nameWords(a.name);
-  const wb = nameWords(b.name);
-  const shared = [...wa].filter((w) => wb.has(w));
-  return shared.length >= Math.max(1, Math.min(2, Math.floor(Math.min(wa.size, wb.size) * 0.5)));
-}
-
 async function scanClothingItems(base64: string, mimeType: string): Promise<DetectedItem[]> {
   const res = await fetch(`${API_BASE}/identify-clothing`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await apiAuthHeaders(),
     body: JSON.stringify({ image: base64, mimeType }),
   });
   if (!res.ok) {
@@ -164,7 +160,7 @@ async function removeBg(
   try {
     const res = await fetch(`${API_BASE}/remove-bg`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await apiAuthHeaders(),
       body: JSON.stringify({
         itemName,
         category,
@@ -178,7 +174,10 @@ async function removeBg(
     });
     if (!res.ok) return null;
     const data = await res.json() as { image?: string; url?: string };
-    if (data.url) return `${API_BASE}${data.url}`;
+    if (data.url) {
+      // Uploaded images are served from /uploads, outside the /api router.
+      return `${API_BASE.replace(/\/api$/, "")}${data.url}`;
+    }
     if (data.image) return `data:image/png;base64,${data.image}`;
     return null;
   } catch {
@@ -193,6 +192,77 @@ async function compressForUpload(uri: string): Promise<{ uri: string; base64: st
     { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true },
   );
   return { uri: result.uri, base64: result.base64 ?? "", mimeType: "image/jpeg" };
+}
+
+/**
+ * Safari only opens the photo library when input.click() happens directly from
+ * the user's tap. Expo's web picker dispatches a synthetic click event, which
+ * iOS can ignore entirely. This small web-only picker keeps the real click.
+ */
+async function pickImagesOnWeb(): Promise<ImagePicker.ImagePickerAsset[]> {
+  if (typeof document === "undefined") return [];
+
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.multiple = true;
+    input.style.position = "fixed";
+    input.style.left = "-9999px";
+    document.body.appendChild(input);
+
+    const cleanUp = () => input.remove();
+    input.addEventListener("change", async () => {
+      const files = Array.from(input.files ?? []);
+      if (!files.length) {
+        cleanUp();
+        resolve([]);
+        return;
+      }
+
+      const assets = await webFilesToAssets(files);
+      cleanUp();
+      resolve(assets);
+    }, { once: true });
+
+    // Do not await anything before this call: it must remain part of the tap.
+    input.click();
+  });
+}
+
+async function webFilesToAssets(files: File[]): Promise<ImagePicker.ImagePickerAsset[]> {
+  return Promise.all(files.slice(0, MAX_SCAN_PHOTOS).map(async (file) => {
+        const base64 = await new Promise<string>((done) => {
+          const reader = new FileReader();
+          reader.onload = () => done(typeof reader.result === "string" ? (reader.result.split(",")[1] ?? "") : "");
+          reader.onerror = () => done("");
+          reader.readAsDataURL(file);
+        });
+        return {
+          uri: URL.createObjectURL(file),
+          width: 0,
+          height: 0,
+          type: "image" as const,
+          mimeType: file.type || "image/jpeg",
+          fileName: file.name,
+          fileSize: file.size,
+          base64,
+          file,
+        } as ImagePicker.ImagePickerAsset;
+      }));
+}
+
+async function compressAssetForUpload(asset: ImagePicker.ImagePickerAsset): Promise<{ uri: string; base64: string; mimeType: string }> {
+  try {
+    const compressed = await compressForUpload(asset.uri);
+    if (compressed.base64) return compressed;
+  } catch {
+    // Safari can occasionally decline canvas conversion for a large HEIC file.
+  }
+  if (asset.base64) {
+    return { uri: asset.uri, base64: asset.base64, mimeType: asset.mimeType || "image/jpeg" };
+  }
+  throw new Error("This photo could not be read. Please try a JPEG or PNG image.");
 }
 
 function resolveColor(colorName: string, colorHex: string): { name: string; hex: string } {
@@ -304,24 +374,23 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
                     },
                   ]}
                 >
-                  <View
-                    style={[
-                      styles.pickerItemColor,
-                      { backgroundColor: color.hex },
-                    ]}
-                  >
-                    <Feather
-                      name={CATEGORY_ICONS[item.category] ?? "circle"}
-                      size={14}
-                      color={isLight(color.hex) ? "rgba(28,21,18,0.5)" : "rgba(250,248,245,0.5)"}
+                  <View style={[styles.pickerItemColor, { backgroundColor: colors.secondary }]}>
+                    <Image
+                      source={{ uri: item._extractedUri ?? item._photoUri ?? imageUri }}
+                      style={styles.pickerItemImage}
+                      contentFit="contain"
+                      transition={180}
                     />
                   </View>
 
                   <View style={{ flex: 1, gap: 3 }}>
+                    <Text style={[styles.pickerItemCat, { color: colors.accent }]}>
+                      {item.category.toUpperCase()}
+                    </Text>
                     <Text style={[styles.pickerItemName, { color: colors.foreground }]} numberOfLines={1}>
                       {item.name}
                     </Text>
-                    <View style={styles.pickerItemMeta}>
+                    <View style={styles.pickerLegacyMeta}>
                       <Text style={[styles.pickerItemCat, { color: colors.accent }]}>
                         {item.category.charAt(0).toUpperCase() + item.category.slice(1)}
                       </Text>
@@ -329,6 +398,14 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
                       <Text style={[styles.pickerItemMatl, { color: colors.mutedForeground }]} numberOfLines={1}>
                         {item.material}
                       </Text>
+                    </View>
+                    <View style={styles.pickerCatalogMeta}>
+                      <View style={styles.pickerCatalogMetaGroup}>
+                        <View style={[styles.pickerColorDot, { backgroundColor: color.hex }]} />
+                        <Text style={[styles.pickerCatalogMetaText, { color: colors.mutedForeground }]}>{color.name}</Text>
+                      </View>
+                      <Text style={[styles.pickerCatalogMetaText, { color: colors.mutedForeground }]}>Size One size</Text>
+                      <Text style={[styles.pickerCatalogMetaText, { color: colors.mutedForeground }]}>0x worn</Text>
                     </View>
                     {item._isDuplicate && item._duplicateOf ? (
                       <View style={[styles.dupeBadge, { backgroundColor: "#FEF9EC", borderColor: "#FDE68A" }]}>
@@ -366,7 +443,7 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
                       },
                     ]}
                   >
-                    {isSelected && <Feather name="check" size={12} color={colors.card} />}
+                    {isSelected && <Text style={[styles.pickerCheckmark, { color: colors.card }]}>✓</Text>}
                   </View>
                 </TouchableOpacity>
               );
@@ -438,6 +515,8 @@ export default function AddItemScreen() {
   const [scannedImage, setScannedImage] = useState<string | null>(null);
   const [extractedItemUri, setExtractedItemUri] = useState<string | null>(null);
   const [compressedPhotoUri, setCompressedPhotoUri] = useState<string | null>(null);
+  const [scanPhotoBase64, setScanPhotoBase64] = useState<string | null>(null);
+  const [scanPhotoMime, setScanPhotoMime] = useState<string>("image/jpeg");
   const [isScanning, setIsScanning] = useState(false);
   const [isRemovingBg, setIsRemovingBg] = useState(false);
   const [scanDone, setScanDone] = useState(false);
@@ -490,8 +569,23 @@ export default function AddItemScreen() {
     setShowPicker(false);
     setIsSaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const itemsWithExtractedImages = await Promise.all(
+      items.map(async (item) => ({
+        item,
+        extractedUri: item._extractedUri ?? await removeBg(
+          item.name,
+          item.category,
+          item.colorName,
+          item.colorHex,
+          item.material,
+          item.brandLogo,
+          item._photoBase64,
+          item._photoMime,
+        ),
+      }))
+    );
     await addBulkItems(
-      items.map((item) => {
+      itemsWithExtractedImages.map(({ item, extractedUri }) => {
         const color = resolveColor(item.colorName, item.colorHex);
         return {
           name: item.name,
@@ -504,13 +598,14 @@ export default function AddItemScreen() {
           fabricWeight: item.fabricWeight ?? "medium",
           isWorkwear: false,
           tags: item.tags.length > 0 ? item.tags : [item.category],
-          imageUri: item._extractedUri ?? undefined,
+          // Save only the clean clothing cut-out, never the source photo.
+          imageUri: extractedUri ?? undefined,
           brandLogo: item.brandLogo ?? undefined,
         };
       })
     );
     setIsSaving(false);
-    router.back();
+    leaveAddItem();
   };
 
   const handlePickerDismiss = () => {
@@ -520,11 +615,21 @@ export default function AddItemScreen() {
     }
   };
 
+  const leaveAddItem = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace("/(tabs)/wardrobe");
+  };
+
   const runScan = async (base64: string, mimeType: string, localUri?: string) => {
     const photoRef = localUri ?? `data:${mimeType};base64,${base64}`;
     setScannedImage(photoRef);
     setExtractedItemUri(null);
     setCompressedPhotoUri(localUri ?? null);
+    setScanPhotoBase64(base64);
+    setScanPhotoMime(mimeType);
     setIsScanning(true);
     setIsRemovingBg(false);
     setScanDone(false);
@@ -588,7 +693,9 @@ export default function AddItemScreen() {
         })
       ).then(() => setIsRemovingBg(false));
 
-    } catch {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "The photo could not be analyzed.";
+      Alert.alert("Could not scan photo", message);
       // AI unavailable — keep the photo, let user fill in details manually
       setScanDone(true);
     } finally {
@@ -596,75 +703,112 @@ export default function AddItemScreen() {
     }
   };
 
-  const handleScanPhoto = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Please allow access to your photo library.");
-      return;
+  const handleScanPhoto = async (providedAssets?: ImagePicker.ImagePickerAsset[]) => {
+    // iPhone Safari must receive the file-input click directly from this tap.
+    // Native apps continue to use Expo's permission-aware picker.
+    let assets: ImagePicker.ImagePickerAsset[];
+    if (providedAssets) {
+      assets = providedAssets;
+    } else if (Platform.OS === "web") {
+      assets = await pickImagesOnWeb();
+    } else {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission needed", "Please allow access to your photo library.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: "images",
+        quality: 0.6,
+        base64: true,
+        allowsEditing: false,
+        allowsMultipleSelection: true,
+        selectionLimit: MAX_SCAN_PHOTOS,
+      });
+      assets = result.canceled ? [] : result.assets;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: "images",
-      quality: 0.6,
-      base64: true,
-      allowsEditing: false,
-      allowsMultipleSelection: true,
-    });
-    if (result.canceled || result.assets.length === 0) return;
+    if (assets.length === 0) return;
 
-    if (result.assets.length === 1) {
-      const asset = result.assets[0]!;
-      const compressed = await compressForUpload(asset.uri);
+    if (assets.length > MAX_SCAN_PHOTOS) {
+      // Browser file inputs do not always honour a selection limit. Keep the
+      // first batch predictable, rather than silently having later photos fail.
+      assets = assets.slice(0, MAX_SCAN_PHOTOS);
+      Alert.alert(
+        "Photo batch limited",
+        `Lookly can scan up to ${MAX_SCAN_PHOTOS} photos at once. Please scan the remaining photos in a second batch.`,
+      );
+    }
+
+    if (assets.length === 1) {
+      const asset = assets[0]!;
+      const compressed = await compressAssetForUpload(asset);
       await runScan(compressed.base64, compressed.mimeType, compressed.uri);
       return;
     }
 
     setIsScanning(true);
     setScanDone(false);
-    setScanPhotoTotal(result.assets.length);
+    setScanPhotoTotal(assets.length);
     setScanPhotoIndex(1);
-    const firstAsset = result.assets[0]!;
+    const firstAsset = assets[0]!;
     setScannedImage(firstAsset.uri);
 
     const allItems: DetectedItem[] = [];
-    for (let idx = 0; idx < result.assets.length; idx++) {
-      const asset = result.assets[idx]!;
-      if (!asset.base64) continue;
-      const mime = asset.mimeType ?? "image/jpeg";
+    let failedPhotos = 0;
+    for (let idx = 0; idx < assets.length; idx++) {
+      const asset = assets[idx]!;
       setScanPhotoIndex(idx + 1);
       setScannedImage(asset.uri);
       try {
-        const found = await scanClothingItems(asset.base64, mime);
+        // Web pickers often omit asset.base64 for all but the first image.
+        // Compressing each asset gives every selected photo the same upload path.
+        const compressed = await compressAssetForUpload(asset);
+        const found = await scanClothingItems(compressed.base64, compressed.mimeType);
         for (const item of found) {
-          const crossPhotoDup = allItems.find((prev) => isSimilarToDetected(prev, item));
-          if (crossPhotoDup) continue;
+          // Do not discard items merely because they look similar to something
+          // in another selected photo. The user must be able to see and decide
+          // on every item found across the complete upload batch.
           const wardrobeDup = wardrobeItems.find((w) => isSimilarToWardrobe(item, w));
           allItems.push({
             ...item,
             _photoUri: asset.uri,
-            _photoBase64: asset.base64,
-            _photoMime: mime,
+            _photoBase64: compressed.base64,
+            _photoMime: compressed.mimeType,
             _isDuplicate: !!wardrobeDup,
             _duplicateOf: wardrobeDup
               ? { name: wardrobeDup.name, color: wardrobeDup.color, category: wardrobeDup.category, fabricWeight: wardrobeDup.fabricWeight }
               : undefined,
           });
         }
-      } catch {}
+      } catch {
+        failedPhotos += 1;
+      }
     }
     setIsScanning(false);
     setScanPhotoTotal(0);
 
     if (allItems.length === 0) {
       // AI unavailable — keep last photo visible, let user fill manually
-      if (result.assets.length > 0) {
-        setScannedImage(result.assets[0]!.uri);
+      if (assets.length > 0) {
+        setScannedImage(assets[0]!.uri);
       }
       setScanDone(true);
+      Alert.alert(
+        "Could not scan the selected photos",
+        "No clothing items were identified. You can still fill in the item details manually and save it."
+      );
       return;
     }
 
     setDetectedItems(allItems);
     setScanDone(true);
+
+    if (failedPhotos > 0) {
+      Alert.alert(
+        "Some photos could not be scanned",
+        `${allItems.length} item${allItems.length === 1 ? " was" : "s were"} found from the other selected photo${failedPhotos === 1 ? "" : "s"}.`
+      );
+    }
 
     // ── Show picker immediately (non-blocking) ──
     if (allItems.length === 1) {
@@ -693,6 +837,20 @@ export default function AddItemScreen() {
     ).then(() => setIsRemovingBg(false));
   };
 
+  const handleWebFileInput = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    // Clear the input so selecting the same photo again is still detected.
+    event.target.value = "";
+    if (!files.length) return;
+    if (files.length > MAX_SCAN_PHOTOS) {
+      Alert.alert(
+        "Photo batch limited",
+        `Lookly can scan up to ${MAX_SCAN_PHOTOS} photos at once. Please scan the remaining photos in a second batch.`,
+      );
+    }
+    await handleScanPhoto(await webFilesToAssets(files));
+  };
+
   const handleCameraCapture = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
@@ -715,22 +873,33 @@ export default function AddItemScreen() {
   const handleSave = async () => {
     if (!canSave || !category || !selectedColor) return;
     setIsSaving(true);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const price = parseFloat(purchasePrice);
-    await addItem({
-      name: name.trim(),
-      category,
-      color: selectedColor.name,
-      colorHex: selectedColor.hex,
-      seasons,
-      fabricWeight,
-      isWorkwear,
-      purchasePrice: !isNaN(price) && price > 0 ? price : undefined,
-      tags: tags.length > 0 ? tags : [category],
-      imageUri: extractedItemUri ?? compressedPhotoUri ?? undefined,
-      brandLogo: brandLogo ?? undefined,
-    });
-    router.back();
+    try {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      let cleanImageUri = extractedItemUri;
+      if (!cleanImageUri && scanPhotoBase64) {
+        setIsRemovingBg(true);
+        cleanImageUri = await removeBg(
+          name.trim(), category, selectedColor.name, selectedColor.hex, material,
+          brandLogo, scanPhotoBase64, scanPhotoMime,
+        );
+        setIsRemovingBg(false);
+      }
+      const price = parseFloat(purchasePrice);
+      await addItem({
+        name: name.trim(), category, color: selectedColor.name, colorHex: selectedColor.hex,
+        seasons, fabricWeight, isWorkwear,
+        purchasePrice: !isNaN(price) && price > 0 ? price : undefined,
+        tags: tags.length > 0 ? tags : [category],
+        imageUri: cleanImageUri ?? undefined,
+        brandLogo: brandLogo ?? undefined,
+      });
+      leaveAddItem();
+    } catch (error) {
+      Alert.alert("Could not save item", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setIsRemovingBg(false);
+      setIsSaving(false);
+    }
   };
 
   if (isSaving && !showPicker) {
@@ -765,7 +934,7 @@ export default function AddItemScreen() {
           },
         ]}
       >
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={leaveAddItem} accessibilityRole="button" accessibilityLabel="Back to wardrobe" hitSlop={12}>
           <Feather name="arrow-left" size={24} color={colors.foreground} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>Add Item</Text>
@@ -864,16 +1033,32 @@ export default function AddItemScreen() {
               <Feather name="camera" size={16} color={colors.primaryForeground} />
               <Text style={[styles.scanBtnText, { color: colors.primaryForeground }]}>Take photo</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleScanPhoto}
-              disabled={isScanning}
-              style={[styles.scanBtn, { backgroundColor: colors.secondary, borderColor: colors.border, borderWidth: 1, opacity: isScanning ? 0.6 : 1 }]}
-            >
-              {isScanning ? <ActivityIndicator size="small" color={colors.accent} /> : <Feather name="upload" size={16} color={colors.accent} />}
-              <Text style={[styles.scanBtnText, { color: colors.accent }]}>
-                {isScanning ? "Analyzing..." : "Upload photo"}
-              </Text>
-            </TouchableOpacity>
+            {Platform.OS === "web" ? (
+              <View style={[styles.scanBtn, { backgroundColor: colors.secondary, borderColor: colors.border, borderWidth: 1, opacity: isScanning ? 0.6 : 1, position: "relative", overflow: "hidden" }]}>
+                {isScanning ? <ActivityIndicator size="small" color={colors.accent} /> : <Feather name="upload" size={16} color={colors.accent} />}
+                <Text style={[styles.scanBtnText, { color: colors.accent }]}>{isScanning ? "Analyzing..." : "Upload photo"}</Text>
+                {!isScanning && React.createElement("input", {
+                  type: "file",
+                  accept: "image/*",
+                  multiple: true,
+                  onChange: handleWebFileInput,
+                  "aria-label": "Upload one or more photos",
+                  // This is a real native input receiving the tap directly.
+                  // A tiny non-zero opacity keeps it Safari-interactive while
+                  // the original Lookly button remains visible underneath.
+                  style: { position: "absolute", top: 0, left: 0, width: "100%", height: "100%", opacity: 0.01, zIndex: 10, cursor: "pointer" },
+                })}
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={() => handleScanPhoto()}
+                disabled={isScanning}
+                style={[styles.scanBtn, { backgroundColor: colors.secondary, borderColor: colors.border, borderWidth: 1, opacity: isScanning ? 0.6 : 1 }]}
+              >
+                {isScanning ? <ActivityIndicator size="small" color={colors.accent} /> : <Feather name="upload" size={16} color={colors.accent} />}
+                <Text style={[styles.scanBtnText, { color: colors.accent }]}>Upload photo</Text>
+              </TouchableOpacity>
+            )}
           </Animated.View>
         </View>
 
@@ -1280,22 +1465,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    padding: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 12,
     marginBottom: 10,
   },
   pickerItemColor: {
-    width: 48,
-    height: 48,
+    width: 76,
+    height: 88,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
     flexShrink: 0,
   },
-  pickerItemName: { fontSize: 14, fontWeight: "600" },
+  pickerItemImage: { width: "100%", height: "100%" },
+  pickerItemName: { fontSize: 15, fontWeight: "700", lineHeight: 20 },
   pickerItemMeta: { flexDirection: "row", alignItems: "center", gap: 6 },
-  pickerItemCat: { fontSize: 11, fontWeight: "700" },
+  pickerLegacyMeta: { display: "none" },
+  pickerItemCat: { fontSize: 10, fontWeight: "800", letterSpacing: 1.1 },
+  pickerCatalogMeta: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 8, rowGap: 3 },
+  pickerCatalogMetaGroup: { flexDirection: "row", alignItems: "center", gap: 4 },
+  pickerColorDot: { width: 8, height: 8, borderRadius: 4, borderWidth: 0.5, borderColor: "rgba(0,0,0,0.16)" },
+  pickerCatalogMetaText: { fontSize: 11, fontWeight: "500" },
   pickerItemDot: { fontSize: 11 },
   pickerItemMatl: { fontSize: 11, flex: 1 },
   pickerItemHint: { fontSize: 10, fontStyle: "italic" },
@@ -1314,6 +1506,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexShrink: 0,
   },
+  pickerCheckmark: { fontSize: 14, fontWeight: "800", lineHeight: 17 },
   pickerFooter: {
     paddingHorizontal: 20,
     paddingTop: 14,

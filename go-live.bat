@@ -27,8 +27,8 @@ timeout /t 2 /nobreak >nul
 
 echo === Starting API server + Web app ===
 set NODE_ENV=development
-set GEMINI_API_KEY=AIzaSyC3vwfiaPOr2XUEfzjGOEfHlZ09rse6yKM
 set PORT=5000
+REM GEMINI_API_KEY is loaded from artifacts\api-server\.env. Never put a real key in this script.
 start "Lookly-API" /B cmd /c "node --enable-source-maps ".\artifacts\api-server\dist\index.mjs" >> ".\server-crash.log" 2>&1"
 timeout /t 4 /nobreak >nul
 

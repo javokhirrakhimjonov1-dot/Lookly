@@ -3,6 +3,7 @@ import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { SvgXml } from "react-native-svg";
 import {
   ActivityIndicator,
   Alert,
@@ -26,6 +27,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getTopPadding, getBottomPadding } from "@/constants/layout";
 import { getApiBase } from "@/constants/api";
+import { apiAuthHeaders } from "@/lib/apiAuth";
 import { useColors } from "@/hooks/useColors";
 import {
   type ClothingCategory,
@@ -60,6 +62,46 @@ function categoryToSlotKey(cat: ClothingCategory): OutfitSlotKey {
 }
 
 const API_BASE = getApiBase();
+
+function decodeSvgPreview(base64: string): string {
+  try {
+    return globalThis.atob(base64);
+  } catch {
+    return "";
+  }
+}
+
+function isSvgPreview(value: string): boolean {
+  return value.startsWith("data:image/svg+xml") || value.trimStart().startsWith("PHN2Zy");
+}
+
+function previewSource(value: string): string {
+  return value.startsWith("data:") ? value : `data:image/png;base64,${value}`;
+}
+
+async function imageUriToReference(uri?: string): Promise<{ imageBase64: string; imageMime: string } | null> {
+  if (!uri) return null;
+  if (uri.startsWith("data:")) {
+    const [header, imageBase64 = ""] = uri.split(",", 2);
+    const imageMime = header.match(/^data:([^;]+)/)?.[1] ?? "image/png";
+    return imageBase64 ? { imageBase64, imageMime } : null;
+  }
+  try {
+    const response = await fetch(uri);
+    if (!response.ok) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    let binary = "";
+    for (let index = 0; index < bytes.length; index += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+    }
+    return {
+      imageBase64: globalThis.btoa(binary),
+      imageMime: response.headers.get("content-type")?.split(";")[0] || "image/png",
+    };
+  } catch {
+    return null;
+  }
+}
 
 // ─── Combo fingerprint ───────────────────────────────────────────────────────
 function makeComboKey(assigned: Partial<Record<OutfitSlotKey, ClothingItem>>): string {
@@ -288,6 +330,8 @@ async function generateOutfitPreview(
   userGender?: string | null,
   userAge?: number | null
 ): Promise<string> {
+  const itemImages = (await Promise.all(items.map((item) => imageUriToReference(item.imageUri))))
+    .filter((image): image is { imageBase64: string; imageMime: string } => !!image);
   const body = {
     items: items.map((i) => ({
       name: i.name,
@@ -301,11 +345,12 @@ async function generateOutfitPreview(
     userBodyPhotoMime: userBodyPhotoBase64 ? (userBodyPhotoMime ?? "image/jpeg") : undefined,
     userGender: userGender ?? undefined,
     userAge: userAge ?? undefined,
+    itemImages,
   };
 
   const res = await fetch(`${API_BASE}/outfit-preview`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await apiAuthHeaders(),
     body: JSON.stringify(body),
   });
 
@@ -317,8 +362,8 @@ async function generateOutfitPreview(
     } catch {}
     throw new Error(errMsg);
   }
-  const data = await res.json() as { image: string };
-  return data.image;
+  const data = await res.json() as { image: string; mimeType?: string };
+  return `data:${data.mimeType || "image/png"};base64,${data.image}`;
 }
 
 interface SlotCardProps {
@@ -507,6 +552,7 @@ export default function OutfitBuilderScreen() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [outfitName, setOutfitName] = useState("");
@@ -600,7 +646,7 @@ export default function OutfitBuilderScreen() {
     try {
       const res = await fetch(`${API_BASE}/suggest-outfits`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await apiAuthHeaders(),
         body: JSON.stringify({
           items: items.map((i) => ({
             id: i.id,
@@ -689,6 +735,7 @@ export default function OutfitBuilderScreen() {
       setShowPreview(true);
       return;
     }
+    setPreviewError(null);
     setIsGenerating(true);
     setShowPreview(true);
     try {
@@ -697,7 +744,7 @@ export default function OutfitBuilderScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Could not generate the look preview. Please try again.";
-      Alert.alert("Preview failed", msg);
+      setPreviewError(msg);
       setShowPreview(false);
     } finally {
       setIsGenerating(false);
@@ -927,6 +974,13 @@ export default function OutfitBuilderScreen() {
             </Text>
           </TouchableOpacity>
 
+          {previewError ? (
+            <View style={styles.previewError}>
+              <Text style={styles.previewErrorTitle}>Preview unavailable</Text>
+              <Text style={styles.previewErrorText}>{previewError}</Text>
+            </View>
+          ) : null}
+
           <View style={styles.canvasActions}>
             <TouchableOpacity
               onPress={handleClearAll}
@@ -1129,11 +1183,13 @@ export default function OutfitBuilderScreen() {
               </View>
             ) : previewImage ? (
               <>
-                <Image
-                  source={{ uri: `data:image/png;base64,${previewImage}` }}
-                  style={styles.previewImage}
-                  contentFit="cover"
-                />
+                <View style={styles.previewImage}>
+                  {isSvgPreview(previewImage) ? (
+                    <SvgXml xml={decodeSvgPreview(previewImage)} width="100%" height="100%" />
+                  ) : (
+                    <Image source={{ uri: previewSource(previewImage) }} style={styles.previewRaster} contentFit="cover" />
+                  )}
+                </View>
                 <View style={styles.previewPieces}>
                   <Text style={[styles.previewPiecesLabel, { color: colors.mutedForeground }]}>
                     {t("ob_outfit_pieces")}
@@ -1284,11 +1340,13 @@ export default function OutfitBuilderScreen() {
                     ]}
                   >
                     {outfit.previewImage ? (
-                      <Image
-                        source={{ uri: `data:image/png;base64,${outfit.previewImage}` }}
-                        style={styles.savedOutfitThumb}
-                        contentFit="cover"
-                      />
+                      <View style={styles.savedOutfitThumb}>
+                        {isSvgPreview(outfit.previewImage) ? (
+                          <SvgXml xml={decodeSvgPreview(outfit.previewImage)} width="100%" height="100%" />
+                        ) : (
+                          <Image source={{ uri: previewSource(outfit.previewImage) }} style={styles.previewRaster} contentFit="cover" />
+                        )}
+                      </View>
                     ) : (
                       <View
                         style={[styles.savedOutfitThumb, { backgroundColor: colors.secondary }]}
@@ -1420,6 +1478,17 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   previewBtnText: { fontSize: 15, fontWeight: "700" },
+  previewError: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FECACA",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+    gap: 2,
+  },
+  previewErrorTitle: { color: "#991B1B", fontSize: 12, fontWeight: "700" },
+  previewErrorText: { color: "#B91C1C", fontSize: 12, lineHeight: 17 },
   canvasActions: { flexDirection: "row", gap: 8, marginTop: 4 },
   actionBtn: {
     flex: 1,
@@ -1522,7 +1591,9 @@ const styles = StyleSheet.create({
     width: "100%",
     aspectRatio: 2 / 3,
     borderRadius: 20,
+    overflow: "hidden",
   },
+  previewRaster: { width: "100%", height: "100%" },
   previewPieces: { gap: 8 },
   previewPiecesLabel: {
     fontSize: 10,

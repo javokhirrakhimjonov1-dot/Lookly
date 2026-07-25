@@ -27,14 +27,50 @@ app.use(
     },
   }),
 );
-app.use(cors());
+const localOrigins = new Set([
+  "http://localhost:8081",
+  "http://localhost:8082",
+  "http://127.0.0.1:8081",
+  "http://127.0.0.1:8082",
+]);
+const productionOrigins = (process.env.CORS_ORIGIN ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+function isPrivateLanOrigin(origin: string): boolean {
+  try {
+    const { hostname } = new URL(origin);
+    const parts = hostname.split(".").map(Number);
+    if (parts.length !== 4 || parts.some(Number.isNaN)) return false;
+    return parts[0] === 10
+      || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
+      || (parts[0] === 192 && parts[1] === 168);
+  } catch {
+    return false;
+  }
+}
+
+app.use(cors({
+  origin(origin, callback) {
+    // Native app requests have no Origin header. Browser requests are limited
+    // to localhost while developing and to the configured web domain in prod.
+    if (!origin) return callback(null, true);
+    const allowed = process.env.NODE_ENV === "production"
+      ? productionOrigins.includes(origin)
+      : localOrigins.has(origin) || isPrivateLanOrigin(origin);
+    return callback(allowed ? null : new Error("Origin is not allowed"), allowed);
+  },
+}));
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 
 app.use("/api", router);
 
 // Uploads directory for persistent image storage
-const UPLOADS_DIR = process.env.UPLOADS_DIR || path.resolve(import.meta.dirname, "../../uploads");
+// Keep this in sync with remove-bg.ts. Both run from the compiled dist folder
+// and must use the same project-level uploads directory.
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.resolve(import.meta.dirname, "../../../uploads");
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
@@ -67,7 +103,13 @@ function serveStatic(root: string, req: Request, res: Response, next: NextFuncti
   if (req.method !== "GET" && req.method !== "HEAD") return next();
   if (req.path.startsWith("/api")) return next();
   const decodedPath = decodeURIComponent(req.path);
-  const filePath = path.join(root, decodedPath);
+  const resolvedRoot = path.resolve(root);
+  const filePath = path.resolve(resolvedRoot, `.${decodedPath}`);
+  // Do not let a URL such as /uploads/../data/lookly.db leave the public folder.
+  if (!filePath.startsWith(`${resolvedRoot}${path.sep}`)) {
+    res.status(403).end();
+    return;
+  }
   try {
     const stat = fs.statSync(filePath);
     if (stat.isFile()) {

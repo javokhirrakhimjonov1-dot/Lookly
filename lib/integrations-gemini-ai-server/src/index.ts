@@ -4,3 +4,4 @@ export {
   getGeminiImageModel,
   getGeminiTextModel,
 } from "./client";
+export { editImageFromBase64, generateImageBuffer, generateImageFromReferences } from "./image";

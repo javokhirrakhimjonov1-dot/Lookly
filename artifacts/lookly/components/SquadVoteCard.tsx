@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
+import { SvgXml } from "react-native-svg";
 import React, { useRef, useState } from "react";
 import {
   Animated,
@@ -14,6 +15,14 @@ import { getTimeLeft, Poll, useSquadVote } from "@/contexts/SquadVoteContext";
 
 interface Props {
   poll: Poll;
+}
+
+function isSvgPreview(value: string): boolean {
+  return value.startsWith("data:image/svg+xml") || value.trimStart().startsWith("PHN2Zy");
+}
+
+function previewSource(value: string): string {
+  return value.startsWith("data:") ? value : `data:image/png;base64,${value}`;
 }
 
 function getInitials(name: string): string {
@@ -111,11 +120,11 @@ export default function SquadVoteCard({ poll }: Props) {
         ]}
       >
         {poll.outfitData.previewImage ? (
-          <Image
-            source={{ uri: poll.outfitData.previewImage }}
-            style={StyleSheet.absoluteFillObject}
-            contentFit="contain"
-          />
+          isSvgPreview(poll.outfitData.previewImage) ? (
+            <SvgXml xml={decodeSvgPreview(poll.outfitData.previewImage)} width="100%" height="100%" />
+          ) : (
+            <Image source={{ uri: previewSource(poll.outfitData.previewImage) }} style={{ width: "100%", height: "100%" }} contentFit="cover" />
+          )
         ) : (
           <View style={styles.imagePlaceholder}>
             <Feather name="image" size={26} color={colors.border} />
@@ -391,3 +400,10 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 });
+function decodeSvgPreview(dataUri: string): string {
+  try {
+    return globalThis.atob(dataUri.includes(",") ? dataUri.split(",")[1] : dataUri);
+  } catch {
+    return "";
+  }
+}

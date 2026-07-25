@@ -20,6 +20,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { getApiBase } from "@/constants/api";
+import { apiAuthHeaders } from "@/lib/apiAuth";
 import { useColors } from "@/hooks/useColors";
 import { type ClothingItem, useWardrobe } from "@/contexts/WardrobeContext";
 
@@ -96,7 +97,7 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
     try {
       const res = await fetch(`${API_BASE}/pair-items`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await apiAuthHeaders(),
         body: JSON.stringify({
           selectedItem: item,
           wardrobe: items,

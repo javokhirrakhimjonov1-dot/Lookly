@@ -7,8 +7,16 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Alert } from "react-native";
-import { fetchServerItems, syncItemToServer, deleteItemOnServer } from "./serverSync";
+import { Alert, Platform } from "react-native";
+import {
+  fetchServerItems,
+  fetchServerOutfits,
+  syncItemToServer,
+  syncSavedOutfit,
+  deleteItemOnServer,
+  deleteSavedOutfitOnServer,
+} from "./serverSync";
+import { useAuth } from "./AuthContext";
 
 export type ClothingCategory =
   | "tops"
@@ -76,10 +84,45 @@ interface WardrobeContextValue {
 
 const WardrobeContext = createContext<WardrobeContextValue | null>(null);
 
-const ITEMS_KEY = "@lookly_wardrobe_v2";
-const OUTFITS_KEY = "@lookly_saved_outfits";
-const imageKey = (id: string) => `@lookly_img_${id}`;
-const outfitImageKey = (id: string) => `@lookly_outfit_img_${id}`;
+const itemsKey = (userId: string) => `@lookly_wardrobe_v3_${userId}`;
+const outfitsKey = (userId: string) => `@lookly_saved_outfits_v2_${userId}`;
+const imageKey = (userId: string, id: string) => `@lookly_img_${userId}_${id}`;
+const outfitImageKey = (userId: string, id: string) => `@lookly_outfit_img_${userId}_${id}`;
+// Pilot safeguards. These are high enough for real testing while keeping the
+// first ten accounts within Supabase Storage and device-storage limits.
+const MAX_WARDROBE_ITEMS = 150;
+const MAX_SAVED_OUTFITS = 50;
+
+async function getStoredValue(key: string): Promise<string | null> {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    try {
+      const value = window.localStorage.getItem(key);
+      if (value !== null) return value;
+    } catch {}
+  }
+  return AsyncStorage.getItem(key);
+}
+
+async function setStoredValue(key: string, value: string): Promise<void> {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    // Browser localStorage is immediate and avoids a stalled IndexedDB-backed
+    // AsyncStorage call keeping the Add Item screen on "Saving" forever.
+    window.localStorage.setItem(key, value);
+    return;
+  }
+  await AsyncStorage.setItem(key, value);
+}
+
+function createUuid(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = character === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
 
 function stripImages(items: ClothingItem[]): Omit<ClothingItem, "imageUri">[] {
   return items.map(({ imageUri: _img, ...rest }) => rest);
@@ -101,11 +144,11 @@ function stripOutfitForStorage(outfit: SavedOutfit) {
  * Evicts regeneratable large blobs (outfit preview images) to reclaim quota.
  * Returns true if any space was freed.
  */
-async function freeStorageSpace(outfitIds: string[]): Promise<boolean> {
+async function freeStorageSpace(userId: string, outfitIds: string[]): Promise<boolean> {
   let freed = false;
   for (const id of outfitIds) {
     try {
-      const key = outfitImageKey(id);
+      const key = outfitImageKey(userId, id);
       const val = await AsyncStorage.getItem(key);
       if (val) {
         await AsyncStorage.removeItem(key);
@@ -122,6 +165,7 @@ async function freeStorageSpace(outfitIds: string[]): Promise<boolean> {
 }
 
 export function WardrobeProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
   const [items, setItems] = useState<ClothingItem[]>([]);
   const [savedOutfits, setSavedOutfits] = useState<SavedOutfit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -134,11 +178,22 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     (async () => {
+      setItems([]);
+      itemsRef.current = [];
+      setSavedOutfits([]);
+      outfitsRef.current = [];
+      if (!user) {
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
       try {
-        const [storedItems, storedOutfits, serverItems] = await Promise.all([
-          AsyncStorage.getItem(ITEMS_KEY),
-          AsyncStorage.getItem(OUTFITS_KEY),
+        const [storedItems, storedOutfits, serverItems, serverOutfits] = await Promise.all([
+          getStoredValue(itemsKey(user.id)),
+          getStoredValue(outfitsKey(user.id)),
           fetchServerItems(),
+          fetchServerOutfits(),
         ]);
 
         let merged: ClothingItem[] = [];
@@ -147,19 +202,22 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
           const parsed: ClothingItem[] = JSON.parse(storedItems);
           const withImages = await Promise.all(
             parsed.map(async (item) => {
-              const uri = await AsyncStorage.getItem(imageKey(item.id));
+              const uri = await AsyncStorage.getItem(imageKey(user.id, item.id));
               return uri ? { ...item, imageUri: uri } : item;
             })
           );
           merged = withImages;
         }
 
-        // Merge server items: new IDs from server get added, matching IDs keep local (newer)
+        // Merge server items. A fresh signed Storage URL from Supabase must
+        // replace the cached one, because private URLs expire by design.
         if (serverItems.length > 0) {
-          const localIds = new Set(merged.map((i) => i.id));
           for (const serverItem of serverItems) {
-            if (!localIds.has(serverItem.id)) {
+            const existingIndex = merged.findIndex((localItem) => localItem.id === serverItem.id);
+            if (existingIndex === -1) {
               merged.push(serverItem);
+            } else if (serverItem.imageUri) {
+              merged[existingIndex] = { ...merged[existingIndex]!, imageUri: serverItem.imageUri };
             }
           }
         }
@@ -173,19 +231,30 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
           const parsed = JSON.parse(storedOutfits) as SavedOutfit[];
           const withPreviews = await Promise.all(
             parsed.map(async (outfit) => {
-              const preview = await AsyncStorage.getItem(outfitImageKey(outfit.id));
+              const preview = await AsyncStorage.getItem(outfitImageKey(user.id, outfit.id));
               return preview ? { ...outfit, previewImage: preview } : outfit;
             })
           );
           setSavedOutfits(withPreviews);
           outfitsRef.current = withPreviews;
         }
+
+        if (serverOutfits.length > 0) {
+          const mergedOutfits = [...outfitsRef.current];
+          for (const serverOutfit of serverOutfits) {
+            if (!mergedOutfits.some((localOutfit) => localOutfit.id === serverOutfit.id)) {
+              mergedOutfits.push(serverOutfit);
+            }
+          }
+          setSavedOutfits(mergedOutfits);
+          outfitsRef.current = mergedOutfits;
+        }
       } catch {
       } finally {
         setIsLoading(false);
       }
     })();
-  }, []);
+  }, [user?.id]);
 
   /**
    * Saves items to AsyncStorage. If quota is exceeded, evicts outfit preview
@@ -193,16 +262,17 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
    * fails, alerts the user so data loss is never silent.
    */
   const persistItems = useCallback(async (next: ClothingItem[]) => {
+    if (!user) return;
     const payload = JSON.stringify(stripImages(next));
     try {
-      await AsyncStorage.setItem(ITEMS_KEY, payload);
+      await setStoredValue(itemsKey(user.id), payload);
     } catch {
       // Storage full — try freeing space by evicting outfit preview images
       const currentOutfitIds = outfitsRef.current.map((o) => o.id);
-      const freed = await freeStorageSpace(currentOutfitIds);
+      const freed = await freeStorageSpace(user.id, currentOutfitIds);
       if (freed) {
         try {
-          await AsyncStorage.setItem(ITEMS_KEY, payload);
+          await setStoredValue(itemsKey(user.id), payload);
           return; // Succeeded after freeing space
         } catch {}
       }
@@ -213,30 +283,32 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
         [{ text: "OK" }]
       );
     }
-  }, []);
+  }, [user]);
 
   const persistImage = useCallback(async (id: string, uri: string | undefined) => {
+    if (!user) return;
     try {
       if (uri) {
-        await AsyncStorage.setItem(imageKey(id), uri);
+        await AsyncStorage.setItem(imageKey(user.id, id), uri);
       } else {
-        await AsyncStorage.removeItem(imageKey(id));
+        await AsyncStorage.removeItem(imageKey(user.id, id));
       }
     } catch {
       // Image URI too large — item will show colour swatch instead
     }
-  }, []);
+  }, [user]);
 
   const persistOutfits = useCallback(async (next: SavedOutfit[]) => {
+    if (!user) return;
     try {
-      await AsyncStorage.setItem(OUTFITS_KEY, JSON.stringify(next.map(stripOutfitForStorage)));
+      await AsyncStorage.setItem(outfitsKey(user.id), JSON.stringify(next.map(stripOutfitForStorage)));
       await Promise.all(
         next.map(async (outfit) => {
           try {
             if (outfit.previewImage) {
-              await AsyncStorage.setItem(outfitImageKey(outfit.id), outfit.previewImage);
+              await AsyncStorage.setItem(outfitImageKey(user.id, outfit.id), outfit.previewImage);
             } else {
-              await AsyncStorage.removeItem(outfitImageKey(outfit.id));
+              await AsyncStorage.removeItem(outfitImageKey(user.id, outfit.id));
             }
           } catch {
             // Preview image too large — will regenerate on next open
@@ -246,13 +318,20 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Outfit metadata save failed — non-fatal, outfits stay in memory
     }
-  }, []);
+  }, [user]);
 
   const addItem = useCallback(
     async (item: Omit<ClothingItem, "id" | "createdAt" | "timesWorn">) => {
+      if (itemsRef.current.length >= MAX_WARDROBE_ITEMS) {
+        Alert.alert(
+          "Wardrobe limit reached",
+          `Your pilot wardrobe can contain up to ${MAX_WARDROBE_ITEMS} items. Delete an item before adding another one.`,
+        );
+        return;
+      }
       const newItem: ClothingItem = {
         ...item,
-        id: Date.now().toString() + Math.random().toString(36).slice(2, 7),
+        id: createUuid(),
         timesWorn: 0,
         createdAt: new Date().toISOString(),
       };
@@ -270,10 +349,24 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
 
   const addBulkItems = useCallback(
     async (newItems: Omit<ClothingItem, "id" | "createdAt" | "timesWorn">[]) => {
-      const now = Date.now();
-      const built: ClothingItem[] = newItems.map((item, i) => ({
+      const available = MAX_WARDROBE_ITEMS - itemsRef.current.length;
+      if (available <= 0) {
+        Alert.alert(
+          "Wardrobe limit reached",
+          `Your pilot wardrobe can contain up to ${MAX_WARDROBE_ITEMS} items. Delete an item before adding another one.`,
+        );
+        return;
+      }
+      if (newItems.length > available) {
+        Alert.alert(
+          "Too many items selected",
+          `You can add ${available} more item${available === 1 ? "" : "s"} to this wardrobe.`,
+        );
+        return;
+      }
+      const built: ClothingItem[] = newItems.map((item) => ({
         ...item,
-        id: (now + i).toString() + Math.random().toString(36).slice(2, 7),
+        id: createUuid(),
         timesWorn: 0,
         createdAt: new Date().toISOString(),
       }));
@@ -358,8 +451,15 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
       outfitItems: Partial<Record<ClothingCategory, ClothingItem>>,
       previewImage?: string
     ) => {
+      if (outfitsRef.current.length >= MAX_SAVED_OUTFITS) {
+        Alert.alert(
+          "Saved looks limit reached",
+          `Your pilot account can save up to ${MAX_SAVED_OUTFITS} looks. Delete a saved look before creating another one.`,
+        );
+        return;
+      }
       const newOutfit: SavedOutfit = {
-        id: Date.now().toString() + Math.random().toString(36).slice(2, 7),
+        id: createUuid(),
         name,
         items: outfitItems,
         previewImage,
@@ -369,6 +469,7 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
       outfitsRef.current = next;
       setSavedOutfits(next);
       await persistOutfits(next);
+      void syncSavedOutfit(newOutfit);
     },
     [persistOutfits]
   );
@@ -380,10 +481,11 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
       setSavedOutfits(next);
       await persistOutfits(next);
       try {
-        await AsyncStorage.removeItem(outfitImageKey(id));
+        if (user) await AsyncStorage.removeItem(outfitImageKey(user.id, id));
       } catch {}
+      void deleteSavedOutfitOnServer(id);
     },
-    [persistOutfits]
+    [persistOutfits, user]
   );
 
   return (

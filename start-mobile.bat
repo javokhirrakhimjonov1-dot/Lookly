@@ -1,5 +1,5 @@
 @echo off
-cd /d "C:\Users\Owner\OneDrive\Desktop\codes\Style-Organizer (1)\Style-Organizer"
+cd /d "%~dp0"
 
 echo === Getting local IP address ===
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /C:"IPv4"') do set IP=%%a
@@ -13,8 +13,9 @@ call pnpm run --filter @workspace/api-server build
 echo.
 echo === Starting API server on %IP%:5000 ===
 set NODE_ENV=development
-set GEMINI_API_KEY=AIzaSyC3vwfiaPOr2XUEfzjGOEfHlZ09rse6yKM
 set PORT=5000
+
+REM GEMINI_API_KEY is loaded from an ignored .env file by the API server.
 start "Lookly-API" /B node --enable-source-maps ".\artifacts\api-server\dist\index.mjs"
 timeout /t 3 /nobreak >nul
 

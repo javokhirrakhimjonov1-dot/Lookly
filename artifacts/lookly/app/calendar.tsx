@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
+import { SvgXml } from "react-native-svg";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -17,6 +18,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getTopPadding, getBottomPadding } from "@/constants/layout";
 import { useColors } from "@/hooks/useColors";
 import { useCalendar } from "@/contexts/CalendarContext";
+
+function isSvgPreview(value: string): boolean {
+  return value.startsWith("data:image/svg+xml") || value.trimStart().startsWith("PHN2Zy");
+}
+
+function previewSource(value: string): string {
+  return value.startsWith("data:") ? value : `data:image/png;base64,${value}`;
+}
 import { useWardrobe, type ClothingCategory, type ClothingItem } from "@/contexts/WardrobeContext";
 import { useWeather } from "@/contexts/WeatherContext";
 
@@ -233,11 +242,13 @@ export default function CalendarScreen() {
           {selectedLog ? (
             <View style={styles.logContent}>
               {selectedLog.previewImage ? (
-                <Image
-                  source={{ uri: `data:image/png;base64,${selectedLog.previewImage}` }}
-                  style={[styles.logPreview, { borderColor: colors.border }]}
-                  contentFit="cover"
-                />
+                <View style={[styles.logPreview, { borderColor: colors.border }]}>
+                  {isSvgPreview(selectedLog.previewImage) ? (
+                    <SvgXml xml={decodeSvgPreview(selectedLog.previewImage)} width="100%" height="100%" />
+                  ) : (
+                    <Image source={{ uri: previewSource(selectedLog.previewImage) }} style={{ width: "100%", height: "100%" }} contentFit="cover" />
+                  )}
+                </View>
               ) : null}
               <View style={styles.logItems}>
                 {Object.values(selectedLog.items).filter(Boolean).map((item) => (
@@ -484,3 +495,10 @@ const styles = StyleSheet.create({
   },
   weatherText: { fontSize: 12 },
 });
+function decodeSvgPreview(base64: string): string {
+  try {
+    return globalThis.atob(base64);
+  } catch {
+    return "";
+  }
+}

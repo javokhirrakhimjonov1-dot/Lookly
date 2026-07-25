@@ -10,9 +10,64 @@ import {
 
 const router = Router();
 
+type ClientItem = Omit<Partial<DbClothingItem>, "brandLogo"> & {
+  colorName?: string;
+  material?: string;
+  brandLogo?: unknown;
+};
+
+function serializeBrandLogo(value: unknown, fallback: string | null): string | null {
+  if (value === undefined) return fallback;
+  if (value === null) return null;
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function parseBrandLogo(value: string | null): unknown {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function toClientItem(item: DbClothingItem) {
+  return { ...item, brandLogo: parseBrandLogo(item.brandLogo) };
+}
+
+function toDbItem(input: ClientItem, existing?: DbClothingItem | null): DbClothingItem {
+  const now = new Date().toISOString();
+  return {
+    id: input.id ?? existing?.id ?? "",
+    name: input.name ?? existing?.name ?? "",
+    category: input.category ?? existing?.category ?? "",
+    // Older AI responses use colorName. The mobile app uses color.
+    color: input.color ?? input.colorName ?? existing?.color ?? "",
+    colorHex: input.colorHex ?? existing?.colorHex ?? "",
+    seasons: Array.isArray(input.seasons) ? input.seasons : (existing?.seasons ?? []),
+    fabricWeight: input.fabricWeight ?? existing?.fabricWeight ?? "medium",
+    isWorkwear: input.isWorkwear ?? existing?.isWorkwear ?? false,
+    purchasePrice: input.purchasePrice ?? existing?.purchasePrice ?? null,
+    timesWorn: input.timesWorn ?? existing?.timesWorn ?? 0,
+    imageUri: input.imageUri ?? existing?.imageUri ?? null,
+    tags: Array.isArray(input.tags) ? input.tags : (existing?.tags ?? []),
+    brandLogo: serializeBrandLogo(input.brandLogo, existing?.brandLogo ?? null),
+    createdAt: input.createdAt ?? existing?.createdAt ?? now,
+  };
+}
+
+function hasRequiredFields(item: DbClothingItem): boolean {
+  return Boolean(item.id && item.name && item.category);
+}
+
 router.get("/items", (req, res) => {
   try {
-    const items = getAllItems();
+    const items = getAllItems().map(toClientItem);
     res.json({ items });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -28,7 +83,7 @@ router.get("/items/:id", (req, res) => {
       res.status(404).json({ error: "Item not found" });
       return;
     }
-    res.json(item);
+    res.json(toClientItem(item));
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[items] GET /items/:id error:", msg);
@@ -38,24 +93,13 @@ router.get("/items/:id", (req, res) => {
 
 router.post("/items", (req, res) => {
   try {
-    const body = req.body as Partial<DbClothingItem>;
-    if (!body.id || !body.name || !body.category) {
+    const body = req.body as ClientItem;
+    const item = toDbItem(body);
+    if (!hasRequiredFields(item)) {
       res.status(400).json({ error: "id, name, and category are required" });
       return;
     }
-    const safe: Partial<DbClothingItem> = {
-      id: body.id,
-      name: body.name,
-      category: body.category,
-      colorName: body.colorName,
-      colorHex: body.colorHex,
-      material: body.material,
-      fabricWeight: body.fabricWeight,
-      seasons: body.seasons,
-      tags: body.tags,
-      imageUri: body.imageUri,
-    };
-    upsertItem(safe as DbClothingItem);
+    upsertItem(item);
     res.json({ ok: true });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -71,17 +115,7 @@ router.put("/items/:id", (req, res) => {
       res.status(404).json({ error: "Item not found" });
       return;
     }
-    const allowedFields = [
-      "name", "category", "colorName", "colorHex", "material",
-      "fabricWeight", "seasons", "tags", "imageUri",
-    ];
-    const sanitized: Partial<DbClothingItem> = { id: req.params.id };
-    for (const key of allowedFields) {
-      if (req.body[key] !== undefined) {
-        (sanitized as Record<string, unknown>)[key] = req.body[key];
-      }
-    }
-    const updated = { ...existing, ...sanitized };
+    const updated = toDbItem({ ...(req.body as ClientItem), id: req.params.id }, existing);
     upsertItem(updated);
     res.json({ ok: true });
   } catch (err: unknown) {
@@ -93,24 +127,16 @@ router.put("/items/:id", (req, res) => {
 
 router.put("/items", (req, res) => {
   try {
-    const { items } = req.body as { items: Partial<DbClothingItem>[] };
+    const { items } = req.body as { items: ClientItem[] };
     if (!Array.isArray(items)) {
       res.status(400).json({ error: "items array is required" });
       return;
     }
-    const allowedFields = [
-      "id", "name", "category", "colorName", "colorHex", "material",
-      "fabricWeight", "seasons", "tags", "imageUri",
-    ];
     for (const item of items) {
-      if (item.id && item.name && item.category) {
-        const safe: Partial<DbClothingItem> = {};
-        for (const key of allowedFields) {
-          if (item[key as keyof typeof item] !== undefined) {
-            (safe as Record<string, unknown>)[key] = item[key as keyof typeof item];
-          }
-        }
-        upsertItem(safe as DbClothingItem);
+      const existing = item.id ? getItemById(item.id) : null;
+      const normalized = toDbItem(item, existing);
+      if (hasRequiredFields(normalized)) {
+        upsertItem(normalized);
       }
     }
     persist();

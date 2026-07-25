@@ -50,6 +50,18 @@ Thumbs.db
 **/.env
 !**/.env.example
 
+# Local user data and generated media
+# These files belong on the device or in private cloud storage, never in Git.
+data/
+uploads/
+*.db
+*.sqlite
+*.sqlite3
+
+# Local server output
+*.log
+*.err
+
 # Replit
 .cache/
 .local/

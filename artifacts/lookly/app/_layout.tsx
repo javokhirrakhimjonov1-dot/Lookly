@@ -6,7 +6,7 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { router, Stack } from "expo-router";
+import { router, Stack, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { StyleSheet } from "react-native";
@@ -23,6 +23,7 @@ import { LanguageProvider } from "@/contexts/LanguageContext";
 import { DealsProvider } from "@/contexts/DealsContext";
 import { UserProfileProvider, useUserProfile } from "@/contexts/UserProfileContext";
 import { CalendarProvider } from "@/contexts/CalendarContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -30,12 +31,22 @@ const queryClient = new QueryClient();
 
 function OnboardingGuard() {
   const { onboardingComplete, isLoading } = useUserProfile();
+  const { session, isLoading: isAuthLoading } = useAuth();
+  const pathname = usePathname();
 
   useEffect(() => {
-    if (!isLoading && !onboardingComplete) {
+    if (isAuthLoading) return;
+    if (!session) {
+      // Expo refreshes typed route declarations when the dev server starts.
+      router.replace("/auth" as never);
+    } else if (!isLoading && !onboardingComplete) {
       router.replace("/onboarding");
+    } else if (!isLoading && onboardingComplete && (pathname === "/onboarding" || pathname === "/auth")) {
+      // A web refresh can reopen the prior /onboarding URL. Once the saved
+      // profile is loaded, always take completed users to the actual app.
+      router.replace("/(tabs)");
     }
-  }, [isLoading, onboardingComplete]);
+  }, [isAuthLoading, session, isLoading, onboardingComplete, pathname]);
 
   return null;
 }
@@ -47,6 +58,7 @@ function RootLayoutNav() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
+        <Stack.Screen name="auth" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen
           name="add-item"
           options={{ headerShown: false, presentation: "modal" }}
@@ -82,6 +94,7 @@ export default function RootLayout() {
       <ErrorBoundary>
         <QueryClientProvider client={queryClient}>
           <LanguageProvider>
+          <AuthProvider>
           <UserProfileProvider>
             <WeatherProvider>
               <WardrobeProvider>
@@ -101,6 +114,7 @@ export default function RootLayout() {
               </WardrobeProvider>
             </WeatherProvider>
           </UserProfileProvider>
+          </AuthProvider>
           </LanguageProvider>
         </QueryClientProvider>
       </ErrorBoundary>

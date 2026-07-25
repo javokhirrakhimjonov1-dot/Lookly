@@ -1,6 +1,7 @@
 {
   "build": {
-    "builder": "NIXPACKS"
+    "builder": "NIXPACKS",
+    "buildCommand": "corepack enable && pnpm install --frozen-lockfile && pnpm -C artifacts/api-server run build && pnpm -C artifacts/lookly exec expo export --platform web"
   },
   "deploy": {
     "startCommand": "node artifacts/api-server/dist/index.mjs",

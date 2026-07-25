@@ -31,3 +31,7 @@ function loadEnvFile(filePath: string): void {
 const apiServerRoot = path.dirname(fileURLToPath(import.meta.url));
 loadEnvFile(path.resolve(apiServerRoot, "..", ".env"));
 loadEnvFile(path.resolve(apiServerRoot, "..", "..", "..", ".env"));
+// Reuse the public Supabase URL/key used by the Expo client so the API can
+// validate access tokens. These values are publishable; the Gemini key stays
+// only in this server's own .env file.
+loadEnvFile(path.resolve(apiServerRoot, "..", "..", "lookly", ".env"));

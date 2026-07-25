@@ -63,7 +63,8 @@ function getCurrentSeason(): string {
   const m = new Date().getMonth();
   if (m >= 2 && m <= 4) return "spring";
   if (m >= 5 && m <= 7) return "summer";
-  if (m >= 8 && m <= 10) return "autumn";
+  // The mobile app stores this season as "fall".
+  if (m >= 8 && m <= 10) return "fall";
   return "winter";
 }
 
@@ -224,12 +225,13 @@ function generateOutfitsLocally(
   const season = getCurrentSeason();
 
   // Build category pools
-  const tops = getCategoryPool(weatherFiltered, "top");
-  const bottoms = getCategoryPool(weatherFiltered, "bottom");
+  // These must match ClothingCategory in the mobile app exactly.
+  const tops = getCategoryPool(weatherFiltered, "tops");
+  const bottoms = getCategoryPool(weatherFiltered, "bottoms");
   const outerwear = getCategoryPool(weatherFiltered, "outerwear");
-  const dresses = getCategoryPool(weatherFiltered, "dress");
+  const dresses = getCategoryPool(weatherFiltered, "dresses");
   const shoes = getCategoryPool(weatherFiltered, "shoes");
-  const accessories = getCategoryPool(weatherFiltered, "accessory");
+  const accessories = getCategoryPool(weatherFiltered, "accessories");
 
   const isHotWeather = isHot(temperature);
   const isColdWeather = isCold(temperature);

@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { SvgXml } from "react-native-svg";
 import {
   ActivityIndicator,
   Modal,
@@ -16,6 +17,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { getApiBase } from "@/constants/api";
+import { apiAuthHeaders } from "@/lib/apiAuth";
 import { useColors } from "@/hooks/useColors";
 import { useWardrobe, type ClothingItem } from "@/contexts/WardrobeContext";
 import { useWeather } from "@/contexts/WeatherContext";
@@ -28,6 +30,22 @@ import {
 
 // cardWidth and cardH are computed dynamically via useWindowDimensions inside each component
 const API_BASE = getApiBase();
+
+function decodeSvgPreview(dataUri: string): string {
+  try {
+    return globalThis.atob(dataUri.includes(",") ? dataUri.split(",")[1] : dataUri);
+  } catch {
+    return "";
+  }
+}
+
+function isSvgPreview(value: string): boolean {
+  return value.startsWith("data:image/svg+xml") || value.trimStart().startsWith("PHN2Zy");
+}
+
+function previewSource(value: string): string {
+  return value.startsWith("data:") ? value : "data:image/png;base64," + value;
+}
 
 const MOOD_COLORS: Record<string, string> = {
   casual: "#C8906A",
@@ -175,10 +193,6 @@ function OutfitCard({
   weatherDesc,
   cardWidth,
   cardH,
-  userBodyPhotoBase64,
-  userBodyPhotoMime,
-  userGender,
-  userAge,
 }: {
   outfit: Outfit;
   wardrobeMap: Map<string, ClothingItem>;
@@ -186,63 +200,21 @@ function OutfitCard({
   weatherDesc: string;
   cardWidth: number;
   cardH: number;
-  userBodyPhotoBase64: string | null;
-  userBodyPhotoMime: string;
-  userGender?: string | null;
-  userAge?: number | null;
 }) {
   const colors = useColors();
   const { createPoll } = useSquadVote();
   const moodColor = MOOD_COLORS[outfit.mood] ?? colors.accent;
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [genFailed, setGenFailed] = useState(false);
+  // Home cards are deliberately instant. AI previews are requested only from Build look.
+  const [previewImage] = useState<string | null>(null);
+  const [isGenerating] = useState(false);
+  const [genFailed] = useState(false);
   const [showSquadModal, setShowSquadModal] = useState(false);
   const [pollSent, setPollSent] = useState(false);
-  const generated = useRef(false);
 
   const resolvedItems = outfit.items
     .map((oi) => wardrobeMap.get(oi.itemId))
     .filter((i): i is ClothingItem => !!i);
-
-  useEffect(() => {
-    if (generated.current || resolvedItems.length === 0) return;
-    generated.current = true;
-    setIsGenerating(true);
-
-    const itemsForApi = resolvedItems.map((i) => ({
-      name: i.name,
-      color: i.color,
-      colorHex: i.colorHex,
-      category: i.category,
-      ...(i.brandLogo ? { brandLogo: i.brandLogo } : {}),
-    }));
-
-    fetch(`${API_BASE}/outfit-preview`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        items: itemsForApi,
-        weather: weatherDesc,
-        temperature,
-        mood: outfit.mood,
-        ...(userBodyPhotoBase64 ? { userBodyPhotoBase64, userBodyPhotoMime } : {}),
-        ...(userGender ? { userGender } : {}),
-        ...(userAge != null ? { userAge } : {}),
-      }),
-    })
-      .then((r) => r.json())
-      .then((data: { image?: string }) => {
-        if (data.image) {
-          setPreviewImage(`data:image/png;base64,${data.image}`);
-        } else {
-          setGenFailed(true);
-        }
-      })
-      .catch(() => setGenFailed(true))
-      .finally(() => setIsGenerating(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const itemImages = resolvedItems.filter((item) => !!item.imageUri).slice(0, 3);
 
   const handleSendToSquad = async (friendNames: string[]) => {
     const pollItems: PollOutfitData["items"] = resolvedItems.map((i) => ({
@@ -253,7 +225,6 @@ function OutfitCard({
     const pollData: PollOutfitData = {
       name: outfit.name,
       mood: outfit.mood,
-      previewImage: previewImage ?? undefined,
       items: pollItems,
     };
     await createPoll(pollData, friendNames);
@@ -272,13 +243,29 @@ function OutfitCard({
     >
       {/* Image / loading area */}
       <View style={[styles.imageArea, { height: imageAreaH, backgroundColor: colors.secondary }]}>
+        {itemImages.length > 0 ? (
+          <View style={styles.collage}>
+            {itemImages.map((item) => (
+              <View key={item.id} style={[styles.collageTile, { backgroundColor: colors.card }]}>
+                <Image source={{ uri: item.imageUri }} style={styles.outfitItemImage} contentFit="contain" transition={120} />
+              </View>
+            ))}
+          </View>
+        ) : (
+          <View style={styles.instantFallback}>
+            <Feather name="layers" size={32} color={colors.border} />
+            <Text style={[styles.generatingText, { color: colors.mutedForeground }]}>Your outfit pieces</Text>
+            <Text style={[styles.categoryLine, { color: colors.mutedForeground }]} numberOfLines={2}>
+              {resolvedItems.map((item) => item.name).join(" · ")}
+            </Text>
+          </View>
+        )}
         {previewImage ? (
-          <Image
-            source={{ uri: previewImage }}
-            style={StyleSheet.absoluteFillObject}
-            contentFit="contain"
-            transition={400}
-          />
+          isSvgPreview(previewImage) ? (
+            <SvgXml xml={decodeSvgPreview(previewImage)} width="100%" height="100%" />
+          ) : (
+            <Image source={{ uri: previewSource(previewImage) }} style={styles.previewRaster} contentFit="cover" />
+          )
         ) : isGenerating ? (
           <View style={styles.generatingOverlay}>
             <ActivityIndicator size="large" color={colors.accent} />
@@ -357,7 +344,7 @@ export default function OutfitCarousel() {
   const colors = useColors();
   const { items } = useWardrobe();
   const { temperature, weatherCode, isLoading: weatherLoading } = useWeather();
-  const { bodyPhotoBase64, bodyPhotoMime, gender, age, styleAesthetics, heatAdaptation, colorPalette } = useUserProfile();
+  const { gender, age, styleAesthetics, heatAdaptation, colorPalette } = useUserProfile();
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -374,7 +361,7 @@ export default function OutfitCarousel() {
     try {
       const res = await fetch(`${API_BASE}/suggest-outfits`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await apiAuthHeaders(),
         body: JSON.stringify({
           items,
           temperature,
@@ -393,7 +380,19 @@ export default function OutfitCarousel() {
     } finally {
       setLoading(false);
     }
-  }, [items.length, temperature, weatherCode, weatherLoading]);
+  // Re-run when an item is edited, not only when the number of items changes.
+  // Profile preferences also affect the request sent to the suggestion service.
+  }, [
+    items,
+    temperature,
+    weatherCode,
+    weatherLoading,
+    gender,
+    age,
+    styleAesthetics,
+    heatAdaptation,
+    colorPalette,
+  ]);
 
   useEffect(() => {
     if (!weatherLoading) void fetchOutfits();
@@ -479,10 +478,6 @@ export default function OutfitCarousel() {
                 weatherDesc={wDesc}
                 cardWidth={cardWidth}
                 cardH={cardH}
-                userBodyPhotoBase64={bodyPhotoBase64}
-                userBodyPhotoMime={bodyPhotoMime}
-                userGender={gender}
-                userAge={age}
               />
             ))}
           </ScrollView>
@@ -570,6 +565,35 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     position: "relative",
   },
+  collage: {
+    flex: 1,
+    flexDirection: "row",
+    gap: 8,
+    padding: 16,
+    alignItems: "center",
+  },
+  collageTile: {
+    flex: 1,
+    height: "90%",
+    borderRadius: 16,
+    overflow: "hidden",
+    padding: 8,
+  },
+  outfitItemImage: { width: "100%", height: "100%" },
+  instantFallback: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    padding: 24,
+  },
+  categoryLine: {
+    fontSize: 12,
+    fontWeight: "500",
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  previewRaster: { width: "100%", height: "100%" },
   generatingOverlay: {
     flex: 1,
     alignItems: "center",

@@ -1,4 +1,6 @@
-const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1";
+// Image generation settings such as responseModalities are available on the
+// Gemini v1beta endpoint. It also supports the text models we use elsewhere.
+const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
 export function getGeminiApiKey(): string {
   const key = process.env.GEMINI_API_KEY;
@@ -15,7 +17,10 @@ export function getGeminiTextModel(): string {
 }
 
 export function getGeminiImageModel(): string {
-  return process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash";
+  // The normal Flash model can understand an image but cannot generate one.
+  // Keep this separate from GEMINI_TEXT_MODEL so the paid image feature works
+  // as soon as billing and a valid server key are configured.
+  return process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash-image";
 }
 
 interface GeminiPart {

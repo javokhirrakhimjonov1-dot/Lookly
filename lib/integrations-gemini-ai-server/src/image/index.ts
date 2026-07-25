@@ -1,1 +1,1 @@
-export { generateImageBuffer, editImageFromBase64 } from "./client";
+export { generateImageBuffer, editImageFromBase64, generateImageFromReferences } from "./client";

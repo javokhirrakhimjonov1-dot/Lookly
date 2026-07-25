@@ -1,7 +1,6 @@
 import {
   extractTextFromResponse,
   geminiGenerateContent,
-  getGeminiImageModel,
   getGeminiTextModel,
 } from "./client";
 
@@ -12,7 +11,10 @@ export async function geminiChatWithImage(options: {
   maxOutputTokens?: number;
 }): Promise<string> {
   const response = await geminiGenerateContent(
-    getGeminiImageModel(),
+    // Gemini's normal Flash model accepts image input and returns the JSON
+    // analysis we need here. The image-generation model is only for creating
+    // pictures and can have a separate (or unavailable) generation quota.
+    getGeminiTextModel(),
     [
       {
         role: "user",

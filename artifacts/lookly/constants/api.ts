@@ -12,7 +12,10 @@ function isExpoDevPort(port: string): boolean {
 /** Local API always runs on 5000 unless the page is already served from there. */
 function needsLocalApiPort(hostname: string, port: string): boolean {
   if (!isLocalHost(hostname)) return false;
-  return !port || port === "80" || port === "443" || isExpoDevPort(port);
+  // Expo may choose another available local port (for example 8082) when its
+  // usual development port is occupied. Every localhost web port except the
+  // API's own port must still call the API on 5000.
+  return port !== "5000";
 }
 
 export function getApiBase(): string {

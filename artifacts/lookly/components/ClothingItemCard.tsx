@@ -43,9 +43,11 @@ export default function ClothingItemCard({ item, onPress }: Props) {
             transition={250}
           />
         ) : (
-          <View style={s.noImage}>
-            <Feather name="shopping-bag" size={28} color={colors.mutedForeground} />
-            <Text style={s.noImageLabel} numberOfLines={1}>{item.category}</Text>
+          <View style={[s.noImage, { backgroundColor: item.colorHex }]}> 
+            <View style={s.noImageSurface}>
+              <Text style={s.noImageLabel} numberOfLines={1}>{categoryLabel}</Text>
+              <Text style={s.noImageHint}>Product image unavailable</Text>
+            </View>
           </View>
         )}
 
@@ -74,10 +76,10 @@ export default function ClothingItemCard({ item, onPress }: Props) {
 
         {item.seasons.length > 0 && (
           <View style={s.pillRow}>
-            {item.seasons.slice(0, 3).map((s) => (
-              <View key={s} style={s.pill}>
+            {item.seasons.slice(0, 3).map((season) => (
+              <View key={season} style={s.pill}>
                 <Text style={s.pillText}>
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                  {season.charAt(0).toUpperCase() + season.slice(1)}
                 </Text>
               </View>
             ))}
@@ -119,16 +121,25 @@ function makeStyles(colors: ReturnType<typeof useColors>) {
       height: "100%",
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: colors.card,
-      gap: 6,
+      padding: 16,
+    },
+    noImageSurface: {
+      width: "100%",
+      height: "100%",
+      borderRadius: 12,
+      backgroundColor: "rgba(255,255,255,0.84)",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 5,
     },
     noImageLabel: {
       fontSize: 10,
       fontWeight: "600",
-      color: colors.mutedForeground,
+      color: colors.foreground,
       textTransform: "capitalize",
       letterSpacing: 0.4,
     },
+    noImageHint: { fontSize: 9, fontWeight: "500", color: colors.mutedForeground, textAlign: "center" },
     heartBtn: {
       position: "absolute",
       top: 8,
