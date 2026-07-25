@@ -343,7 +343,7 @@ function OutfitCard({
 export default function OutfitCarousel() {
   const colors = useColors();
   const { items } = useWardrobe();
-  const { temperature, weatherCode, isLoading: weatherLoading } = useWeather();
+  const { temperature, weatherCode, humidity, windSpeed, rainProbability, uvIndex, isLoading: weatherLoading } = useWeather();
   const { gender, age, styleAesthetics, heatAdaptation, colorPalette } = useUserProfile();
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [loading, setLoading] = useState(false);
@@ -366,6 +366,11 @@ export default function OutfitCarousel() {
           items,
           temperature,
           weatherCode,
+          humidity,
+          windSpeed,
+          windUnit: "km/h",
+          rainProbability,
+          uvIndex,
           ...(gender ? { userGender: gender } : {}),
           ...(age != null ? { userAge: age } : {}),
           ...(styleAesthetics.length > 0 ? { styleAesthetics } : {}),
@@ -386,6 +391,10 @@ export default function OutfitCarousel() {
     items,
     temperature,
     weatherCode,
+    humidity,
+    windSpeed,
+    rainProbability,
+    uvIndex,
     weatherLoading,
     gender,
     age,

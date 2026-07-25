@@ -30,7 +30,13 @@ export default function WardrobeScreen() {
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const { width: screenW } = useWindowDimensions();
-  const numCols = screenW > 600 ? 3 : 2;
+  const gridGap = 10;
+  const gridPadding = 28;
+  const preferredCardWidth = 260;
+  const numCols = screenW > 600
+    ? Math.max(3, Math.floor((screenW - gridPadding + gridGap) / (preferredCardWidth + gridGap)))
+    : 2;
+  const cardWidth = (screenW - gridPadding - gridGap * (numCols - 1)) / numCols;
   const { items, removeItem, isLoading } = useWardrobe();
   const [activeCategory, setActiveCategory] = useState<"all" | ClothingCategory>("all");
   const [selectedItem, setSelectedItem] = useState<ClothingItem | null>(null);
@@ -141,11 +147,13 @@ export default function WardrobeScreen() {
           columnWrapperStyle={styles.row}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
-            <ClothingItemCard
-              item={item}
-              onPress={() => handleItemPress(item)}
-              onDelete={() => handleDelete(item.id)}
-            />
+            <View style={{ width: cardWidth }}>
+              <ClothingItemCard
+                item={item}
+                onPress={() => handleItemPress(item)}
+                onDelete={() => handleDelete(item.id)}
+              />
+            </View>
           )}
         />
       )}
@@ -157,7 +165,8 @@ export default function WardrobeScreen() {
           styles.fab,
           {
             backgroundColor: colors.accent,
-            bottom: getBottomPadding(insets.bottom, 24),
+            // Keep the full button above the fixed bottom navigation on web and mobile.
+            bottom: getBottomPadding(insets.bottom, 68),
           },
         ]}
         activeOpacity={0.85}

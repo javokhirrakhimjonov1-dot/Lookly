@@ -598,8 +598,10 @@ export default function AddItemScreen() {
           fabricWeight: item.fabricWeight ?? "medium",
           isWorkwear: false,
           tags: item.tags.length > 0 ? item.tags : [item.category],
-          // Save only the clean clothing cut-out, never the source photo.
-          imageUri: extractedUri ?? undefined,
+          // Prefer a clean cut-out, but keep the original if AI processing is unavailable.
+          imageUri: extractedUri ?? (item._photoBase64
+            ? `data:${item._photoMime ?? "image/jpeg"};base64,${item._photoBase64}`
+            : item._photoUri) ?? undefined,
           brandLogo: item.brandLogo ?? undefined,
         };
       })
@@ -890,7 +892,9 @@ export default function AddItemScreen() {
         seasons, fabricWeight, isWorkwear,
         purchasePrice: !isNaN(price) && price > 0 ? price : undefined,
         tags: tags.length > 0 ? tags : [category],
-        imageUri: cleanImageUri ?? undefined,
+        imageUri: cleanImageUri ?? (scanPhotoBase64
+          ? `data:${scanPhotoMime ?? "image/jpeg"};base64,${scanPhotoBase64}`
+          : compressedPhotoUri ?? scannedImage) ?? undefined,
         brandLogo: brandLogo ?? undefined,
       });
       leaveAddItem();

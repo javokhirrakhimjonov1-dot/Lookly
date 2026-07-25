@@ -24,6 +24,23 @@ function cleanBase64(value?: string): string | undefined {
   return value.includes(",") ? value.split(",")[1] : value;
 }
 
+async function withGenerationTimeout<T>(operation: Promise<T>, timeoutMs = 70_000): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("Image generation timed out")),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 function makePreviewPrompt(
   items: Item[],
   weather: string,
@@ -96,9 +113,11 @@ router.post("/outfit-preview", async (req, res) => {
   const prompt = makePreviewPrompt(items, weather, temperature, mood, !!bodyReference, references.length);
 
   try {
-    const image = references.length > 0
-      ? await generateImageFromReferences(references, prompt, "1024x1536")
-      : await generateImageBuffer(prompt, "1024x1536");
+    const image = await withGenerationTimeout(
+      references.length > 0
+        ? generateImageFromReferences(references, prompt, "1024x1536")
+        : generateImageBuffer(prompt, "1024x1536"),
+    );
     res.json({
       image: image.toString("base64"),
       mimeType: "image/png",

@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Location from "expo-location";
 import React, {
   createContext,
   useCallback,
@@ -19,6 +20,8 @@ export interface WeatherData {
   feelsLike: number;
   humidity: number;
   windSpeed: number;
+  rainProbability: number;
+  uvIndex: number;
   weatherCode: number;
   condition: string;
   conditionDetail: string;
@@ -95,6 +98,8 @@ export function WeatherProvider({ children }: { children: React.ReactNode }) {
   const [feelsLike, setFeelsLike] = useState(22);
   const [humidity, setHumidity] = useState(40);
   const [windSpeed, setWindSpeed] = useState(10);
+  const [rainProbability, setRainProbability] = useState(0);
+  const [uvIndex, setUvIndex] = useState(0);
   const [weatherCode, setWeatherCode] = useState(0);
   const [city, setCity] = useState("Tashkent");
   const [isLoading, setIsLoading] = useState(true);
@@ -113,15 +118,28 @@ export function WeatherProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     setError(null);
     try {
-      const lat = TASHKENT.lat;
-      const lon = TASHKENT.lon;
-
-      setCity("Tashkent");
+      let lat = TASHKENT.lat;
+      let lon = TASHKENT.lon;
+      let locationName = "Tashkent";
+      try {
+        const permission = await Location.requestForegroundPermissionsAsync();
+        if (permission.status === "granted") {
+          const location = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          lat = location.coords.latitude;
+          lon = location.coords.longitude;
+          locationName = "Your location";
+        }
+      } catch {
+        // The existing Tashkent fallback remains available if location services fail.
+      }
+      setCity(locationName);
 
       const currentUrl =
         `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
         "&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code" +
-        "&daily=temperature_2m_max,temperature_2m_min,weather_code" +
+        "&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,uv_index_max" +
         "&timezone=auto&forecast_days=3";
 
       const res = await fetch(currentUrl);
@@ -138,6 +156,8 @@ export function WeatherProvider({ children }: { children: React.ReactNode }) {
         const todayMax = data.daily.temperature_2m_max?.[0] ?? c.temperature_2m;
         const tomorrowMax = data.daily.temperature_2m_max?.[1] ?? c.temperature_2m;
         const tomorrowCode = data.daily.weather_code?.[1] ?? c.weather_code;
+        setRainProbability(Math.round(data.daily.precipitation_probability_max?.[0] ?? 0));
+        setUvIndex(Math.round(data.daily.uv_index_max?.[0] ?? 0));
         const alert = buildAlert(todayMax, tomorrowMax, tomorrowCode);
 
         if (alert) {
@@ -169,6 +189,8 @@ export function WeatherProvider({ children }: { children: React.ReactNode }) {
         feelsLike,
         humidity,
         windSpeed,
+        rainProbability,
+        uvIndex,
         weatherCode,
         condition,
         conditionDetail: detail,

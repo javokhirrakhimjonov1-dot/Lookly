@@ -113,6 +113,13 @@ async function setStoredValue(key: string, value: string): Promise<void> {
   await AsyncStorage.setItem(key, value);
 }
 
+async function removeStoredValue(key: string): Promise<void> {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    try { window.localStorage.removeItem(key); } catch {}
+  }
+  try { await AsyncStorage.removeItem(key); } catch {}
+}
+
 function createUuid(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -202,7 +209,7 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
           const parsed: ClothingItem[] = JSON.parse(storedItems);
           const withImages = await Promise.all(
             parsed.map(async (item) => {
-              const uri = await AsyncStorage.getItem(imageKey(user.id, item.id));
+              const uri = await getStoredValue(imageKey(user.id, item.id));
               return uri ? { ...item, imageUri: uri } : item;
             })
           );
@@ -289,9 +296,9 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
     if (!user) return;
     try {
       if (uri) {
-        await AsyncStorage.setItem(imageKey(user.id, id), uri);
+        await setStoredValue(imageKey(user.id, id), uri);
       } else {
-        await AsyncStorage.removeItem(imageKey(user.id, id));
+        await removeStoredValue(imageKey(user.id, id));
       }
     } catch {
       // Image URI too large — item will show colour swatch instead

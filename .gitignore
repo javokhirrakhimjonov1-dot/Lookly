@@ -53,6 +53,9 @@ Thumbs.db
 # Local user data and generated media
 # These files belong on the device or in private cloud storage, never in Git.
 data/
+# Keep source-code data mappers tracked; only runtime data remains ignored.
+!artifacts/api-server/src/data/
+!artifacts/api-server/src/data/**
 uploads/
 *.db
 *.sqlite

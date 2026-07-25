@@ -209,7 +209,15 @@ export async function syncItemToServer(item: ClothingItem): Promise<void> {
     if (!isUuid(item.id)) return;
     const { data: authData } = await supabase.auth.getUser();
     if (!authData.user) return;
-    const photoPath = await uploadPrivateImage(authData.user.id, item.id, item.imageUri);
+    const uploadedPhotoPath = await uploadPrivateImage(authData.user.id, item.id, item.imageUri);
+    // Do not erase an already-uploaded photo if a temporary local/blob URI
+    // cannot be read during a later metadata-only sync.
+    const { data: existing } = await supabase
+      .from("wardrobe_items")
+      .select("photo_path")
+      .eq("id", item.id)
+      .maybeSingle();
+    const photoPath = uploadedPhotoPath ?? existing?.photo_path ?? null;
     await supabase.from("wardrobe_items").upsert({
       id: item.id,
       user_id: authData.user.id,

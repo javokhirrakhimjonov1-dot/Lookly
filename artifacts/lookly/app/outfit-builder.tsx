@@ -348,11 +348,24 @@ async function generateOutfitPreview(
     itemImages,
   };
 
-  const res = await fetch(`${API_BASE}/outfit-preview`, {
-    method: "POST",
-    headers: await apiAuthHeaders(),
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 80_000);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/outfit-preview`, {
+      method: "POST",
+      headers: await apiAuthHeaders(),
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("AI preview took too long. Image generation may be unavailable right now. Please try again later.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!res.ok) {
     let errMsg = `Preview unavailable (${res.status})`;
