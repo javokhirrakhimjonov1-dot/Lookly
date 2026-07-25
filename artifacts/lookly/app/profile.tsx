@@ -119,7 +119,7 @@ export default function ProfileScreen() {
       ]}
       showsVerticalScrollIndicator={false}
     >
-      <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+      <TouchableOpacity onPress={() => router.replace("/(tabs)")} style={styles.backBtn}>
         <Feather name="arrow-left" size={22} color={colors.foreground} />
       </TouchableOpacity>
 

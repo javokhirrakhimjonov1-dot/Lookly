@@ -116,6 +116,12 @@ interface DetectedItem {
   _duplicateOf?: { name: string; color: string; category: string; fabricWeight: string };
 }
 
+type ManualPhoto = {
+  uri: string;
+  base64: string;
+  mimeType: string;
+};
+
 function nameWords(n: string): Set<string> {
   return new Set(n.toLowerCase().split(/\s+/).filter((w) => w.length > 2));
 }
@@ -236,6 +242,7 @@ async function webFilesToAssets(files: File[]): Promise<ImagePicker.ImagePickerA
           const reader = new FileReader();
           reader.onload = () => done(typeof reader.result === "string" ? (reader.result.split(",")[1] ?? "") : "");
           reader.onerror = () => done("");
+          reader.onabort = () => done("");
           reader.readAsDataURL(file);
         });
         return {
@@ -253,6 +260,12 @@ async function webFilesToAssets(files: File[]): Promise<ImagePicker.ImagePickerA
 }
 
 async function compressAssetForUpload(asset: ImagePicker.ImagePickerAsset): Promise<{ uri: string; base64: string; mimeType: string }> {
+  // Mobile browsers already provide the selected file as base64. Running the
+  // Expo canvas compressor first can hang after Safari/Chrome returns from the
+  // gallery, leaving the user on an apparently abandoned picker screen.
+  if (Platform.OS === "web" && asset.base64) {
+    return { uri: asset.uri, base64: asset.base64, mimeType: asset.mimeType || "image/jpeg" };
+  }
   try {
     const compressed = await compressForUpload(asset.uri);
     if (compressed.base64) return compressed;
@@ -517,6 +530,7 @@ export default function AddItemScreen() {
   const [compressedPhotoUri, setCompressedPhotoUri] = useState<string | null>(null);
   const [scanPhotoBase64, setScanPhotoBase64] = useState<string | null>(null);
   const [scanPhotoMime, setScanPhotoMime] = useState<string>("image/jpeg");
+  const [manualPhotoQueue, setManualPhotoQueue] = useState<ManualPhoto[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [isRemovingBg, setIsRemovingBg] = useState(false);
   const [scanDone, setScanDone] = useState(false);
@@ -557,6 +571,24 @@ export default function AddItemScreen() {
     setScanDone(true);
     scanCardOpacity.value = withTiming(1, { duration: 400 });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const prepareManualPhoto = (photo: ManualPhoto) => {
+    setScannedImage(photo.uri);
+    setExtractedItemUri(null);
+    setCompressedPhotoUri(photo.uri);
+    setScanPhotoBase64(photo.base64);
+    setScanPhotoMime(photo.mimeType);
+    setDetectedItems([]);
+    setName("");
+    setCategory(null);
+    setSelectedColor(null);
+    setSeasons([]);
+    setMaterial("");
+    setTags([]);
+    setBrandLogo(null);
+    setScanDone(true);
+    setIsScanning(false);
   };
 
   const handlePickerSelectOne = (item: DetectedItem) => {
@@ -618,10 +650,6 @@ export default function AddItemScreen() {
   };
 
   const leaveAddItem = () => {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
     router.replace("/(tabs)/wardrobe");
   };
 
@@ -756,6 +784,7 @@ export default function AddItemScreen() {
     setScannedImage(firstAsset.uri);
 
     const allItems: DetectedItem[] = [];
+    const manualPhotos: ManualPhoto[] = [];
     let failedPhotos = 0;
     for (let idx = 0; idx < assets.length; idx++) {
       const asset = assets[idx]!;
@@ -765,6 +794,11 @@ export default function AddItemScreen() {
         // Web pickers often omit asset.base64 for all but the first image.
         // Compressing each asset gives every selected photo the same upload path.
         const compressed = await compressAssetForUpload(asset);
+        manualPhotos.push({
+          uri: compressed.uri,
+          base64: compressed.base64,
+          mimeType: compressed.mimeType,
+        });
         const found = await scanClothingItems(compressed.base64, compressed.mimeType);
         for (const item of found) {
           // Do not discard items merely because they look similar to something
@@ -791,13 +825,15 @@ export default function AddItemScreen() {
 
     if (allItems.length === 0) {
       // AI unavailable — keep last photo visible, let user fill manually
-      if (assets.length > 0) {
-        setScannedImage(assets[0]!.uri);
+      const [firstPhoto, ...remainingPhotos] = manualPhotos;
+      if (firstPhoto) {
+        setManualPhotoQueue(remainingPhotos);
+        prepareManualPhoto(firstPhoto);
       }
-      setScanDone(true);
+      const photoCount = manualPhotos.length || assets.length;
       Alert.alert(
-        "Could not scan the selected photos",
-        "No clothing items were identified. You can still fill in the item details manually and save it."
+        "Photos ready to add",
+        `${photoCount} photo${photoCount === 1 ? " is" : "s are"} ready. AI identification is unavailable, so add this photo's details and save; Lookly will then show the next selected photo.`
       );
       return;
     }
@@ -853,7 +889,23 @@ export default function AddItemScreen() {
     await handleScanPhoto(await webFilesToAssets(files));
   };
 
+  const handleWebCameraInput = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    // Clear the input so a second photo is always delivered to the app.
+    event.target.value = "";
+    if (!files.length) return;
+    await handleScanPhoto(await webFilesToAssets(files.slice(0, 1)));
+  };
+
   const handleCameraCapture = async () => {
+    if (Platform.OS === "web") {
+      // The web UI uses a real <input capture> on the button below. Keep this
+      // fallback for any future caller, without invoking Expo's native-only
+      // camera picker in a mobile browser.
+      const assets = await pickImagesOnWeb();
+      if (assets.length) await handleScanPhoto(assets.slice(0, 1));
+      return;
+    }
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
       Alert.alert("Permission needed", "Please allow camera access.");
@@ -897,6 +949,16 @@ export default function AddItemScreen() {
           : compressedPhotoUri ?? scannedImage) ?? undefined,
         brandLogo: brandLogo ?? undefined,
       });
+      const [nextPhoto, ...remainingPhotos] = manualPhotoQueue;
+      if (nextPhoto) {
+        setManualPhotoQueue(remainingPhotos);
+        prepareManualPhoto(nextPhoto);
+        Alert.alert(
+          "Next photo ready",
+          `${remainingPhotos.length + 1} selected photo${remainingPhotos.length === 0 ? "" : "s"} remaining. Add this item's details and save again.`
+        );
+        return;
+      }
       leaveAddItem();
     } catch (error) {
       Alert.alert("Could not save item", error instanceof Error ? error.message : "Please try again.");
@@ -1029,14 +1091,29 @@ export default function AddItemScreen() {
           )}
 
           <Animated.View style={[styles.scanButtons, scanAnimStyle]}>
-            <TouchableOpacity
-              onPress={handleCameraCapture}
-              disabled={isScanning}
-              style={[styles.scanBtn, { backgroundColor: colors.primary, opacity: isScanning ? 0.6 : 1 }]}
-            >
-              <Feather name="camera" size={16} color={colors.primaryForeground} />
-              <Text style={[styles.scanBtnText, { color: colors.primaryForeground }]}>Take photo</Text>
-            </TouchableOpacity>
+            {Platform.OS === "web" ? (
+              <View style={[styles.scanBtn, { backgroundColor: colors.primary, opacity: isScanning ? 0.6 : 1, position: "relative", overflow: "hidden" }]}>
+                {isScanning ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Feather name="camera" size={16} color={colors.primaryForeground} />}
+                <Text style={[styles.scanBtnText, { color: colors.primaryForeground }]}>{isScanning ? "Analyzing..." : "Take photo"}</Text>
+                {!isScanning && React.createElement("input", {
+                  type: "file",
+                  accept: "image/*",
+                  capture: "environment",
+                  onChange: handleWebCameraInput,
+                  "aria-label": "Take a photo with the camera",
+                  style: { position: "absolute", top: 0, left: 0, width: "100%", height: "100%", opacity: 0.01, zIndex: 10, cursor: "pointer" },
+                })}
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={handleCameraCapture}
+                disabled={isScanning}
+                style={[styles.scanBtn, { backgroundColor: colors.primary, opacity: isScanning ? 0.6 : 1 }]}
+              >
+                <Feather name="camera" size={16} color={colors.primaryForeground} />
+                <Text style={[styles.scanBtnText, { color: colors.primaryForeground }]}>Take photo</Text>
+              </TouchableOpacity>
+            )}
             {Platform.OS === "web" ? (
               <View style={[styles.scanBtn, { backgroundColor: colors.secondary, borderColor: colors.border, borderWidth: 1, opacity: isScanning ? 0.6 : 1, position: "relative", overflow: "hidden" }]}>
                 {isScanning ? <ActivityIndicator size="small" color={colors.accent} /> : <Feather name="upload" size={16} color={colors.accent} />}

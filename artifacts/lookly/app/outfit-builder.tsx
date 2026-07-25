@@ -781,7 +781,7 @@ export default function OutfitBuilderScreen() {
       tags: ["ootd", "mylook"],
     });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    router.back();
+    router.replace("/(tabs)/looks");
   };
 
   const handleSaveOutfit = async () => {
@@ -828,7 +828,7 @@ export default function OutfitBuilderScreen() {
           },
         ]}
       >
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => router.replace("/(tabs)/wardrobe")}>
           <Feather name="arrow-left" size={22} color={colors.foreground} />
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 12 }}>

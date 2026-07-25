@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React from "react";
 import {
+  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -22,6 +23,7 @@ import { useWeather } from "@/contexts/WeatherContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { getTimeLeft, useSquadVote } from "@/contexts/SquadVoteContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { type UpcomingFeature, useFeatureWaitlist } from "@/contexts/FeatureWaitlistContext";
 
 const ALERT_BG: Record<string, string> = {
   temperature_drop: "#EFF6FF",
@@ -48,6 +50,17 @@ const ALERT_ICON: Record<string, React.ComponentProps<typeof Feather>["name"]> =
   snow_incoming: "cloud-snow",
 };
 
+const UPCOMING_CARDS: {
+  feature: UpcomingFeature;
+  icon: React.ComponentProps<typeof Feather>["name"];
+  titleKey: string;
+  descriptionKey: string;
+}[] = [
+  { feature: "squad_votes", icon: "users", titleKey: "feature_squad_votes", descriptionKey: "feature_squad_votes_desc" },
+  { feature: "premium_try_on", icon: "user-check", titleKey: "feature_premium_try_on", descriptionKey: "feature_premium_try_on_desc" },
+  { feature: "shop_missing_pieces", icon: "shopping-bag", titleKey: "feature_shop_missing", descriptionKey: "feature_shop_missing_desc" },
+];
+
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
@@ -65,6 +78,7 @@ export default function HomeScreen() {
   const { weatherAlert, dismissAlert, condition, temperature } = useWeather();
   const { fullName } = useUserProfile();
   const { myPolls } = useSquadVote();
+  const { joinedFeatures, isLoading: isWaitlistLoading, updatingFeature, toggleWaitlist } = useFeatureWaitlist();
 
   function getGreeting(): string {
     const h = new Date().getHours();
@@ -88,6 +102,16 @@ export default function HomeScreen() {
     (d) =>
       Math.ceil((new Date(d.expiresAt).getTime() - Date.now()) / 86400000) <= 2
   );
+
+  const handleWaitlistToggle = async (feature: UpcomingFeature) => {
+    const wasJoined = joinedFeatures.has(feature);
+    const error = await toggleWaitlist(feature);
+    if (error) {
+      Alert.alert(t("waitlist_unavailable_title"), error);
+    } else if (!wasJoined) {
+      Alert.alert(t("waitlist_joined_title"), t("waitlist_joined_message"));
+    }
+  };
 
   return (
     <ScrollView
@@ -267,6 +291,40 @@ export default function HomeScreen() {
       </View>
 
       {/* ── Live Squad Votes (creator view) ── */}
+      <View style={styles.comingSoonSection}>
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t("coming_soon")}</Text>
+            <Text style={[styles.comingSoonIntro, { color: colors.mutedForeground }]}>{t("coming_soon_hint")}</Text>
+          </View>
+        </View>
+        {UPCOMING_CARDS.map((card) => {
+          const joined = joinedFeatures.has(card.feature);
+          const isUpdating = updatingFeature === card.feature;
+          return (
+            <View key={card.feature} style={[styles.comingSoonCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={[styles.comingSoonIcon, { backgroundColor: colors.accent + "18" }]}>
+                <Feather name={card.icon} size={18} color={colors.accent} />
+              </View>
+              <View style={styles.comingSoonCopy}>
+                <Text style={[styles.comingSoonTitle, { color: colors.foreground }]}>{t(card.titleKey)}</Text>
+                <Text style={[styles.comingSoonDescription, { color: colors.mutedForeground }]}>{t(card.descriptionKey)}</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => void handleWaitlistToggle(card.feature)}
+                disabled={isWaitlistLoading || isUpdating}
+                style={[styles.waitlistButton, { backgroundColor: joined ? colors.secondary : colors.primary, borderColor: joined ? colors.border : colors.primary }]}
+              >
+                <Feather name={joined ? "check" : "clock"} size={13} color={joined ? colors.foreground : colors.primaryForeground} />
+                <Text style={[styles.waitlistButtonText, { color: joined ? colors.foreground : colors.primaryForeground }]}>
+                  {isUpdating ? t("waitlist_saving") : joined ? t("waitlist_joined") : t("waitlist_join")}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          );
+        })}
+      </View>
+
       {myPolls.length > 0 && (
         <View style={[styles.squadCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.squadCardHeader}>
@@ -401,7 +459,7 @@ export default function HomeScreen() {
           style={[styles.lookPreview, styles.addLookPreview, { backgroundColor: colors.secondary, borderColor: colors.border }]}
         >
           <Feather name="plus" size={24} color={colors.mutedForeground} />
-          <Text style={[styles.addLookText, { color: colors.mutedForeground }]}>Post look</Text>
+          <Text style={[styles.addLookText, { color: colors.mutedForeground }]}>{t("post_look_short")}</Text>
         </TouchableOpacity>
       </ScrollView>
     </ScrollView>
@@ -548,6 +606,56 @@ const styles = StyleSheet.create({
   utilSub: {
     fontSize: 11,
     lineHeight: 15,
+  },
+  comingSoonSection: {
+    gap: 10,
+  },
+  comingSoonIntro: {
+    fontSize: 12,
+    marginTop: 3,
+  },
+  comingSoonCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  comingSoonIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  comingSoonCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  comingSoonTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  comingSoonDescription: {
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  waitlistButton: {
+    minWidth: 94,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderRadius: 11,
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+  },
+  waitlistButtonText: {
+    fontSize: 10,
+    fontWeight: "700",
   },
   dealsAlert: {
     borderRadius: 14,

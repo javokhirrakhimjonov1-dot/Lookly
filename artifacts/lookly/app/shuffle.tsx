@@ -412,7 +412,7 @@ export default function ShuffleScreen() {
           },
         ]}
       >
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => router.replace("/(tabs)")}>
           <Feather name="arrow-left" size={22} color={colors.foreground} />
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 12 }}>

@@ -24,6 +24,7 @@ import { DealsProvider } from "@/contexts/DealsContext";
 import { UserProfileProvider, useUserProfile } from "@/contexts/UserProfileContext";
 import { CalendarProvider } from "@/contexts/CalendarContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { FeatureWaitlistProvider } from "@/contexts/FeatureWaitlistContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -101,13 +102,15 @@ export default function RootLayout() {
                 <CalendarProvider>
                   <SocialProvider>
                     <SquadVoteProvider>
-                    <DealsProvider>
-                      <GestureHandlerRootView style={styles.root}>
-                        <KeyboardProvider>
-                          <RootLayoutNav />
-                        </KeyboardProvider>
-                      </GestureHandlerRootView>
-                    </DealsProvider>
+                      <FeatureWaitlistProvider>
+                        <DealsProvider>
+                          <GestureHandlerRootView style={styles.root}>
+                            <KeyboardProvider>
+                              <RootLayoutNav />
+                            </KeyboardProvider>
+                          </GestureHandlerRootView>
+                        </DealsProvider>
+                      </FeatureWaitlistProvider>
                     </SquadVoteProvider>
                   </SocialProvider>
                 </CalendarProvider>

@@ -22,6 +22,7 @@ import { useColors } from "@/hooks/useColors";
 import { useWardrobe, type ClothingItem } from "@/contexts/WardrobeContext";
 import { useWeather } from "@/contexts/WeatherContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   SQUAD_FRIENDS,
   type PollOutfitData,
@@ -202,6 +203,7 @@ function OutfitCard({
   cardH: number;
 }) {
   const colors = useColors();
+  const { t } = useLanguage();
   const { createPoll } = useSquadVote();
   const moodColor = MOOD_COLORS[outfit.mood] ?? colors.accent;
   // Home cards are deliberately instant. AI previews are requested only from Build look.
@@ -254,7 +256,7 @@ function OutfitCard({
         ) : (
           <View style={styles.instantFallback}>
             <Feather name="layers" size={32} color={colors.border} />
-            <Text style={[styles.generatingText, { color: colors.mutedForeground }]}>Your outfit pieces</Text>
+            <Text style={[styles.generatingText, { color: colors.mutedForeground }]}>{t("ob_outfit_pieces")}</Text>
             <Text style={[styles.categoryLine, { color: colors.mutedForeground }]} numberOfLines={2}>
               {resolvedItems.map((item) => item.name).join(" · ")}
             </Text>
@@ -278,8 +280,8 @@ function OutfitCard({
             <Feather name="image" size={32} color={colors.border} />
             <Text style={[styles.generatingText, { color: colors.mutedForeground }]}>
               {resolvedItems.length === 0
-                ? "Add items to your wardrobe\nto see a styled look"
-                : "Preview unavailable"}
+                ? t("ob_add_clothes_first")
+                : t("preview_unavailable")}
             </Text>
           </View>
         ) : null}
@@ -325,7 +327,7 @@ function OutfitCard({
         >
           <Feather name="scissors" size={13} color={colors.primaryForeground} />
           <Text style={[styles.buildBtnText, { color: colors.primaryForeground }]}>
-            Build look
+            {t("build_look")}
           </Text>
         </TouchableOpacity>
       </View>
@@ -342,6 +344,7 @@ function OutfitCard({
 
 export default function OutfitCarousel() {
   const colors = useColors();
+  const { t } = useLanguage();
   const { items } = useWardrobe();
   const { temperature, weatherCode, humidity, windSpeed, rainProbability, uvIndex, isLoading: weatherLoading } = useWeather();
   const { gender, age, styleAesthetics, heatAdaptation, colorPalette } = useUserProfile();
@@ -419,9 +422,9 @@ export default function OutfitCarousel() {
       <View style={styles.sectionHeader}>
         <View>
           <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
-            TODAY'S LOOKS
+            {t("today_looks")}
           </Text>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Outfit Ideas</Text>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t("outfit_ideas")}</Text>
         </View>
         <TouchableOpacity onPress={fetchOutfits} disabled={loading} style={styles.refreshBtn}>
           {loading ? (
@@ -453,7 +456,7 @@ export default function OutfitCarousel() {
         >
           <Feather name="layers" size={28} color={colors.border} />
           <Text style={[styles.skeletonText, { color: colors.mutedForeground }]}>
-            Add items to your wardrobe to get outfit ideas
+            {t("ob_add_clothes_first")}
           </Text>
           <TouchableOpacity
             onPress={() => router.push("/add-item")}
@@ -461,7 +464,7 @@ export default function OutfitCarousel() {
           >
             <Feather name="plus" size={14} color={colors.primaryForeground} />
             <Text style={[styles.addBtnText, { color: colors.primaryForeground }]}>
-              Add first item
+              {t("tap_add_first")}
             </Text>
           </TouchableOpacity>
         </View>
