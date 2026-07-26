@@ -84,6 +84,69 @@ function getBuyImageUri(label: string): string {
   return   "https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?w=300&h=380&fit=crop&auto=format&q=75";
 }
 
+/** Keep the "consider packing" rail useful: every missing slot should suggest a
+ * different, weather-appropriate item rather than repeating the same label. */
+function chooseSuggestions(options: string[], count: number): string[] {
+  return options.slice(0, Math.max(0, count));
+}
+
+function packingOptions(kind: "tops" | "bottoms" | "outerwear" | "shoes" | "accessories", tier: TempTier, hasRain: boolean): string[] {
+  const rainy = hasRain ? {
+    tops: ["Quick-dry long-sleeve top", "Light merino layer", "Breathable overshirt", "Moisture-wicking tee"],
+    bottoms: ["Water-resistant trousers", "Quick-dry chinos", "Dark straight-leg jeans", "Technical midi skirt"],
+    outerwear: ["Packable waterproof shell", "Hooded rain jacket", "Water-resistant trench", "Light rain poncho"],
+    shoes: ["Waterproof sneakers", "Leather ankle boots", "Rubber-soled loafers", "Quick-dry walking shoes"],
+    accessories: ["Compact umbrella", "Water-resistant crossbody bag", "Cap with visor", "Spare quick-dry socks"],
+  } as const : null;
+  if (rainy) return [...rainy[kind]];
+
+  const options: Record<TempTier, Record<typeof kind, string[]>> = {
+    freezing: {
+      tops: ["Thermal base layer", "Merino wool turtleneck", "Heavy knit sweater", "Fleece half-zip", "Long-sleeve heat-tech top"],
+      bottoms: ["Lined trousers", "Thermal leggings", "Heavy denim jeans", "Wool-blend trousers"],
+      outerwear: ["Insulated puffer coat", "Wool overcoat", "Down parka", "Weatherproof winter jacket"],
+      shoes: ["Insulated boots", "Waterproof leather boots", "Rubber-soled winter shoes"],
+      accessories: ["Wool scarf", "Warm beanie", "Leather gloves", "Thick wool socks"],
+    },
+    cold: {
+      tops: ["Fine-knit jumper", "Long-sleeve cotton shirt", "Merino crewneck", "Fleece pullover", "Layering turtleneck"],
+      bottoms: ["Straight-leg jeans", "Wool-blend trousers", "Corduroy trousers", "Midi skirt with tights"],
+      outerwear: ["Wool coat", "Quilted jacket", "Puffer vest", "Structured trench coat"],
+      shoes: ["Ankle boots", "Leather sneakers", "Chunky loafers", "Closed-toe flats"],
+      accessories: ["Light scarf", "Beanie", "Crossbody bag", "Warm socks"],
+    },
+    cool: {
+      tops: ["Oxford shirt", "Light knit polo", "Long-sleeve tee", "Fine cardigan", "Cotton overshirt"],
+      bottoms: ["Relaxed trousers", "Dark jeans", "Midi skirt", "Tailored chinos"],
+      outerwear: ["Denim jacket", "Light blazer", "Bomber jacket", "Cotton trench"],
+      shoes: ["Clean sneakers", "Loafers", "Ankle boots", "Ballet flats"],
+      accessories: ["Light scarf", "Leather belt", "Crossbody bag", "Sunglasses"],
+    },
+    mild: {
+      tops: ["Crisp cotton shirt", "Lightweight knit polo", "Fitted tee", "Fine cardigan", "Linen-blend blouse", "Breathable overshirt"],
+      bottoms: ["Tailored chinos", "Wide-leg trousers", "Dark straight jeans", "Midi skirt", "Light denim"],
+      outerwear: ["Unstructured blazer", "Light denim jacket", "Cotton overshirt"],
+      shoes: ["Leather sneakers", "Loafers", "Slingback flats", "Low-profile trainers"],
+      accessories: ["Sunglasses", "Leather belt", "Small shoulder bag", "Light scarf"],
+    },
+    warm: {
+      tops: ["Linen button-up shirt", "Cotton crew-neck tee", "Breathable polo", "Sleeveless blouse", "Lightweight camp-collar shirt", "Ribbed tank layer"],
+      bottoms: ["Linen trousers", "Cotton chinos", "Flowy midi skirt", "Lightweight shorts", "Wide-leg cotton trousers"],
+      outerwear: ["Light linen overshirt", "Packable windbreaker"],
+      shoes: ["Canvas sneakers", "Leather sandals", "Loafers", "Open-back mules"],
+      accessories: ["Sunglasses", "Sun cap", "Light tote bag", "Breathable socks"],
+    },
+    hot: {
+      tops: ["Linen camp-collar shirt", "Lightweight cotton tee", "Sleeveless linen top", "Breathable polo", "Loose-fit short-sleeve shirt", "Cotton tank"],
+      bottoms: ["Linen shorts", "Flowy skirt", "Lightweight chinos", "Cotton shorts", "Relaxed linen trousers"],
+      outerwear: ["UV-protective overshirt", "Ultra-light wind layer"],
+      shoes: ["Leather sandals", "Breathable sneakers", "Open-toe flats", "Canvas slip-ons"],
+      accessories: ["Wide-brim hat", "UV sunglasses", "Refillable water bottle", "Lightweight tote"],
+    },
+  };
+  return options[tier][kind];
+}
+
 // ─────────────────────────────────────────────
 // Packing logic
 // ─────────────────────────────────────────────
@@ -98,6 +161,7 @@ function generatePackingList(
   const needsOuterwear = avgLow <= 17;
   const needsHeavy = avgLow <= 10;
   const isHot = avgHigh > 28;
+  const tripTier = getTier((avgHigh + avgLow) / 2);
 
   const weightOk = (item: ClothingItem) => {
     if (isHot && item.fabricWeight === "heavy") return false;
@@ -125,11 +189,7 @@ function generatePackingList(
     needed: topsNeeded,
     reason: `${topsNeeded} tops for ${days} days at ${Math.round(avgHigh)}°C avg`,
     fromWardrobe: tops.slice(0, topsNeeded),
-    needToBuy: tops.length < topsNeeded
-      ? Array(topsNeeded - tops.length).fill(
-          isHot ? "Lightweight breathable top" : needsHeavy ? "Warm knit top" : "Casual layering top"
-        )
-      : [],
+    needToBuy: chooseSuggestions(packingOptions("tops", tripTier, hasRain), topsNeeded - tops.length),
   });
 
   result.push({
@@ -138,11 +198,7 @@ function generatePackingList(
     needed: bottomsNeeded,
     reason: `${bottomsNeeded} bottoms for the trip`,
     fromWardrobe: [...bottoms, ...dresses].slice(0, bottomsNeeded),
-    needToBuy: (bottoms.length + dresses.length) < bottomsNeeded
-      ? Array(bottomsNeeded - bottoms.length - dresses.length).fill(
-          isHot ? "Light trousers / skirt" : "Comfortable jeans"
-        )
-      : [],
+    needToBuy: chooseSuggestions(packingOptions("bottoms", tripTier, hasRain), bottomsNeeded - bottoms.length - dresses.length),
   });
 
   if (needsOuterwear && outerNeeded > 0) {
@@ -152,9 +208,7 @@ function generatePackingList(
       needed: outerNeeded,
       reason: needsHeavy ? "Heavy coat required — lows below 10°C" : "Light jacket for cool evenings",
       fromWardrobe: outer.slice(0, outerNeeded),
-      needToBuy: outer.length < outerNeeded
-        ? [needsHeavy ? "Heavy winter coat" : "Light jacket or cardigan"]
-        : [],
+      needToBuy: chooseSuggestions(packingOptions("outerwear", tripTier, hasRain), outerNeeded - outer.length),
     });
   }
 
@@ -164,9 +218,7 @@ function generatePackingList(
     needed: shoesNeeded,
     reason: `${shoesNeeded} pairs — ${isHot ? "sandals / sneakers for heat" : "closed-toe for cooler temps"}`,
     fromWardrobe: shoes.slice(0, shoesNeeded),
-    needToBuy: shoes.length < shoesNeeded
-      ? Array(shoesNeeded - shoes.length).fill(isHot ? "Comfortable sandals" : "Versatile sneakers")
-      : [],
+    needToBuy: chooseSuggestions(packingOptions("shoes", tripTier, hasRain), shoesNeeded - shoes.length),
   });
 
   if (hasRain) {
@@ -188,7 +240,7 @@ function generatePackingList(
     needed: Math.min(access.length, 3),
     reason: "Scarves, belts, bags for variety",
     fromWardrobe: access.slice(0, 3),
-    needToBuy: access.length === 0 ? ["Versatile belt or scarf"] : [],
+    needToBuy: access.length === 0 ? chooseSuggestions(packingOptions("accessories", tripTier, hasRain), 2) : [],
   });
 
   return result;
@@ -418,7 +470,9 @@ const drStyles = StyleSheet.create({
   weekday: { flex: 1, textAlign: "center", fontSize: 11, fontWeight: "600", paddingVertical: 4 },
   dayCell: {
     flex: 1,
-    aspectRatio: 1,
+    // A square based on the full desktop width turns into a giant calendar on web.
+    // Keep compact fixed-height rows there; native keeps roomy touch targets.
+    ...(Platform.OS === "web" ? { height: 38 } : { aspectRatio: 1 }),
     alignItems: "center",
     justifyContent: "center",
     marginVertical: 1,
