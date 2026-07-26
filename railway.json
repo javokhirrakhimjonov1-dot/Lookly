@@ -1,7 +1,6 @@
 {
   "build": {
-    "builder": "NIXPACKS",
-    "buildCommand": "npx -y pnpm@11.3.0 -C artifacts/api-server run build && npx -y pnpm@11.3.0 -C artifacts/lookly exec expo export --platform web"
+    "builder": "DOCKERFILE"
   },
   "deploy": {
     "startCommand": "node artifacts/api-server/dist/index.mjs",
