@@ -48,6 +48,8 @@ function makePreviewPrompt(
   mood: string,
   hasBodyReference: boolean,
   referenceCount: number,
+  userGender?: string,
+  userAge?: number,
 ): string {
   const garments = items.map((item, index) =>
     `${index + 1}. ${item.name} — ${item.category}, ${item.color} (${item.colorHex})`,
@@ -58,11 +60,18 @@ function makePreviewPrompt(
   const garmentInstruction = referenceCount > (hasBodyReference ? 1 : 0)
     ? "The remaining reference images are the exact wardrobe items. Use only those garments. Preserve each item’s actual silhouette, cut, color, material, seams, straps, sleeves, hardware, patterns, and visible branding. Do not substitute them with similar products, invent a logo, or add extra garments."
     : "Use the listed garments exactly as described. Do not add items not listed.";
+  const presentationInstruction = userGender === "male"
+    ? "The model must present as an adult man. Do not use a female model, womenswear styling, or feminine presentation."
+    : userGender === "female"
+      ? "The model must present as an adult woman. Do not use a male model, menswear styling, or masculine presentation."
+      : "Use an adult model whose presentation is appropriate to the selected wardrobe and profile.";
 
   return [
     "Use case: identity-preserve virtual try-on, high-end editorial fashion photography.",
     "Asset type: Lookly outfit preview in a mobile wardrobe app.",
     personInstruction,
+    presentationInstruction,
+    userAge ? `The model should read as approximately ${userAge} years old, while remaining an adult editorial fashion model.` : "",
     garmentInstruction,
     "Render a premium, photorealistic, full-length fashion editorial photograph — never a 2D avatar, cartoon, flat vector, clothing chart, split-screen, text label, or mood board.",
     "Dress the model in a coherent outfit built from the selected items. Fit and drape every garment naturally around shoulders, chest, waist, hips, legs, and feet. Respect fabric physics and proportions.",
@@ -84,6 +93,8 @@ router.post("/outfit-preview", async (req, res) => {
     userBodyPhotoBase64,
     userBodyPhotoMime = "image/jpeg",
     itemImages = [],
+    userGender,
+    userAge,
   } = req.body as {
     items: Item[];
     weather?: string;
@@ -92,6 +103,8 @@ router.post("/outfit-preview", async (req, res) => {
     userBodyPhotoBase64?: string;
     userBodyPhotoMime?: string;
     itemImages?: ReferenceImage[];
+    userGender?: string;
+    userAge?: number;
   };
 
   if (!Array.isArray(items) || items.length === 0) {
@@ -106,11 +119,16 @@ router.post("/outfit-preview", async (req, res) => {
       return imageBase64 ? [{ imageBase64, imageMime: reference.imageMime || "image/png" }] : [];
     })
     : [];
+  // Gemini 2.5 Flash Image is most reliable with a small set of high-value
+  // references. A body reference plus two exact garment references avoids
+  // the malformed collage-like images caused by overloading the model.
   const references = [
     ...(bodyReference ? [{ imageBase64: bodyReference, imageMime: userBodyPhotoMime }] : []),
     ...garmentReferences,
-  ];
-  const prompt = makePreviewPrompt(items, weather, temperature, mood, !!bodyReference, references.length);
+  ].slice(0, 3);
+  const prompt = makePreviewPrompt(
+    items, weather, temperature, mood, !!bodyReference, references.length, userGender, userAge,
+  );
 
   try {
     const image = await withGenerationTimeout(

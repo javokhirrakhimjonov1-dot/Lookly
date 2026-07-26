@@ -43,16 +43,6 @@ router.post("/remove-bg", async (req, res) => {
   try {
     const raw = photoBase64.includes(",") ? photoBase64.split(",")[1] : photoBase64;
     const inputBuffer = Buffer.from(raw, "base64");
-    const inputBlob = new Blob([inputBuffer], { type: mimeType });
-    const resultBlob = await removeBackground(inputBlob as any, {
-      publicPath: BACKGROUND_REMOVAL_PUBLIC_PATH,
-      model: "medium",
-      output: { format: "image/png", quality: 0.8 },
-    });
-    const cutoutBuffer = Buffer.from(await resultBlob.arrayBuffer());
-    let resultBuffer: Buffer = cutoutBuffer;
-    let studioGenerated = false;
-
     try {
       const prompt = [
         `Transform the exact ${itemName ?? category ?? "clothing item"} in the reference into one premium, ultra-high-resolution e-commerce product catalog photograph.`,
@@ -66,18 +56,43 @@ router.post("/remove-bg", async (req, res) => {
       ].join(" ");
       const generated = await editImageFromBase64(raw, mimeType, prompt, "1024x1024");
       if (generated.length > 0) {
-        resultBuffer = generated;
-        studioGenerated = true;
+        const filename = `${crypto.randomUUID()}.png`;
+        fs.writeFileSync(path.join(UPLOADS_DIR, filename), generated);
+        res.json({
+          image: generated.toString("base64"),
+          mimeType: "image/png",
+          url: `/uploads/${filename}`,
+          studioGenerated: true,
+        });
+        return;
       }
-    } catch {
-      // Keep the faithful real cut-out when AI generation is unavailable.
+      throw new Error("Gemini returned no catalog image");
+    } catch (studioError: unknown) {
+      // A generic local segmenter often cuts out the person from a mirror
+      // image instead of the garment. Return it only as a diagnostic fallback
+      // so clients never mistake it for a finished catalog product image.
+      try {
+        const inputBlob = new Blob([inputBuffer], { type: mimeType });
+        const resultBlob = await removeBackground(inputBlob as any, {
+          publicPath: BACKGROUND_REMOVAL_PUBLIC_PATH,
+          model: "medium",
+          output: { format: "image/png", quality: 0.8 },
+        });
+        const cutoutBuffer = Buffer.from(await resultBlob.arrayBuffer());
+        const filename = `${crypto.randomUUID()}.png`;
+        fs.writeFileSync(path.join(UPLOADS_DIR, filename), cutoutBuffer);
+        res.status(202).json({
+          image: cutoutBuffer.toString("base64"),
+          mimeType: "image/png",
+          url: `/uploads/${filename}`,
+          studioGenerated: false,
+          error: studioError instanceof Error ? studioError.message : "Studio image generation unavailable",
+        });
+        return;
+      } catch {
+        throw studioError;
+      }
     }
-    const filename = `${crypto.randomUUID()}.png`;
-    const filePath = path.join(UPLOADS_DIR, filename);
-    fs.writeFileSync(filePath, resultBuffer);
-    const url = `/uploads/${filename}`;
-    const resultBase64 = resultBuffer.toString("base64");
-    res.json({ image: resultBase64, mimeType: "image/png", url, studioGenerated });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: msg || "Background removal failed" });

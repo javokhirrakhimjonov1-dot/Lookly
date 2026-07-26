@@ -207,7 +207,10 @@ async function removeBg(
       }),
     });
     if (!res.ok) return null;
-    const data = await res.json() as { image?: string; url?: string };
+    const data = await res.json() as { image?: string; url?: string; studioGenerated?: boolean };
+    // A local segmenter can return the person from a mirror photo. Only a
+    // confirmed Gemini studio result is safe to show as a product image.
+    if (!data.studioGenerated) return null;
     if (data.url) {
       // Uploaded images are served from /uploads, outside the /api router.
       return `${API_BASE.replace(/\/api$/, "")}${data.url}`;
@@ -676,10 +679,8 @@ export default function AddItemScreen() {
           fabricWeight: item.fabricWeight ?? "medium",
           isWorkwear: false,
           tags: item.tags.length > 0 ? item.tags : [item.category],
-          // Prefer a clean cut-out, but keep the original if AI processing is unavailable.
-          imageUri: extractedUri ?? (item._photoBase64
-            ? `data:${item._photoMime ?? "image/jpeg"};base64,${item._photoBase64}`
-            : item._photoUri) ?? undefined,
+          // Never use a mirror/person source photo as a product catalog card.
+          imageUri: extractedUri ?? undefined,
           brandLogo: item.brandLogo ?? undefined,
         };
       })
@@ -999,9 +1000,9 @@ export default function AddItemScreen() {
         purchasePrice: !isNaN(price) && price > 0 ? price : undefined,
         purchaseCurrency: !isNaN(price) && price > 0 ? purchaseCurrency : undefined,
         tags: tagsForSave(),
-        imageUri: cleanImageUri ?? (scanPhotoBase64
-          ? `data:${scanPhotoMime ?? "image/jpeg"};base64,${scanPhotoBase64}`
-          : compressedPhotoUri ?? scannedImage) ?? undefined,
+        // Preserve visual quality: an unavailable studio image is preferable
+        // to saving the unprocessed source photograph as a product card.
+        imageUri: cleanImageUri ?? undefined,
         brandLogo: brandLogo ?? undefined,
       });
       const [nextPhoto, ...remainingPhotos] = manualPhotoQueue;

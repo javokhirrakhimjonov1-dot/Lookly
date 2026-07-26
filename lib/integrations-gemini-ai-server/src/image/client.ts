@@ -6,7 +6,7 @@ import {
 } from "../client";
 
 const IMAGE_GENERATION_CONFIG = {
-  responseModalities: ["TEXT", "IMAGE"],
+  responseModalities: ["IMAGE"],
 };
 
 function mapSizeToAspectRatio(
@@ -27,7 +27,7 @@ export async function generateImageBuffer(
     {
       generationConfig: {
         ...IMAGE_GENERATION_CONFIG,
-        imageConfig: { aspectRatio: mapSizeToAspectRatio(size) },
+        responseFormat: { image: { aspectRatio: mapSizeToAspectRatio(size) } },
       },
     },
   );
@@ -56,7 +56,7 @@ export async function editImageFromBase64(
     {
       generationConfig: {
         ...IMAGE_GENERATION_CONFIG,
-        imageConfig: { aspectRatio: mapSizeToAspectRatio(size) },
+        responseFormat: { image: { aspectRatio: mapSizeToAspectRatio(size) } },
       },
     },
   );
@@ -88,7 +88,7 @@ export async function generateImageFromReferences(
     {
       generationConfig: {
         ...IMAGE_GENERATION_CONFIG,
-        imageConfig: { aspectRatio: mapSizeToAspectRatio(size) },
+        responseFormat: { image: { aspectRatio: mapSizeToAspectRatio(size) } },
       },
     },
   );
