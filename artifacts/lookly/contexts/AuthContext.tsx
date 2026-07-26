@@ -9,6 +9,8 @@ type AuthContextValue = {
   isConfigured: boolean;
   signIn: (email: string, password: string) => Promise<string | null>;
   signUp: (email: string, password: string) => Promise<{ error: string | null; needsEmailConfirmation: boolean }>;
+  requestPasswordReset: (email: string) => Promise<string | null>;
+  updatePassword: (password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
 };
 
@@ -53,6 +55,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (supabase) await supabase.auth.signOut();
   };
 
+  const requestPasswordReset = async (email: string): Promise<string | null> => {
+    if (!supabase) return "Supabase is not configured yet.";
+    const redirectTo = typeof window !== "undefined"
+      ? `${window.location.origin}/auth?reset=1`
+      : undefined;
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+    return error?.message ?? null;
+  };
+
+  const updatePassword = async (password: string): Promise<string | null> => {
+    if (!supabase) return "Supabase is not configured yet.";
+    const { error } = await supabase.auth.updateUser({ password });
+    return error?.message ?? null;
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -62,6 +79,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isConfigured: isSupabaseConfigured,
         signIn,
         signUp,
+        requestPasswordReset,
+        updatePassword,
         signOut,
       }}
     >

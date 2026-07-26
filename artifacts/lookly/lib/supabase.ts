@@ -12,7 +12,8 @@ export const supabase = isSupabaseConfigured
         storage: AsyncStorage,
         autoRefreshToken: true,
         persistSession: true,
-        detectSessionInUrl: false,
+        // Needed for the secure password-recovery link on the web app.
+        detectSessionInUrl: true,
       },
     })
   : null;

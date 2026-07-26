@@ -6,7 +6,7 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { router, Stack, usePathname } from "expo-router";
+import { router, Stack, useLocalSearchParams, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { StyleSheet } from "react-native";
@@ -34,9 +34,10 @@ function OnboardingGuard() {
   const { onboardingComplete, isLoading } = useUserProfile();
   const { session, isLoading: isAuthLoading } = useAuth();
   const pathname = usePathname();
+  const { reset } = useLocalSearchParams<{ reset?: string }>();
 
   useEffect(() => {
-    if (isAuthLoading) return;
+    if (isAuthLoading || reset === "1") return;
     if (!session) {
       // Expo refreshes typed route declarations when the dev server starts.
       router.replace("/auth" as never);
@@ -47,7 +48,7 @@ function OnboardingGuard() {
       // profile is loaded, always take completed users to the actual app.
       router.replace("/(tabs)");
     }
-  }, [isAuthLoading, session, isLoading, onboardingComplete, pathname]);
+  }, [isAuthLoading, session, isLoading, onboardingComplete, pathname, reset]);
 
   return null;
 }
