@@ -120,10 +120,32 @@ export default function ProfileScreen() {
   };
 
   const rows = [
-    { icon: "bell" as const, label: t("deal_notif"), description: t("deal_notif_desc") },
-    { icon: "cloud" as const, label: t("weather_loc"), description: t("weather_loc_desc") },
-    { icon: "shield" as const, label: t("privacy"), description: t("privacy_desc") },
-    { icon: "info" as const, label: t("about_lookly"), description: t("version") },
+    {
+      icon: "bell" as const,
+      label: t("deal_notif"),
+      description: `${t("coming_soon")} · ${t("coming_soon_hint")}`,
+      feature: "deal_notifications" as UpcomingFeature,
+    },
+    {
+      icon: "shield" as const,
+      label: t("privacy"),
+      description: `${t("coming_soon")} · ${t("coming_soon_hint")}`,
+      feature: "privacy_controls" as UpcomingFeature,
+    },
+    {
+      icon: "cloud" as const,
+      label: t("weather_loc"),
+      description: `${city} · Tap to refresh`,
+      onPress: () => { void refreshWeatherLocation(); },
+      disabled: isWeatherLoading,
+    },
+    {
+      icon: "info" as const,
+      label: t("about_lookly"),
+      description: t("version"),
+      onPress: () => Alert.alert("About Lookly", "Lookly 1.0.0 pilot\nYour wardrobe remains private to your account."),
+      disabled: false,
+    },
   ];
 
   return (
