@@ -92,15 +92,15 @@ export default function ProfileScreen() {
     try { await captureBodyPhoto(); } finally { setPhotoLoading(false); }
   };
 
-  const handleClear = () => {
-    Alert.alert(
-      t("remove_photo_title"),
-      t("remove_photo_msg"),
-      [
-        { text: t("cancel"), style: "cancel" },
-        { text: t("remove_btn"), style: "destructive", onPress: clearBodyPhoto },
-      ]
-    );
+  const handleClear = async () => {
+    // Keep this a direct action. Alert dialogs are unreliable in the web build
+    // and previously made the Remove button appear to do nothing.
+    setPhotoLoading(true);
+    try {
+      await clearBodyPhoto();
+    } finally {
+      setPhotoLoading(false);
+    }
   };
 
   const rows = [
@@ -290,7 +290,8 @@ export default function ProfileScreen() {
                   <Text style={[styles.photoActionText, { color: colors.accent }]}>{t("replace")}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={handleClear}
+                  onPress={() => { void handleClear(); }}
+                  disabled={photoLoading}
                   style={[styles.photoActionBtn, { borderColor: "#FECACA" }]}
                 >
                   <Feather name="trash-2" size={13} color={colors.destructive} />

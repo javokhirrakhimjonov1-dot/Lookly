@@ -398,13 +398,17 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
   const clearBodyPhoto = useCallback(async () => {
     setBodyPhotoUri(null);
     setBodyPhotoBase64(null);
-    await persist({ bodyPhotoUri: null });
+    setBodyPhotoMime("image/jpeg");
+    await persist({ bodyPhotoUri: null, bodyPhotoMime: "image/jpeg" });
     if (user) {
       await supabase?.storage.from(PRIVATE_IMAGE_BUCKET).remove([
         `${user.id}/profile/body.jpg`,
         `${user.id}/profile/body.png`,
       ]);
-      await supabase?.from("profiles").update({ body_photo_path: null }).eq("id", user.id);
+      // Use upsert so the cleared state is retained even if a user profile row
+      // has not been created yet. This prevents an old cloud path from bringing
+      // the image back after a refresh.
+      await supabase?.from("profiles").upsert({ id: user.id, body_photo_path: null });
     }
   }, [persist, user]);
 
