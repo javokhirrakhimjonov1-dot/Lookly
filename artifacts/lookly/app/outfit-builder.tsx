@@ -40,7 +40,7 @@ import { useWeather } from "@/contexts/WeatherContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 
-type OutfitSlotKey = "outerwear" | "tops" | "bottoms" | "dresses" | "shoes" | "accessories";
+type OutfitSlotKey = "outerwear" | "tops" | "bottoms" | "dresses" | "shoes" | "socks" | "accessories";
 
 function getCurrentSeason(): Season {
   const m = new Date().getMonth();
@@ -305,6 +305,21 @@ function localSmartFill(
       if (picked) next[slotKey] = picked;
     }
 
+    // Socks are never required. In cool weather Lookly may add a pair only
+    // when the selected footwear is closed-toe; in warm weather it leaves the
+    // slot empty unless the person explicitly adds socks themselves.
+    if (!lockedSlots.has("socks") && !(mode === "fill-empty" && next.socks)) {
+      const socksPool = getPool("socks");
+      const closedShoes = next.shoes && !isSummerOnlyShoe(next.shoes);
+      const includeSocks = Boolean(closedShoes) && (isCold || (isCool && Math.random() < 0.55));
+      if (includeSocks && socksPool.length > 0) {
+        const pickedSocks = strategy === "stable" ? weightedPickStable(socksPool) : socksPool[Math.floor(Math.random() * socksPool.length)];
+        if (pickedSocks) next.socks = pickedSocks;
+      } else {
+        delete next.socks;
+      }
+    }
+
     lastAttempt = next;
 
     // ── Climate coherence audit ──────────────────────────────────────────
@@ -532,6 +547,7 @@ export default function OutfitBuilderScreen() {
     { key: "dresses", label: t("cat_dresses") },
     { key: "outerwear", label: t("cat_outerwear") },
     { key: "shoes", label: t("cat_shoes") },
+    { key: "socks", label: t("cat_socks") },
     { key: "accessories", label: t("cat_accessories") },
   ];
 
@@ -944,6 +960,16 @@ export default function OutfitBuilderScreen() {
               onClear={() => clearSlot("shoes")}
               isLocked={lockedSlots.has("shoes")}
             />
+            <SlotCard
+              slotKey="socks"
+              label={t("cat_socks")}
+              icon="grid"
+              assignedItem={assigned["socks"] ?? null}
+              onClear={() => clearSlot("socks")}
+              isLocked={lockedSlots.has("socks")}
+            />
+          </View>
+          <View style={styles.canvasRow}>
             <SlotCard
               slotKey="accessories"
               label={t("ob_slot_accessory")}

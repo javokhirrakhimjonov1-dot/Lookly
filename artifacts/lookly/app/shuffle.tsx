@@ -38,6 +38,7 @@ const SHUFFLE_SLOTS: {
   { key: "tops", label: "Top", icon: "wind" },
   { key: "bottoms", label: "Bottom", icon: "minus" },
   { key: "shoes", label: "Shoes", icon: "chevrons-up" },
+  { key: "socks", label: "Socks", icon: "grid" },
   { key: "accessories", label: "Accessory", icon: "circle" },
 ];
 
@@ -289,6 +290,14 @@ export default function ShuffleScreen() {
       if (unlockedSlots.some((s) => s.key === "shoes")) {
         const pool = buildPool("shoes");
         newSlots["shoes"] = pickDiscovery(pool);
+      }
+
+      // Optional layer: add socks only for a cool-weather, closed-shoe look.
+      if (unlockedSlots.some((s) => s.key === "socks")) {
+        const shoes = newSlots.shoes;
+        const shouldWearSocks = !!shoes && !isSummerOnlyShoe(shoes) &&
+          (temperature < 12 || (temperature < SANDAL_TEMP_MIN && Math.random() < 0.55));
+        newSlots.socks = shouldWearSocks ? pickDiscovery(buildPool("socks")) : null;
       }
 
       // Climate coherence guard

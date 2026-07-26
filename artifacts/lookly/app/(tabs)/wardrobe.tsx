@@ -48,6 +48,7 @@ export default function WardrobeScreen() {
     { key: "dresses", label: t("cat_dresses") },
     { key: "outerwear", label: t("cat_outerwear") },
     { key: "shoes", label: t("cat_shoes") },
+    { key: "socks", label: t("cat_socks") },
     { key: "accessories", label: t("cat_accessories") },
   ];
 

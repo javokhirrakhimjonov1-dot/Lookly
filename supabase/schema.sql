@@ -11,6 +11,7 @@ create table if not exists public.profiles (
   style_aesthetics jsonb not null default '[]'::jsonb,
   heat_adaptation text,
   color_palette text,
+  preferred_currency text not null default 'USD' check (preferred_currency in ('USD', 'UZS', 'RUB')),
   body_photo_path text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -20,7 +21,7 @@ create table if not exists public.wardrobe_items (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   name text not null check (char_length(trim(name)) > 0),
-  category text not null check (category in ('tops', 'bottoms', 'dresses', 'outerwear', 'shoes', 'accessories')),
+  category text not null check (category in ('tops', 'bottoms', 'dresses', 'outerwear', 'shoes', 'socks', 'accessories')),
   color text not null default '',
   color_hex text not null default '',
   seasons jsonb not null default '[]'::jsonb,
@@ -40,6 +41,18 @@ create table if not exists public.wardrobe_items (
 alter table public.wardrobe_items
   add column if not exists purchase_currency text not null default 'USD'
   check (purchase_currency in ('USD', 'UZS', 'RUB'));
+
+alter table public.profiles
+  add column if not exists preferred_currency text not null default 'USD'
+  check (preferred_currency in ('USD', 'UZS', 'RUB'));
+
+-- Existing pilot databases retain their original category constraint, so widen
+-- it safely before allowing socks to be saved.
+alter table public.wardrobe_items
+  drop constraint if exists wardrobe_items_category_check;
+alter table public.wardrobe_items
+  add constraint wardrobe_items_category_check
+  check (category in ('tops', 'bottoms', 'dresses', 'outerwear', 'shoes', 'socks', 'accessories'));
 
 create index if not exists wardrobe_items_user_id_created_at_idx
   on public.wardrobe_items (user_id, created_at desc);

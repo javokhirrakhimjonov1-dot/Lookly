@@ -4,7 +4,7 @@ import { Image } from "expo-image";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -39,6 +39,7 @@ import {
   type Season,
   useWardrobe,
 } from "@/contexts/WardrobeContext";
+import { useUserProfile } from "@/contexts/UserProfileContext";
 
 const CATEGORIES: {
   key: ClothingCategory;
@@ -50,6 +51,7 @@ const CATEGORIES: {
   { key: "dresses", label: "Dresses", icon: "star" },
   { key: "outerwear", label: "Outerwear", icon: "layers" },
   { key: "shoes", label: "Shoes", icon: "chevrons-up" },
+  { key: "socks", label: "Socks", icon: "grid" },
   { key: "accessories", label: "Accessories", icon: "circle" },
 ];
 
@@ -106,6 +108,7 @@ const CATEGORY_ICONS: Record<ClothingCategory, React.ComponentProps<typeof Feath
   dresses: "star",
   outerwear: "layers",
   shoes: "chevrons-up",
+  socks: "grid",
   accessories: "circle",
 };
 
@@ -537,6 +540,7 @@ export default function AddItemScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { addItem, addBulkItems, items: wardrobeItems } = useWardrobe();
+  const { preferredCurrency } = useUserProfile();
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState<ClothingCategory | null>(null);
@@ -545,7 +549,7 @@ export default function AddItemScreen() {
   const [fabricWeight, setFabricWeight] = useState<FabricWeight>("medium");
   const [isWorkwear, setIsWorkwear] = useState(false);
   const [purchasePrice, setPurchasePrice] = useState("");
-  const [purchaseCurrency, setPurchaseCurrency] = useState<Currency>("USD");
+  const [purchaseCurrency, setPurchaseCurrency] = useState<Currency>(preferredCurrency);
   const [isPriceFocused, setIsPriceFocused] = useState(false);
   const [material, setMaterial] = useState("");
   const [tags, setTags] = useState<string[]>([]);
@@ -571,6 +575,12 @@ export default function AddItemScreen() {
   const scanCardOpacity = useSharedValue(0);
 
   const topPad = getTopPadding(insets.top);
+
+  // A profile has one price currency. Keep a manually chosen currency until
+  // the person changes it in Stats; never carry the previous item's amount.
+  useEffect(() => {
+    if (!purchasePrice) setPurchaseCurrency(preferredCurrency);
+  }, [preferredCurrency, purchasePrice]);
 
   const scanAnimStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scanScale.value }],
@@ -1352,28 +1362,9 @@ export default function AddItemScreen() {
           <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>
             Used to calculate cost per wear in Stats
           </Text>
-          <View style={styles.currencyRow}>
-            {CURRENCIES.map((currency) => (
-              <Pressable
-                key={currency.key}
-                onPress={() => {
-                  setPurchaseCurrency(currency.key);
-                  setPurchasePrice((current) => formatPriceInput(current, currency.key));
-                }}
-                style={[
-                  styles.currencyBtn,
-                  {
-                    backgroundColor: purchaseCurrency === currency.key ? colors.primary : colors.secondary,
-                    borderColor: purchaseCurrency === currency.key ? colors.primary : colors.border,
-                  },
-                ]}
-              >
-                <Text style={[styles.currencyBtnText, { color: purchaseCurrency === currency.key ? colors.primaryForeground : colors.foreground }]}>
-                  {currency.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <Text style={[styles.currencyLocked, { color: colors.accent }]}>
+            {purchaseCurrency} · Change this in Stats
+          </Text>
           <View style={[styles.priceInputRow, { borderColor: purchasePrice || isPriceFocused ? colors.accent : colors.border, backgroundColor: colors.card }]}>
             <Text style={[styles.priceCurrency, { color: colors.mutedForeground }]}>
               {CURRENCIES.find((currency) => currency.key === purchaseCurrency)?.symbol}
@@ -1540,6 +1531,7 @@ const styles = StyleSheet.create({
   },
   fabricLabel: { fontSize: 14, fontWeight: "600" },
   fabricHint: { fontSize: 10, textAlign: "center" },
+  currencyLocked: { fontSize: 12, fontWeight: "700", marginTop: 3 },
   priceInputRow: {
     flexDirection: "row",
     alignItems: "center",

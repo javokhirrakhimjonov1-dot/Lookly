@@ -24,6 +24,7 @@ export type ClothingCategory =
   | "dresses"
   | "outerwear"
   | "shoes"
+  | "socks"
   | "accessories";
 
 export type Season = "spring" | "summer" | "fall" | "winter";

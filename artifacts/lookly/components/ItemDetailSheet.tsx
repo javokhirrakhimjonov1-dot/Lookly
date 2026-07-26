@@ -46,6 +46,7 @@ const CATEGORY_ICONS: Record<string, React.ComponentProps<typeof Feather>["name"
   dresses: "star",
   outerwear: "layers",
   shoes: "chevrons-up",
+  socks: "grid",
   accessories: "circle",
 };
 

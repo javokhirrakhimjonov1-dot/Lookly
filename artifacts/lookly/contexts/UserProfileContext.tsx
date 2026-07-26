@@ -11,6 +11,7 @@ import React, {
 } from "react";
 import { Alert, Platform } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
+import type { Currency } from "@/contexts/WardrobeContext";
 import { supabase } from "@/lib/supabase";
 
 export type Gender = "male" | "female" | "non-binary" | "prefer_not_to_say";
@@ -28,6 +29,7 @@ interface UserProfile {
   styleAesthetics: StyleAesthetic[];
   heatAdaptation: HeatAdaptation | null;
   colorPalette: ColorPalette | null;
+  preferredCurrency: Currency;
 }
 
 interface UserProfileContextValue {
@@ -41,6 +43,7 @@ interface UserProfileContextValue {
   styleAesthetics: StyleAesthetic[];
   heatAdaptation: HeatAdaptation | null;
   colorPalette: ColorPalette | null;
+  preferredCurrency: Currency;
   isLoading: boolean;
   setFullName: (name: string) => Promise<void>;
   setGender: (gender: Gender | null) => Promise<void>;
@@ -49,6 +52,7 @@ interface UserProfileContextValue {
   setStyleAesthetics: (v: StyleAesthetic[]) => Promise<void>;
   setHeatAdaptation: (v: HeatAdaptation | null) => Promise<void>;
   setColorPalette: (v: ColorPalette | null) => Promise<void>;
+  setPreferredCurrency: (v: Currency) => Promise<void>;
   completeOnboarding: (data: {
     fullName: string;
     gender: Gender | null;
@@ -236,6 +240,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
   const [styleAesthetics, setStyleAestheticsState] = useState<StyleAesthetic[]>([]);
   const [heatAdaptation, setHeatAdaptationState] = useState<HeatAdaptation | null>(null);
   const [colorPalette, setColorPaletteState] = useState<ColorPalette | null>(null);
+  const [preferredCurrency, setPreferredCurrencyState] = useState<Currency>("USD");
   const [isLoading, setIsLoading] = useState(true);
   const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
 
@@ -250,6 +255,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     setStyleAestheticsState([]);
     setHeatAdaptationState(null);
     setColorPaletteState(null);
+    setPreferredCurrencyState("USD");
   }, []);
 
   useEffect(() => {
@@ -283,6 +289,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
           if (Array.isArray(stored.styleAesthetics)) setStyleAestheticsState(stored.styleAesthetics);
           if (stored.heatAdaptation) setHeatAdaptationState(stored.heatAdaptation);
           if (stored.colorPalette) setColorPaletteState(stored.colorPalette);
+          if (stored.preferredCurrency) setPreferredCurrencyState(stored.preferredCurrency);
           if (stored.bodyPhotoUri) {
             setBodyPhotoUri(stored.bodyPhotoUri);
             const b64 = await readBase64FromUri(stored.bodyPhotoUri);
@@ -293,7 +300,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
       try {
         const { data } = await supabase
           ?.from("profiles")
-          .select("full_name, gender, age, style_aesthetics, heat_adaptation, color_palette, body_photo_path")
+          .select("full_name, gender, age, style_aesthetics, heat_adaptation, color_palette, preferred_currency, body_photo_path")
           .eq("id", user.id)
           .maybeSingle() ?? { data: null };
         if (data) {
@@ -303,6 +310,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
           setStyleAestheticsState(Array.isArray(data.style_aesthetics) ? data.style_aesthetics as StyleAesthetic[] : []);
           setHeatAdaptationState((data.heat_adaptation as HeatAdaptation | null) ?? null);
           setColorPaletteState((data.color_palette as ColorPalette | null) ?? null);
+          setPreferredCurrencyState((data.preferred_currency as Currency | null) ?? "USD");
           setOnboardingCompleteState(true);
           if (data.body_photo_path) {
             const photo = await getPrivatePhoto(data.body_photo_path);
@@ -330,7 +338,8 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     styleAesthetics,
     heatAdaptation,
     colorPalette,
-  }), [fullName, gender, age, bodyPhotoUri, bodyPhotoMime, onboardingComplete, styleAesthetics, heatAdaptation, colorPalette]);
+    preferredCurrency,
+  }), [fullName, gender, age, bodyPhotoUri, bodyPhotoMime, onboardingComplete, styleAesthetics, heatAdaptation, colorPalette, preferredCurrency]);
 
   const persist = useCallback(async (updates: Partial<UserProfile>) => {
     if (!user) return;
@@ -345,6 +354,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
         style_aesthetics: next.styleAesthetics,
         heat_adaptation: next.heatAdaptation,
         color_palette: next.colorPalette,
+        preferred_currency: next.preferredCurrency,
       });
     } catch {}
   }, [buildCurrent, user]);
@@ -382,6 +392,11 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
   const setColorPalette = useCallback(async (v: ColorPalette | null) => {
     setColorPaletteState(v);
     await persist({ colorPalette: v });
+  }, [persist]);
+
+  const setPreferredCurrency = useCallback(async (v: Currency) => {
+    setPreferredCurrencyState(v);
+    await persist({ preferredCurrency: v });
   }, [persist]);
 
   const completeOnboarding = useCallback(async (data: {
@@ -505,6 +520,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
         styleAesthetics,
         heatAdaptation,
         colorPalette,
+        preferredCurrency,
         // The profile effect starts after AuthContext publishes its session.
         // Keep consumers loading during that small gap so route guards never
         // mistake a saved profile for an unfinished onboarding.
@@ -516,6 +532,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
         setStyleAesthetics,
         setHeatAdaptation,
         setColorPalette,
+        setPreferredCurrency,
         completeOnboarding,
         uploadBodyPhoto,
         captureBodyPhoto,

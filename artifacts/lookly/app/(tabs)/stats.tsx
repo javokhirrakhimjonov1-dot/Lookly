@@ -13,6 +13,7 @@ import { getTopPadding } from "@/constants/layout";
 import { useColors } from "@/hooks/useColors";
 import { type ClothingCategory, type ClothingItem, type Currency, useWardrobe } from "@/contexts/WardrobeContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useUserProfile } from "@/contexts/UserProfileContext";
 
 const CATEGORY_COLORS: Record<ClothingCategory, string> = {
   tops: "#C8906A",
@@ -20,11 +21,12 @@ const CATEGORY_COLORS: Record<ClothingCategory, string> = {
   dresses: "#800020",
   outerwear: "#6B7C4D",
   shoes: "#C19A6B",
+  socks: "#5B7FA6",
   accessories: "#8A8A8A",
 };
 
 const ALL_CATEGORIES: ClothingCategory[] = [
-  "tops", "bottoms", "dresses", "outerwear", "shoes", "accessories",
+  "tops", "bottoms", "dresses", "outerwear", "shoes", "socks", "accessories",
 ];
 
 function isLight(hex: string): boolean {
@@ -103,6 +105,7 @@ export default function StatsScreen() {
   const insets = useSafeAreaInsets();
   const { items } = useWardrobe();
   const { t } = useLanguage();
+  const { preferredCurrency, setPreferredCurrency } = useUserProfile();
 
   const topPad = getTopPadding(insets.top);
 
@@ -144,10 +147,7 @@ export default function StatsScreen() {
       .filter((currency) => totalByCurrency[currency] > 0)
       .map((currency) => formatMoney(totalByCurrency[currency], currency))
       .join(" · ");
-    const totalValueCurrencies = (Object.keys(totalByCurrency) as Currency[])
-      .filter((currency) => totalByCurrency[currency] > 0)
-      .map((currency) => ({ currency, value: totalByCurrency[currency] }));
-    return { total, totalValue, totalValueCurrencies, totalWears, unworn, workwearCount, byCategory, mostWorn, bestValue, leastWorn, maxCat };
+    return { total, totalByCurrency, totalWears, unworn, workwearCount, byCategory, mostWorn, bestValue, leastWorn, maxCat };
   }, [items]);
 
   return (
@@ -183,10 +183,33 @@ export default function StatsScreen() {
           </View>
         ) : (
           <>
+            <View style={[styles.currencySetting, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View>
+                <Text style={[styles.currencySettingTitle, { color: colors.foreground }]}>{t("currency_preference")}</Text>
+                <Text style={[styles.currencySettingHint, { color: colors.mutedForeground }]}>{t("currency_preference_hint")}</Text>
+              </View>
+              <View style={styles.currencyChoices}>
+                {(["USD", "UZS", "RUB"] as Currency[]).map((currency) => (
+                  <Text
+                    key={currency}
+                    onPress={() => void setPreferredCurrency(currency)}
+                    style={[
+                      styles.currencyChoice,
+                      {
+                        backgroundColor: preferredCurrency === currency ? colors.primary : colors.secondary,
+                        color: preferredCurrency === currency ? colors.primaryForeground : colors.foreground,
+                      },
+                    ]}
+                  >
+                    {currency}
+                  </Text>
+                ))}
+              </View>
+            </View>
             <View style={styles.summaryGrid}>
               {[
                 { label: t("stat_total_items"), value: stats.total, icon: "layers" as const, color: colors.accent },
-                { label: t("stat_total_value"), value: stats.totalValue || "—", icon: "dollar-sign" as const, color: colors.accent },
+                { label: t("stat_total_value"), value: stats.totalByCurrency[preferredCurrency] ? formatTotalAmount(stats.totalByCurrency[preferredCurrency], preferredCurrency) : "—", icon: "dollar-sign" as const, color: colors.accent },
                 { label: t("stat_total_wears"), value: stats.totalWears, icon: "trending-up" as const, color: colors.accent },
                 { label: t("stat_unworn"), value: stats.unworn, icon: "alert-circle" as const, color: stats.unworn > 0 ? colors.destructive : colors.mutedForeground },
               ].map((s) => (
@@ -195,18 +218,7 @@ export default function StatsScreen() {
                   style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                 >
                   <Feather name={s.icon} size={18} color={s.color} />
-                  {s.label === t("stat_total_value") && stats.totalValueCurrencies.length ? (
-                    <View style={styles.currencyTotals}>
-                      {stats.totalValueCurrencies.map(({ currency, value }) => (
-                        <View key={currency} style={styles.currencyTotalRow}>
-                          <Text style={[styles.currencyCode, { color: colors.mutedForeground }]}>{currency}</Text>
-                          <Text style={[styles.currencyAmount, { color: colors.foreground }]}>{formatTotalAmount(value, currency)}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  ) : (
-                    <Text style={[styles.summaryValue, { color: colors.foreground }]}>{s.value}</Text>
-                  )}
+                  <Text style={[styles.summaryValue, { color: colors.foreground }]}>{s.value}</Text>
                   <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>
                     {s.label}
                   </Text>
@@ -315,10 +327,11 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   summaryValue: { fontSize: 24, fontWeight: "800", marginTop: 4 },
-  currencyTotals: { gap: 4, marginTop: 4 },
-  currencyTotalRow: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 6 },
-  currencyCode: { fontSize: 10, fontWeight: "800", letterSpacing: 0.7 },
-  currencyAmount: { flex: 1, textAlign: "right", fontSize: 15, fontWeight: "800" },
+  currencySetting: { borderRadius: 16, borderWidth: 1, padding: 14, gap: 12 },
+  currencySettingTitle: { fontSize: 14, fontWeight: "700" },
+  currencySettingHint: { fontSize: 11, lineHeight: 16, marginTop: 2 },
+  currencyChoices: { flexDirection: "row", gap: 7 },
+  currencyChoice: { minWidth: 58, textAlign: "center", overflow: "hidden", paddingVertical: 8, paddingHorizontal: 10, borderRadius: 9, fontSize: 12, fontWeight: "800" },
   summaryLabel: { fontSize: 12, fontWeight: "500", flexWrap: "wrap" },
   section: {
     borderRadius: 18,
