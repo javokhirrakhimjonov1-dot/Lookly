@@ -106,7 +106,10 @@ function serveStatic(root: string, req: Request, res: Response, next: NextFuncti
   const resolvedRoot = path.resolve(root);
   const filePath = path.resolve(resolvedRoot, `.${decodedPath}`);
   // Do not let a URL such as /uploads/../data/lookly.db leave the public folder.
-  if (!filePath.startsWith(`${resolvedRoot}${path.sep}`)) {
+  // The root URL resolves to the static directory itself. It is safe and
+  // must reach the SPA fallback below; only paths outside the static folder
+  // are forbidden.
+  if (filePath !== resolvedRoot && !filePath.startsWith(`${resolvedRoot}${path.sep}`)) {
     res.status(403).end();
     return;
   }
