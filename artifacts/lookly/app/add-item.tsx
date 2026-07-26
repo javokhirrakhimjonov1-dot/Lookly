@@ -553,6 +553,7 @@ export default function AddItemScreen() {
   const [isPriceFocused, setIsPriceFocused] = useState(false);
   const [material, setMaterial] = useState("");
   const [tags, setTags] = useState<string[]>([]);
+  const [footwearType, setFootwearType] = useState<"open-toe" | "closed-toe" | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const [brandLogo, setBrandLogo] = useState<BrandLogo | null>(null);
@@ -604,6 +605,13 @@ export default function AddItemScreen() {
     setMaterial(item.material);
     setFabricWeight(item.fabricWeight ?? "medium");
     setTags(item.tags);
+    setFootwearType(
+      item.tags.some((tag) => tag.toLowerCase() === "open-toe")
+        ? "open-toe"
+        : item.tags.some((tag) => tag.toLowerCase() === "closed-toe")
+          ? "closed-toe"
+          : null
+    );
     setBrandLogo(item.brandLogo ?? null);
     setScanDone(true);
     scanCardOpacity.value = withTiming(1, { duration: 400 });
@@ -962,6 +970,14 @@ export default function AddItemScreen() {
 
   const canSave = !!name.trim() && !!category && !!selectedColor && seasons.length > 0;
 
+  const tagsForSave = () => {
+    const withoutFootwearType = tags.filter(
+      (tag) => tag.toLowerCase() !== "open-toe" && tag.toLowerCase() !== "closed-toe"
+    );
+    if (category === "shoes" && footwearType) return [...withoutFootwearType, footwearType];
+    return withoutFootwearType.length > 0 ? withoutFootwearType : [category ?? "tops"];
+  };
+
   const handleSave = async () => {
     if (!canSave || !category || !selectedColor) return;
     setIsSaving(true);
@@ -982,7 +998,7 @@ export default function AddItemScreen() {
         seasons, fabricWeight, isWorkwear,
         purchasePrice: !isNaN(price) && price > 0 ? price : undefined,
         purchaseCurrency: !isNaN(price) && price > 0 ? purchaseCurrency : undefined,
-        tags: tags.length > 0 ? tags : [category],
+        tags: tagsForSave(),
         imageUri: cleanImageUri ?? (scanPhotoBase64
           ? `data:${scanPhotoMime ?? "image/jpeg"};base64,${scanPhotoBase64}`
           : compressedPhotoUri ?? scannedImage) ?? undefined,
@@ -1248,6 +1264,35 @@ export default function AddItemScreen() {
             ))}
           </View>
         </View>
+
+        {category === "shoes" && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Footwear type</Text>
+            <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>Prevents sandals from being suggested for rain or cool weather</Text>
+            <View style={styles.fabricRow}>
+              {([
+                { key: "open-toe", label: "Open-toe", hint: "sandals, slides" },
+                { key: "closed-toe", label: "Closed-toe", hint: "sneakers, boots" },
+              ] as const).map((type) => (
+                <Pressable
+                  key={type.key}
+                  onPress={() => setFootwearType(type.key)}
+                  style={({ pressed }) => [
+                    styles.fabricBtn,
+                    {
+                      backgroundColor: footwearType === type.key ? colors.primary : colors.card,
+                      borderColor: footwearType === type.key ? colors.primary : colors.border,
+                      opacity: pressed ? 0.8 : 1,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.fabricLabel, { color: footwearType === type.key ? colors.primaryForeground : colors.foreground }]}>{type.label}</Text>
+                  <Text style={[styles.fabricHint, { color: footwearType === type.key ? "rgba(250,248,245,0.7)" : colors.mutedForeground }]}>{type.hint}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        )}
 
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Color</Text>

@@ -84,6 +84,21 @@ function getBuyImageUri(label: string): string {
   return   "https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?w=300&h=380&fit=crop&auto=format&q=75";
 }
 
+/** Treat unclear footwear as unsuitable for rainy or cool-weather packing. */
+function isOpenToeFootwear(item: ClothingItem): boolean {
+  const text = `${item.name} ${item.tags.join(" ")}`.toLowerCase();
+  return ["sandal", "slide", "flip flop", "flip-flop", "slipper", "open toe", "open-toe"].some(
+    (word) => text.includes(word)
+  );
+}
+
+function isClearlyClosedToeFootwear(item: ClothingItem): boolean {
+  const text = `${item.name} ${item.tags.join(" ")}`.toLowerCase();
+  return ["closed-toe", "sneaker", "trainer", "boot", "loafer", "oxford", "derby", "moccasin"].some(
+    (word) => text.includes(word)
+  );
+}
+
 /** Keep the "consider packing" rail useful: every missing slot should suggest a
  * different, weather-appropriate item rather than repeating the same label. */
 function chooseSuggestions(options: string[], count: number): string[] {
@@ -178,7 +193,13 @@ function generatePackingList(
   const bottoms = wardrobe.filter((i) => i.category === "bottoms" && weightOk(i));
   const dresses = wardrobe.filter((i) => i.category === "dresses" && weightOk(i));
   const outer = wardrobe.filter((i) => i.category === "outerwear");
-  const shoes = wardrobe.filter((i) => i.category === "shoes");
+  const allShoes = wardrobe.filter((i) => i.category === "shoes");
+  // Wet pavements and cool days need closed footwear. Unknown footwear is not
+  // suggested until its type is confirmed in the item form.
+  const needsClosedToeShoes = hasRain || avgLow < 22;
+  const shoes = needsClosedToeShoes
+    ? allShoes.filter((item) => !isOpenToeFootwear(item) && isClearlyClosedToeFootwear(item))
+    : allShoes;
   const access = wardrobe.filter((i) => i.category === "accessories");
 
   const result: PackingCategory[] = [];
