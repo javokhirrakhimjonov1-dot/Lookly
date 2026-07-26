@@ -88,11 +88,21 @@ export default function WardrobeScreen() {
         ]}
       >
         <View style={styles.headerTop}>
-          <View>
-            <Text style={[styles.label, { color: colors.mutedForeground }]}>{t("my_wardrobe")}</Text>
-            <Text style={[styles.title, { color: colors.foreground }]}>
-              {items.length} {t(items.length === 1 ? "item_singular" : "item_plural")}
-            </Text>
+          <View style={styles.headerTitleGroup}>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Exit wardrobe"
+              onPress={() => router.replace("/")}
+              style={[styles.exitBtn, { backgroundColor: colors.secondary }]}
+            >
+              <Feather name="arrow-left" size={20} color={colors.foreground} />
+            </TouchableOpacity>
+            <View>
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>{t("my_wardrobe")}</Text>
+              <Text style={[styles.title, { color: colors.foreground }]}>
+                {items.length} {t(items.length === 1 ? "item_singular" : "item_plural")}
+              </Text>
+            </View>
           </View>
           <TouchableOpacity
             onPress={() => router.push("/outfit-builder")}
@@ -198,6 +208,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-end",
+  },
+  headerTitleGroup: { flexDirection: "row", alignItems: "center", gap: 10 },
+  exitBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
   },
   label: {
     fontSize: 10,
