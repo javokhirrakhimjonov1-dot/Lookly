@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 import React, { useState } from "react";
 import {
   Alert,
@@ -80,7 +81,17 @@ export default function LooksScreen() {
           },
         ]}
       >
-        <Text style={[styles.title, { color: colors.foreground }]}>{t("daily_looks_title")}</Text>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Exit Daily Looks"
+            onPress={() => router.replace("/")}
+            style={[styles.exitBtn, { backgroundColor: colors.secondary }]}
+          >
+            <Feather name="arrow-left" size={20} color={colors.foreground} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.foreground }]}>{t("daily_looks_title")}</Text>
+        </View>
         <TouchableOpacity
           onPress={() => setShowPost(true)}
           style={[styles.postBtn, { backgroundColor: colors.primary }]}
@@ -244,6 +255,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   title: { fontSize: 26, fontWeight: "700" },
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
+  exitBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   postBtn: {
     flexDirection: "row",
     alignItems: "center",
