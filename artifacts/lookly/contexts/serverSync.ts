@@ -1,5 +1,5 @@
 import { getApiBase } from "../constants/api";
-import type { ClothingItem, SavedOutfit } from "./WardrobeContext";
+import type { ClothingItem, Currency, SavedOutfit } from "./WardrobeContext";
 import { supabase } from "@/lib/supabase";
 
 const API_BASE = getApiBase();
@@ -15,6 +15,7 @@ type SupabaseWardrobeItem = {
   fabric_weight: ClothingItem["fabricWeight"];
   is_workwear: boolean;
   purchase_price: number | null;
+  purchase_currency?: Currency | null;
   times_worn: number;
   photo_path: string | null;
   tags: string[];
@@ -53,6 +54,7 @@ async function toClientItem(item: SupabaseWardrobeItem): Promise<ClothingItem> {
     fabricWeight: item.fabric_weight,
     isWorkwear: item.is_workwear,
     purchasePrice: item.purchase_price ?? undefined,
+    purchaseCurrency: item.purchase_currency ?? "USD",
     timesWorn: item.times_worn,
     imageUri: await resolvePrivateImage(item.photo_path),
     tags: item.tags,
@@ -229,6 +231,7 @@ export async function syncItemToServer(item: ClothingItem): Promise<void> {
       fabric_weight: item.fabricWeight,
       is_workwear: item.isWorkwear,
       purchase_price: item.purchasePrice ?? null,
+      purchase_currency: item.purchaseCurrency ?? "USD",
       times_worn: item.timesWorn,
       photo_path: photoPath,
       tags: item.tags,

@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getBottomPadding } from "@/constants/layout";
 import { getTopPadding } from "@/constants/layout";
 import { useColors } from "@/hooks/useColors";
-import { type ClothingCategory, type ClothingItem, useWardrobe } from "@/contexts/WardrobeContext";
+import { type ClothingCategory, type ClothingItem, type Currency, useWardrobe } from "@/contexts/WardrobeContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const CATEGORY_COLORS: Record<ClothingCategory, string> = {
@@ -34,6 +34,13 @@ function isLight(hex: string): boolean {
   return (r * 299 + g * 587 + b * 114) / 1000 > 128;
 }
 
+function formatMoney(value: number, currency: Currency = "USD"): string {
+  const amount = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value);
+  if (currency === "UZS") return `${amount} soʻm`;
+  if (currency === "RUB") return `₽${amount}`;
+  return `$${amount}`;
+}
+
 function CostPerWearCard({ item }: { item: ClothingItem }) {
   const colors = useColors();
   const { t } = useLanguage();
@@ -41,6 +48,7 @@ function CostPerWearCard({ item }: { item: ClothingItem }) {
     item.purchasePrice && item.timesWorn > 0
       ? (item.purchasePrice / item.timesWorn).toFixed(2)
       : null;
+  const currency = item.purchaseCurrency ?? "USD";
 
   return (
     <View
@@ -56,12 +64,12 @@ function CostPerWearCard({ item }: { item: ClothingItem }) {
         </Text>
         <Text style={[styles.cpwMeta, { color: colors.mutedForeground }]}>
           {item.timesWorn}× {t("stat_worn")}
-          {item.purchasePrice ? ` · $${item.purchasePrice}` : ""}
+          {item.purchasePrice ? ` · ${formatMoney(item.purchasePrice, currency)}` : ""}
         </Text>
       </View>
       {cpw ? (
         <View style={[styles.cpwBadge, { backgroundColor: colors.secondary }]}>
-          <Text style={[styles.cpwValue, { color: colors.accent }]}>${cpw}</Text>
+          <Text style={[styles.cpwValue, { color: colors.accent }]}>{formatMoney(Number(cpw), currency)}</Text>
           <Text style={[styles.cpwLabel, { color: colors.mutedForeground }]}>{t("stat_per_wear")}</Text>
         </View>
       ) : item.timesWorn > 0 ? (
@@ -91,7 +99,10 @@ export default function StatsScreen() {
 
   const stats = useMemo(() => {
     const total = items.length;
-    const totalValue = items.reduce((s, i) => s + (i.purchasePrice ?? 0), 0);
+    const totalByCurrency: Record<Currency, number> = { USD: 0, UZS: 0, RUB: 0 };
+    items.forEach((item) => {
+      if (item.purchasePrice) totalByCurrency[item.purchaseCurrency ?? "USD"] += item.purchasePrice;
+    });
     const totalWears = items.reduce((s, i) => s + (i.timesWorn ?? 0), 0);
     const unworn = items.filter((i) => (i.timesWorn ?? 0) === 0).length;
     const workwearCount = items.filter((i) => i.isWorkwear).length;
@@ -120,6 +131,10 @@ export default function StatsScreen() {
 
     const maxCat = Math.max(...byCategory.map((c) => c.count), 1);
 
+    const totalValue = (Object.keys(totalByCurrency) as Currency[])
+      .filter((currency) => totalByCurrency[currency] > 0)
+      .map((currency) => formatMoney(totalByCurrency[currency], currency))
+      .join(" · ");
     return { total, totalValue, totalWears, unworn, workwearCount, byCategory, mostWorn, bestValue, leastWorn, maxCat };
   }, [items]);
 
@@ -159,7 +174,7 @@ export default function StatsScreen() {
             <View style={styles.summaryGrid}>
               {[
                 { label: t("stat_total_items"), value: stats.total, icon: "layers" as const, color: colors.accent },
-                { label: t("stat_total_value"), value: stats.totalValue ? `$${stats.totalValue}` : "—", icon: "dollar-sign" as const, color: colors.accent },
+                { label: t("stat_total_value"), value: stats.totalValue || "—", icon: "dollar-sign" as const, color: colors.accent },
                 { label: t("stat_total_wears"), value: stats.totalWears, icon: "trending-up" as const, color: colors.accent },
                 { label: t("stat_unworn"), value: stats.unworn, icon: "alert-circle" as const, color: stats.unworn > 0 ? colors.destructive : colors.mutedForeground },
               ].map((s) => (

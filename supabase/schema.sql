@@ -27,6 +27,7 @@ create table if not exists public.wardrobe_items (
   fabric_weight text not null default 'medium' check (fabric_weight in ('light', 'medium', 'heavy')),
   is_workwear boolean not null default false,
   purchase_price numeric(12, 2) check (purchase_price is null or purchase_price >= 0),
+  purchase_currency text not null default 'USD' check (purchase_currency in ('USD', 'UZS', 'RUB')),
   times_worn integer not null default 0 check (times_worn >= 0),
   photo_path text,
   tags jsonb not null default '[]'::jsonb,
@@ -34,6 +35,11 @@ create table if not exists public.wardrobe_items (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Safe for existing pilot projects too: old items remain USD until edited.
+alter table public.wardrobe_items
+  add column if not exists purchase_currency text not null default 'USD'
+  check (purchase_currency in ('USD', 'UZS', 'RUB'));
 
 create index if not exists wardrobe_items_user_id_created_at_idx
   on public.wardrobe_items (user_id, created_at desc);

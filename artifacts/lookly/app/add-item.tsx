@@ -34,6 +34,7 @@ import {
   type BrandLogo,
   type ClothingCategory,
   type ClothingItem,
+  type Currency,
   type FabricWeight,
   type Season,
   useWardrobe,
@@ -58,6 +59,12 @@ const FABRIC_WEIGHTS: { key: FabricWeight; label: string; hint: string }[] = [
   { key: "light", label: "Light", hint: "linen, cotton" },
   { key: "medium", label: "Medium", hint: "denim, wool" },
   { key: "heavy", label: "Heavy", hint: "leather, puffer" },
+];
+
+const CURRENCIES: { key: Currency; label: string; symbol: string }[] = [
+  { key: "USD", label: "USD", symbol: "$" },
+  { key: "UZS", label: "UZS", symbol: "soʻm" },
+  { key: "RUB", label: "RUB", symbol: "₽" },
 ];
 
 const COLOR_SWATCHES: { name: string; hex: string }[] = [
@@ -520,6 +527,7 @@ export default function AddItemScreen() {
   const [fabricWeight, setFabricWeight] = useState<FabricWeight>("medium");
   const [isWorkwear, setIsWorkwear] = useState(false);
   const [purchasePrice, setPurchasePrice] = useState("");
+  const [purchaseCurrency, setPurchaseCurrency] = useState<Currency>("USD");
   const [material, setMaterial] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -585,6 +593,7 @@ export default function AddItemScreen() {
     setSelectedColor(null);
     setSeasons([]);
     setMaterial("");
+    setPurchasePrice("");
     setTags([]);
     setBrandLogo(null);
     setScanDone(true);
@@ -943,6 +952,7 @@ export default function AddItemScreen() {
         name: name.trim(), category, color: selectedColor.name, colorHex: selectedColor.hex,
         seasons, fabricWeight, isWorkwear,
         purchasePrice: !isNaN(price) && price > 0 ? price : undefined,
+        purchaseCurrency: !isNaN(price) && price > 0 ? purchaseCurrency : undefined,
         tags: tags.length > 0 ? tags : [category],
         imageUri: cleanImageUri ?? (scanPhotoBase64
           ? `data:${scanPhotoMime ?? "image/jpeg"};base64,${scanPhotoBase64}`
@@ -1323,8 +1333,29 @@ export default function AddItemScreen() {
           <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>
             Used to calculate cost per wear in Stats
           </Text>
+          <View style={styles.currencyRow}>
+            {CURRENCIES.map((currency) => (
+              <Pressable
+                key={currency.key}
+                onPress={() => setPurchaseCurrency(currency.key)}
+                style={[
+                  styles.currencyBtn,
+                  {
+                    backgroundColor: purchaseCurrency === currency.key ? colors.primary : colors.secondary,
+                    borderColor: purchaseCurrency === currency.key ? colors.primary : colors.border,
+                  },
+                ]}
+              >
+                <Text style={[styles.currencyBtnText, { color: purchaseCurrency === currency.key ? colors.primaryForeground : colors.foreground }]}>
+                  {currency.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
           <View style={[styles.priceInputRow, { borderColor: purchasePrice ? colors.accent : colors.border, backgroundColor: colors.card }]}>
-            <Text style={[styles.priceCurrency, { color: colors.mutedForeground }]}>$</Text>
+            <Text style={[styles.priceCurrency, { color: colors.mutedForeground }]}>
+              {CURRENCIES.find((currency) => currency.key === purchaseCurrency)?.symbol}
+            </Text>
             <TextInput
               value={purchasePrice}
               onChangeText={setPurchasePrice}
@@ -1495,6 +1526,15 @@ const styles = StyleSheet.create({
   },
   priceCurrency: { fontSize: 16, fontWeight: "600" },
   priceInput: { flex: 1, paddingVertical: 14, fontSize: 15 },
+  currencyRow: { flexDirection: "row", gap: 8 },
+  currencyBtn: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  currencyBtnText: { fontSize: 12, fontWeight: "700" },
 
   pickerOverlay: {
     flex: 1,

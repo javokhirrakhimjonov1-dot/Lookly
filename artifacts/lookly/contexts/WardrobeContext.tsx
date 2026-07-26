@@ -28,6 +28,7 @@ export type ClothingCategory =
 
 export type Season = "spring" | "summer" | "fall" | "winter";
 export type FabricWeight = "light" | "medium" | "heavy";
+export type Currency = "USD" | "UZS" | "RUB";
 
 export interface BrandLogo {
   brand: string;
@@ -46,6 +47,7 @@ export interface ClothingItem {
   fabricWeight: FabricWeight;
   isWorkwear: boolean;
   purchasePrice?: number;
+  purchaseCurrency?: Currency;
   timesWorn: number;
   imageUri?: string;
   tags: string[];
