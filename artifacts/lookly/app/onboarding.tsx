@@ -36,12 +36,23 @@ type VisualChoice<T extends string> = {
   imageUri: string;
 };
 
-const STYLE_EDITS: VisualChoice<StyleAesthetic>[] = [
+const STYLE_EDITS_FEMALE: VisualChoice<StyleAesthetic>[] = [
   { label: "Easy essentials", value: "minimalist", description: "Clean tees, denim and quiet confidence", imageUri: "https://images.unsplash.com/photo-1529139574466-a303027c1d8b?w=700&h=1050&fit=crop&auto=format&q=85" },
   { label: "Tailored layers", value: "classic", description: "Overshirts, jackets and structure", imageUri: "https://images.unsplash.com/photo-1617127365659-c47fa864d8bc?w=700&h=1050&fit=crop&auto=format&q=85" },
   { label: "Polished casual", value: "smart_casual", description: "Refined pieces that still feel relaxed", imageUri: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=700&h=1050&fit=crop&auto=format&q=85" },
   { label: "Relaxed street", value: "streetwear", description: "Hoodies, sneakers and statement layers", imageUri: "https://images.unsplash.com/photo-1523398002811-999ca8dec234?w=700&h=1050&fit=crop&auto=format&q=85" },
   { label: "Soft & expressive", value: "boho", description: "Texture, flow and personality", imageUri: "https://images.unsplash.com/photo-1539109136881-3be0616acf4b?w=700&h=1050&fit=crop&auto=format&q=85" },
+  { label: "Active off-duty", value: "sporty", description: "Functional pieces made for movement", imageUri: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=700&h=1050&fit=crop&auto=format&q=85" },
+];
+
+// Keep the same style directions, while respecting the gender selected on the
+// previous screen. A male selection must never be shown a female style board.
+const STYLE_EDITS_MALE: VisualChoice<StyleAesthetic>[] = [
+  { label: "Easy essentials", value: "minimalist", description: "Clean tees, denim and quiet confidence", imageUri: "https://images.unsplash.com/photo-1617127365659-c47fa864d8bc?w=700&h=1050&fit=crop&auto=format&q=85" },
+  { label: "Tailored layers", value: "classic", description: "Overshirts, jackets and structure", imageUri: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=700&h=1050&fit=crop&auto=format&q=85" },
+  { label: "Polished casual", value: "smart_casual", description: "Refined pieces that still feel relaxed", imageUri: "https://images.unsplash.com/photo-1506629905607-d405b7a30db9?w=700&h=1050&fit=crop&auto=format&q=85" },
+  { label: "Relaxed street", value: "streetwear", description: "Hoodies, sneakers and statement layers", imageUri: "https://images.unsplash.com/photo-1523398002811-999ca8dec234?w=700&h=1050&fit=crop&auto=format&q=85" },
+  { label: "Soft & expressive", value: "boho", description: "Texture, flow and personality", imageUri: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=700&h=1050&fit=crop&auto=format&q=85" },
   { label: "Active off-duty", value: "sporty", description: "Functional pieces made for movement", imageUri: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=700&h=1050&fit=crop&auto=format&q=85" },
 ];
 
@@ -95,6 +106,7 @@ export default function OnboardingScreen() {
   const [heatAdaptation, setHeatAdaptation] = useState<HeatAdaptation | null>(null);
   const [colorPalette, setColorPalette] = useState<ColorPalette | null>(null);
   const [completing, setCompleting] = useState(false);
+  const styleEdits = gender === "male" ? STYLE_EDITS_MALE : STYLE_EDITS_FEMALE;
   const validAge = Number.isInteger(Number(age)) && Number(age) >= 13 && Number(age) <= 120;
   const personalDetailsComplete = name.trim().length > 0 && validAge && gender !== null;
   const progress = (String(25 + step * 25) + "%") as `${number}%`;
@@ -127,7 +139,7 @@ export default function OnboardingScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>}
-      {step === 1 && <ChoiceStep eyebrow="01 · YOUR STYLE EDIT" title="What would you happily wear?" subtitle="Tap every direction that feels like you. Mixing is encouraged." choices={STYLE_EDITS} selected={styleAesthetics} onPress={toggleStyle} selectedCopy={styleAesthetics.map((value) => STYLE_EDITS.find((choice) => choice.value === value)?.label).filter(Boolean).join(" · ")} back={() => setStep(0)} next={() => setStep(2)} nextDisabled={!styleAesthetics.length} nextLabel="Next" />}
+      {step === 1 && <ChoiceStep eyebrow="01 · YOUR STYLE EDIT" title="What would you happily wear?" subtitle="Tap every direction that feels like you. Mixing is encouraged." choices={styleEdits} selected={styleAesthetics} onPress={toggleStyle} selectedCopy={styleAesthetics.map((value) => styleEdits.find((choice) => choice.value === value)?.label).filter(Boolean).join(" · ")} back={() => setStep(0)} next={() => setStep(2)} nextDisabled={!styleAesthetics.length} nextLabel="Next" />}
       {step === 2 && <ChoiceStep eyebrow="02 · YOUR RHYTHM" title="What does a good day look like?" subtitle="This helps us make weather-aware suggestions that fit your real routine." choices={DAILY_RHYTHMS} selected={heatAdaptation ? [heatAdaptation] : []} onPress={setHeatAdaptation} back={() => setStep(1)} next={() => setStep(3)} nextDisabled={!heatAdaptation} nextLabel="Next" />}
       {step === 3 && <ChoiceStep eyebrow="03 · COLOUR MOOD" title="Which palette feels most like home?" subtitle="You can change this any time as your wardrobe grows." choices={COLOUR_MOODS} selected={colorPalette ? [colorPalette] : []} onPress={setColorPalette} back={() => setStep(2)} next={finish} nextDisabled={!colorPalette || completing} nextLabel={completing ? "Setting up…" : "Create my wardrobe"} />}
     </SafeAreaView>

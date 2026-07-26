@@ -383,7 +383,11 @@ const styles = StyleSheet.create({
   content: { gap: 20, paddingTop: 0 },
   itemHero: {
     width: "100%",
-    aspectRatio: 1,
+    // A phone can use a full-width square. On desktop, that same rule turns a
+    // single item into a giant image, so keep it as a compact product stage.
+    ...(Platform.OS === "web"
+      ? { height: 340, maxWidth: 760, alignSelf: "center" as const, borderRadius: 18 }
+      : { aspectRatio: 1 }),
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",

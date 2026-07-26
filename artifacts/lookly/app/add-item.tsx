@@ -67,6 +67,23 @@ const CURRENCIES: { key: Currency; label: string; symbol: string }[] = [
   { key: "RUB", label: "RUB", symbol: "₽" },
 ];
 
+function formatPriceInput(value: string, currency: Currency): string {
+  if (currency === "USD") {
+    const normalized = value.replace(/[^\d.]/g, "");
+    const [whole = "", ...decimalParts] = normalized.split(".");
+    return decimalParts.length ? `${whole}.${decimalParts.join("").slice(0, 2)}` : whole;
+  }
+
+  // Sum and roubles are usually whole amounts. Group the thousands as the
+  // person types so 102000 becomes the much clearer 102 000.
+  const digits = value.replace(/\D/g, "");
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
+
+function priceNumber(value: string): number {
+  return Number.parseFloat(value.replace(/\s/g, "").replace(/,/g, ""));
+}
+
 const COLOR_SWATCHES: { name: string; hex: string }[] = [
   { name: "Black", hex: "#1C1512" },
   { name: "White", hex: "#F9F8F6" },
@@ -528,6 +545,7 @@ export default function AddItemScreen() {
   const [isWorkwear, setIsWorkwear] = useState(false);
   const [purchasePrice, setPurchasePrice] = useState("");
   const [purchaseCurrency, setPurchaseCurrency] = useState<Currency>("USD");
+  const [isPriceFocused, setIsPriceFocused] = useState(false);
   const [material, setMaterial] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -947,7 +965,7 @@ export default function AddItemScreen() {
         );
         setIsRemovingBg(false);
       }
-      const price = parseFloat(purchasePrice);
+      const price = priceNumber(purchasePrice);
       await addItem({
         name: name.trim(), category, color: selectedColor.name, colorHex: selectedColor.hex,
         seasons, fabricWeight, isWorkwear,
@@ -1337,7 +1355,10 @@ export default function AddItemScreen() {
             {CURRENCIES.map((currency) => (
               <Pressable
                 key={currency.key}
-                onPress={() => setPurchaseCurrency(currency.key)}
+                onPress={() => {
+                  setPurchaseCurrency(currency.key);
+                  setPurchasePrice((current) => formatPriceInput(current, currency.key));
+                }}
                 style={[
                   styles.currencyBtn,
                   {
@@ -1352,17 +1373,19 @@ export default function AddItemScreen() {
               </Pressable>
             ))}
           </View>
-          <View style={[styles.priceInputRow, { borderColor: purchasePrice ? colors.accent : colors.border, backgroundColor: colors.card }]}>
+          <View style={[styles.priceInputRow, { borderColor: purchasePrice || isPriceFocused ? colors.accent : colors.border, backgroundColor: colors.card }]}>
             <Text style={[styles.priceCurrency, { color: colors.mutedForeground }]}>
               {CURRENCIES.find((currency) => currency.key === purchaseCurrency)?.symbol}
             </Text>
             <TextInput
               value={purchasePrice}
-              onChangeText={setPurchasePrice}
-              placeholder="0.00"
+              onChangeText={(value) => setPurchasePrice(formatPriceInput(value, purchaseCurrency))}
+              onFocus={() => setIsPriceFocused(true)}
+              onBlur={() => setIsPriceFocused(false)}
+              placeholder={purchaseCurrency === "USD" ? "0.00" : "0"}
               placeholderTextColor={colors.mutedForeground}
               keyboardType="decimal-pad"
-              style={[styles.priceInput, { color: colors.foreground }]}
+              style={[styles.priceInput, { color: colors.foreground }, Platform.OS === "web" ? ({ outlineStyle: "none", outlineWidth: 0 } as any) : null]}
             />
           </View>
         </View>
