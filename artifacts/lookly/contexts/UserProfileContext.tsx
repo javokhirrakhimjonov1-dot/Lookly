@@ -67,6 +67,56 @@ const PRIVATE_IMAGE_BUCKET = "lookly-private";
 
 const UserProfileContext = createContext<UserProfileContextValue | null>(null);
 
+// iPhone browsers only open the gallery when a real file input is clicked
+// directly from the user's tap. Expo's web image picker can lose that gesture
+// after its asynchronous permission check and immediately close the chooser.
+async function pickBodyPhotoOnWeb(capture = false): Promise<ImagePicker.ImagePickerAsset | null> {
+  if (typeof document === "undefined") return null;
+
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    if (capture) input.setAttribute("capture", "user");
+    input.style.position = "fixed";
+    input.style.left = "-9999px";
+    document.body.appendChild(input);
+
+    const cleanUp = () => input.remove();
+    input.addEventListener("change", async () => {
+      const file = input.files?.[0];
+      if (!file) {
+        cleanUp();
+        resolve(null);
+        return;
+      }
+      const base64 = await new Promise<string>((done) => {
+        const reader = new FileReader();
+        reader.onload = () => done(typeof reader.result === "string" ? (reader.result.split(",")[1] ?? "") : "");
+        reader.onerror = () => done("");
+        reader.onabort = () => done("");
+        reader.readAsDataURL(file);
+      });
+      const asset = {
+        uri: URL.createObjectURL(file),
+        width: 0,
+        height: 0,
+        type: "image" as const,
+        mimeType: file.type || "image/jpeg",
+        fileName: file.name,
+        fileSize: file.size,
+        base64,
+        file,
+      } as ImagePicker.ImagePickerAsset;
+      cleanUp();
+      resolve(asset);
+    }, { once: true });
+
+    // Keep this synchronous with the tap. Do not await before calling click().
+    input.click();
+  });
+}
+
 async function readStoredProfile(userId: string): Promise<string | null> {
   try {
     const value = await AsyncStorage.getItem(profileKey(userId));
@@ -363,6 +413,11 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
   }, [persist, user]);
 
   const uploadBodyPhoto = useCallback(async () => {
+    if (Platform.OS === "web") {
+      const asset = await pickBodyPhotoOnWeb();
+      if (asset) await applyPickerAsset(asset);
+      return;
+    }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
       Alert.alert("Permission needed", "Allow access to your photo library.");
@@ -372,14 +427,18 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
       mediaTypes: "images",
       quality: 0.7,
       base64: true,
-      allowsEditing: true,
-      aspect: [3, 5],
+      allowsEditing: false,
     });
     if (result.canceled || !result.assets[0]) return;
     await applyPickerAsset(result.assets[0]);
   }, [applyPickerAsset]);
 
   const captureBodyPhoto = useCallback(async () => {
+    if (Platform.OS === "web") {
+      const asset = await pickBodyPhotoOnWeb(true);
+      if (asset) await applyPickerAsset(asset);
+      return;
+    }
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
       Alert.alert("Permission needed", "Allow camera access.");
@@ -388,8 +447,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     const result = await ImagePicker.launchCameraAsync({
       quality: 0.7,
       base64: true,
-      allowsEditing: true,
-      aspect: [3, 5],
+      allowsEditing: false,
     });
     if (result.canceled || !result.assets[0]) return;
     await applyPickerAsset(result.assets[0]);
