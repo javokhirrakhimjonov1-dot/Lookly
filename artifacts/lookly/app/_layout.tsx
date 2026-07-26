@@ -8,8 +8,8 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { router, Stack, useLocalSearchParams, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect } from "react";
-import { StyleSheet } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -75,6 +75,46 @@ function RootLayoutNav() {
   );
 }
 
+function TelegramBrowserNotice() {
+  const [dismissed, setDismissed] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const isTelegram = Platform.OS === "web"
+    && typeof navigator !== "undefined"
+    && /telegram/i.test(navigator.userAgent);
+
+  if (!isTelegram || dismissed) return null;
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard?.writeText(window.location.href);
+      setCopied(true);
+    } catch {
+      // The address remains visible in Telegram's browser bar, so users can
+      // still open it with Telegram's “Open in Safari/Chrome” menu item.
+      setCopied(false);
+    }
+  };
+
+  return (
+    <View style={styles.telegramNotice} accessibilityRole="alert">
+      <View style={styles.telegramCopy}>
+        <Text style={styles.telegramTitle}>Open Lookly in your browser</Text>
+        <Text style={styles.telegramText}>
+          Telegram may block photo and camera uploads. Tap ⋯ in Telegram, then choose Open in Safari or Chrome.
+        </Text>
+      </View>
+      <View style={styles.telegramActions}>
+        <Pressable onPress={() => void copyLink()} style={styles.telegramCopyButton}>
+          <Text style={styles.telegramCopyButtonText}>{copied ? "Copied" : "Copy link"}</Text>
+        </Pressable>
+        <Pressable onPress={() => setDismissed(true)} hitSlop={10}>
+          <Text style={styles.telegramClose}>×</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
@@ -108,6 +148,7 @@ export default function RootLayout() {
                           <GestureHandlerRootView style={styles.root}>
                             <KeyboardProvider>
                               <RootLayoutNav />
+                              <TelegramBrowserNotice />
                             </KeyboardProvider>
                           </GestureHandlerRootView>
                         </DealsProvider>
@@ -130,4 +171,30 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
   },
+  telegramNotice: {
+    position: "absolute",
+    top: 14,
+    left: 14,
+    right: 14,
+    zIndex: 1000,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#F5C7A9",
+    backgroundColor: "#FFF7F1",
+    padding: 12,
+    shadowColor: "#1C1512",
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  telegramCopy: { flex: 1, gap: 3 },
+  telegramTitle: { color: "#1C1512", fontSize: 14, fontWeight: "800" },
+  telegramText: { color: "#705F56", fontSize: 12, lineHeight: 17 },
+  telegramActions: { alignItems: "center", gap: 4 },
+  telegramCopyButton: { backgroundColor: "#1C1512", borderRadius: 9, paddingHorizontal: 9, paddingVertical: 7 },
+  telegramCopyButtonText: { color: "#FFFFFF", fontSize: 11, fontWeight: "800" },
+  telegramClose: { color: "#705F56", fontSize: 22, lineHeight: 22 },
 });
