@@ -206,7 +206,8 @@ function OutfitCard({
   const { t } = useLanguage();
   const { createPoll } = useSquadVote();
   const moodColor = MOOD_COLORS[outfit.mood] ?? colors.accent;
-  // Home cards are deliberately instant. AI previews are requested only from Build look.
+  // Home cards stay instant. A paid AI preview is requested only after the
+  // person taps Build Look, where it can use the exact selected outfit.
   const [previewImage] = useState<string | null>(null);
   const [isGenerating] = useState(false);
   const [genFailed] = useState(false);
@@ -246,12 +247,12 @@ function OutfitCard({
       {/* Image / loading area */}
       <View style={[styles.imageArea, { height: imageAreaH, backgroundColor: colors.secondary }]}>
         {itemImages.length > 0 ? (
-          <View style={styles.collage}>
-            {itemImages.map((item) => (
-              <View key={item.id} style={[styles.collageTile, { backgroundColor: colors.card }]}>
-                <Image source={{ uri: item.imageUri }} style={styles.outfitItemImage} contentFit="contain" transition={120} />
-              </View>
-            ))}
+          <View style={styles.instantFallback}>
+            <Feather name="user" size={34} color={colors.border} />
+            <Text style={[styles.generatingText, { color: colors.mutedForeground }]}>Ready for your model preview</Text>
+            <Text style={[styles.categoryLine, { color: colors.mutedForeground }]} numberOfLines={2}>
+              {resolvedItems.map((item) => item.name).join(" · ")}
+            </Text>
           </View>
         ) : (
           <View style={styles.instantFallback}>
@@ -322,7 +323,13 @@ function OutfitCard({
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => router.push("/outfit-builder")}
+          onPress={() => router.push({
+            pathname: "/outfit-builder",
+            params: {
+              outfitItemIds: resolvedItems.map((item) => item.id).join(","),
+              preview: "true",
+            },
+          })}
           style={[styles.buildBtn, { backgroundColor: colors.primary }]}
         >
           <Feather name="scissors" size={13} color={colors.primaryForeground} />

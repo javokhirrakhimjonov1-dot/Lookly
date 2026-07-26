@@ -17,10 +17,10 @@ export function getGeminiTextModel(): string {
 }
 
 export function getGeminiImageModel(): string {
-  // The normal Flash model can understand an image but cannot generate one.
-  // Keep this separate from GEMINI_TEXT_MODEL so the paid image feature works
-  // as soon as billing and a valid server key are configured.
-  return process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash-image";
+  // Keep image generation separate from the analysis model. Gemini 3.1 Flash
+  // Image is substantially more reliable at preserving garment references
+  // and rendering a person consistently in a virtual try-on.
+  return process.env.GEMINI_IMAGE_MODEL ?? "gemini-3.1-flash-image";
 }
 
 interface GeminiPart {

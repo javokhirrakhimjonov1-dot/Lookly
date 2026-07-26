@@ -590,15 +590,39 @@ export default function OutfitBuilderScreen() {
   const [isAutoLoading, setIsAutoLoading] = useState(false);
   const [autoWeatherNote, setAutoWeatherNote] = useState<string | null>(null);
 
-  const { autoStart, anchorItemId } = useLocalSearchParams<{ autoStart?: string; anchorItemId?: string }>();
+  const { autoStart, anchorItemId, outfitItemIds, preview } = useLocalSearchParams<{
+    autoStart?: string;
+    anchorItemId?: string;
+    outfitItemIds?: string;
+    preview?: string;
+  }>();
   const autoStartFired = useRef(false);
   const anchorFired = useRef(false);
+  const outfitIdeaFired = useRef(false);
+  const pendingPreviewPieces = useRef<ClothingItem[] | null>(null);
 
   useEffect(() => {
     if (autoStart === "true" && !autoStartFired.current && items.length > 0) {
       autoStartFired.current = true;
       void handleAutoSuggest();
     }
+  });
+
+  useEffect(() => {
+    if (!outfitItemIds || outfitIdeaFired.current || items.length === 0) return;
+    outfitIdeaFired.current = true;
+    const selected = outfitItemIds
+      .split(",")
+      .map((id) => items.find((item) => item.id === id))
+      .filter((item): item is ClothingItem => !!item);
+    if (selected.length === 0) return;
+    const next: Partial<Record<OutfitSlotKey, ClothingItem>> = {};
+    for (const item of selected) next[categoryToSlotKey(item.category)] = item;
+    pendingPreviewPieces.current = selected;
+    setAssigned(next);
+    setLockedSlots(new Set(Object.keys(next) as OutfitSlotKey[]));
+    setHasDoneAuto(true);
+    if (preview === "true") setTimeout(() => void handleGeneratePreview(), 120);
   });
 
   useEffect(() => {
@@ -755,7 +779,8 @@ export default function OutfitBuilderScreen() {
   };
 
   const handleGeneratePreview = async (forceRegenerate = false) => {
-    const pieces = Object.values(assigned).filter(Boolean) as ClothingItem[];
+    const pieces = pendingPreviewPieces.current ?? (Object.values(assigned).filter(Boolean) as ClothingItem[]);
+    pendingPreviewPieces.current = null;
     if (pieces.length === 0) {
       Alert.alert("No items selected", "Add at least one item to preview the look.");
       return;

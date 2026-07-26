@@ -2,7 +2,6 @@ import "./load-env";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { initDb } from "./lib/db";
-import { warmupBackgroundRemoval } from "./lib/precache";
 
 const rawPort = process.env["PORT"];
 
@@ -21,8 +20,6 @@ if (Number.isNaN(port) || port <= 0) {
 async function startup(): Promise<void> {
   await initDb();
   logger.info("SQLite database initialized");
-
-  warmupBackgroundRemoval();
 
   app.listen(port, (err) => {
     if (err) {

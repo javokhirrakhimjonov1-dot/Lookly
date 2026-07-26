@@ -27,7 +27,7 @@ export async function generateImageBuffer(
     {
       generationConfig: {
         ...IMAGE_GENERATION_CONFIG,
-        responseFormat: { image: { aspectRatio: mapSizeToAspectRatio(size) } },
+        responseFormat: { image: { aspectRatio: mapSizeToAspectRatio(size), imageSize: "2K" } },
       },
     },
   );
@@ -56,7 +56,7 @@ export async function editImageFromBase64(
     {
       generationConfig: {
         ...IMAGE_GENERATION_CONFIG,
-        responseFormat: { image: { aspectRatio: mapSizeToAspectRatio(size) } },
+        responseFormat: { image: { aspectRatio: mapSizeToAspectRatio(size), imageSize: "2K" } },
       },
     },
   );
@@ -88,7 +88,7 @@ export async function generateImageFromReferences(
     {
       generationConfig: {
         ...IMAGE_GENERATION_CONFIG,
-        responseFormat: { image: { aspectRatio: mapSizeToAspectRatio(size) } },
+        responseFormat: { image: { aspectRatio: mapSizeToAspectRatio(size), imageSize: "2K" } },
       },
     },
   );

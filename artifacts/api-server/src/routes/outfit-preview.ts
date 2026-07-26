@@ -119,7 +119,7 @@ router.post("/outfit-preview", async (req, res) => {
       return imageBase64 ? [{ imageBase64, imageMime: reference.imageMime || "image/png" }] : [];
     })
     : [];
-  // Gemini 2.5 Flash Image is most reliable with a small set of high-value
+  // Gemini image generation is most reliable with a small set of high-value
   // references. A body reference plus two exact garment references avoids
   // the malformed collage-like images caused by overloading the model.
   const references = [
