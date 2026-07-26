@@ -68,7 +68,14 @@ catalog:
 
 autoInstallPeers: false
 
-onlyBuiltDependencies: "['@imgly/background-removal-node','@swc/core','canvas','esbuild','msw','ngrok','unrs-resolver']"
+onlyBuiltDependencies:
+  - '@imgly/background-removal-node'
+  - '@swc/core'
+  - canvas
+  - esbuild
+  - msw
+  - ngrok
+  - unrs-resolver
 
 overrides:
   # replit uses linux-x64 only, we can exclude all other platforms
@@ -152,9 +159,12 @@ overrides:
   esbuild: "0.27.3"
 
 allowBuilds:
-  better-sqlite3: set this to true or false
-  canvas: set this to true or false
-  esbuild: set this to true or false
-  ngrok: set this to true or false
+  '@imgly/background-removal-node': true
+  '@swc/core': true
+  canvas: true
+  esbuild: true
+  msw: true
+  ngrok: true
+  unrs-resolver: true
   onnxruntime-node: true
   sharp: true
