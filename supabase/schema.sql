@@ -109,7 +109,7 @@ with check ((select auth.uid()) = user_id);
 -- tester's interest to another tester.
 create table if not exists public.feature_waitlist (
   user_id uuid not null references auth.users(id) on delete cascade,
-  feature_key text not null check (feature_key in ('squad_votes', 'premium_try_on', 'shop_missing_pieces')),
+  feature_key text not null check (feature_key in ('squad_votes', 'premium_try_on', 'shop_missing_pieces', 'deal_notifications', 'privacy_controls')),
   created_at timestamptz not null default now(),
   primary key (user_id, feature_key)
 );

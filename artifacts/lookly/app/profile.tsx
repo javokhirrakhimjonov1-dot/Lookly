@@ -18,6 +18,8 @@ import { getTopPadding, getBottomPadding } from "@/constants/layout";
 import { useColors } from "@/hooks/useColors";
 import { useWardrobe } from "@/contexts/WardrobeContext";
 import { useSocial } from "@/contexts/SocialContext";
+import { useWeather } from "@/contexts/WeatherContext";
+import { type UpcomingFeature, useFeatureWaitlist } from "@/contexts/FeatureWaitlistContext";
 import { type Gender, useUserProfile } from "@/contexts/UserProfileContext";
 import { type Language, useLanguage } from "@/contexts/LanguageContext";
 
@@ -34,6 +36,8 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { items } = useWardrobe();
   const { looks } = useSocial();
+  const { city, refresh: refreshWeather, isLoading: isWeatherLoading } = useWeather();
+  const { joinedFeatures, isLoading: isWaitlistLoading, updatingFeature, toggleWaitlist } = useFeatureWaitlist();
   const {
     fullName,
     gender,
@@ -101,6 +105,18 @@ export default function ProfileScreen() {
     } finally {
       setPhotoLoading(false);
     }
+  };
+
+  const refreshWeatherLocation = async () => {
+    await refreshWeather();
+    Alert.alert("Weather updated", "Lookly refreshed the weather for your current location, or Tashkent if location access is unavailable.");
+  };
+
+  const toggleUpcomingFeature = async (feature: UpcomingFeature) => {
+    const wasJoined = joinedFeatures.has(feature);
+    const error = await toggleWaitlist(feature);
+    if (error) Alert.alert(t("waitlist_unavailable_title"), error);
+    else if (!wasJoined) Alert.alert(t("waitlist_joined_title"), t("waitlist_joined_message"));
   };
 
   const rows = [
@@ -381,14 +397,9 @@ export default function ProfileScreen() {
 
       {/* Settings */}
       <View style={[styles.settingsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        {rows.map((row, i) => (
-          <TouchableOpacity
-            key={row.label}
-            style={[
-              styles.settingsRow,
-              i < rows.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
-            ]}
-          >
+        {rows.map((row, i) => {
+          const border = i < rows.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border };
+          const content = <>
             <View style={[styles.rowIcon, { backgroundColor: colors.secondary }]}>
               <Feather name={row.icon} size={16} color={colors.accent} />
             </View>
@@ -396,9 +407,37 @@ export default function ProfileScreen() {
               <Text style={[styles.rowLabel, { color: colors.foreground }]}>{row.label}</Text>
               <Text style={[styles.rowDesc, { color: colors.mutedForeground }]}>{row.description}</Text>
             </View>
+          </>;
+
+          if ("feature" in row && row.feature) {
+            const feature = row.feature;
+            const joined = joinedFeatures.has(feature);
+            const isUpdating = updatingFeature === feature;
+            return <View key={row.label} style={[styles.settingsRow, border]}>
+              {content}
+              <TouchableOpacity
+                onPress={() => void toggleUpcomingFeature(feature)}
+                disabled={isWaitlistLoading || isUpdating}
+                style={[styles.waitlistButton, { backgroundColor: joined ? colors.secondary : colors.primary, borderColor: joined ? colors.border : colors.primary }]}
+              >
+                <Feather name={joined ? "check" : "clock"} size={12} color={joined ? colors.foreground : colors.primaryForeground} />
+                <Text style={[styles.waitlistButtonText, { color: joined ? colors.foreground : colors.primaryForeground }]}>
+                  {isUpdating ? t("waitlist_saving") : joined ? t("waitlist_joined") : t("waitlist_join")}
+                </Text>
+              </TouchableOpacity>
+            </View>;
+          }
+
+          return <TouchableOpacity
+            key={row.label}
+            onPress={row.onPress}
+            disabled={row.disabled}
+            style={[styles.settingsRow, border, row.disabled && { opacity: 0.55 }]}
+          >
+            {content}
             <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
-          </TouchableOpacity>
-        ))}
+          </TouchableOpacity>;
+        })}
       </View>
     </ScrollView>
   );
@@ -492,4 +531,6 @@ const styles = StyleSheet.create({
   rowIcon: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   rowLabel: { fontSize: 14, fontWeight: "600", marginBottom: 1 },
   rowDesc: { fontSize: 12 },
+  waitlistButton: { flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 1, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7 },
+  waitlistButtonText: { fontSize: 11, fontWeight: "700" },
 });

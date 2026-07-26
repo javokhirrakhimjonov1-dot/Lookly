@@ -6,6 +6,8 @@ export const UPCOMING_FEATURES = [
   "squad_votes",
   "premium_try_on",
   "shop_missing_pieces",
+  "deal_notifications",
+  "privacy_controls",
 ] as const;
 
 export type UpcomingFeature = (typeof UPCOMING_FEATURES)[number];
