@@ -82,12 +82,35 @@ async function pickBodyPhotoOnWeb(capture = false): Promise<ImagePicker.ImagePic
     input.style.left = "-9999px";
     document.body.appendChild(input);
 
-    const cleanUp = () => input.remove();
+    // iOS does not fire `change` when the chooser is dismissed with Cancel.
+    // Listening for focus/visibility returning lets us resolve that cancelled
+    // choice instead of leaving Profile stuck on "Processing…" forever.
+    let settled = false;
+    const cleanUp = () => {
+      input.remove();
+      window.removeEventListener("focus", handleChooserClosed);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+    const finish = (asset: ImagePicker.ImagePickerAsset | null) => {
+      if (settled) return;
+      settled = true;
+      cleanUp();
+      resolve(asset);
+    };
+    const handleChooserClosed = () => {
+      setTimeout(() => {
+        if (!settled && !input.files?.length) finish(null);
+      }, 300);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") handleChooserClosed();
+    };
+    window.addEventListener("focus", handleChooserClosed);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     input.addEventListener("change", async () => {
       const file = input.files?.[0];
       if (!file) {
-        cleanUp();
-        resolve(null);
+        finish(null);
         return;
       }
       const base64 = await new Promise<string>((done) => {
@@ -108,8 +131,7 @@ async function pickBodyPhotoOnWeb(capture = false): Promise<ImagePicker.ImagePic
         base64,
         file,
       } as ImagePicker.ImagePickerAsset;
-      cleanUp();
-      resolve(asset);
+      finish(asset);
     }, { once: true });
 
     // Keep this synchronous with the tap. Do not await before calling click().
