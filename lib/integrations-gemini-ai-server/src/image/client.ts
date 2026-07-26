@@ -5,21 +5,16 @@ import {
   getGeminiImageModel,
 } from "../client";
 
+// The server uses Gemini's `generateContent` endpoint. Its supported image
+// configuration is response modalities; `responseFormat` belongs to the newer
+// Interactions API and caused image calls to be rejected before generation.
 const IMAGE_GENERATION_CONFIG = {
-  responseModalities: ["IMAGE"],
+  responseModalities: ["TEXT", "IMAGE"],
 };
-
-function mapSizeToAspectRatio(
-  size: "1024x1024" | "1024x1536" | "1536x1024",
-): string {
-  if (size === "1024x1536") return "3:4";
-  if (size === "1536x1024") return "4:3";
-  return "1:1";
-}
 
 export async function generateImageBuffer(
   prompt: string,
-  size: "1024x1024" | "1024x1536" | "1536x1024" = "1024x1024",
+  _size: "1024x1024" | "1024x1536" | "1536x1024" = "1024x1024",
 ): Promise<Buffer> {
   const response = await geminiGenerateContent(
     getGeminiImageModel(),
@@ -27,7 +22,6 @@ export async function generateImageBuffer(
     {
       generationConfig: {
         ...IMAGE_GENERATION_CONFIG,
-        responseFormat: { image: { aspectRatio: mapSizeToAspectRatio(size), imageSize: "2K" } },
       },
     },
   );
@@ -40,7 +34,7 @@ export async function editImageFromBase64(
   imageBase64: string,
   imageMime: string,
   prompt: string,
-  size: "1024x1024" | "1024x1536" | "1536x1024" = "1024x1536",
+  _size: "1024x1024" | "1024x1536" | "1536x1024" = "1024x1536",
 ): Promise<Buffer> {
   const response = await geminiGenerateContent(
     getGeminiImageModel(),
@@ -56,7 +50,6 @@ export async function editImageFromBase64(
     {
       generationConfig: {
         ...IMAGE_GENERATION_CONFIG,
-        responseFormat: { image: { aspectRatio: mapSizeToAspectRatio(size), imageSize: "2K" } },
       },
     },
   );
@@ -74,7 +67,7 @@ export async function editImageFromBase64(
 export async function generateImageFromReferences(
   references: Array<{ imageBase64: string; imageMime: string }>,
   prompt: string,
-  size: "1024x1024" | "1024x1536" | "1536x1024" = "1024x1536",
+  _size: "1024x1024" | "1024x1536" | "1536x1024" = "1024x1536",
 ): Promise<Buffer> {
   const parts = [
     ...references.map((reference) => ({
@@ -88,7 +81,6 @@ export async function generateImageFromReferences(
     {
       generationConfig: {
         ...IMAGE_GENERATION_CONFIG,
-        responseFormat: { image: { aspectRatio: mapSizeToAspectRatio(size), imageSize: "2K" } },
       },
     },
   );

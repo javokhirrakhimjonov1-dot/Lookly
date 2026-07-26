@@ -206,19 +206,28 @@ async function removeBg(
         mimeType: photoMimeType,
       }),
     });
-    if (!res.ok) return null;
-    const data = await res.json() as { image?: string; url?: string; studioGenerated?: boolean };
+    const data = await res.json().catch(() => ({})) as {
+      image?: string;
+      url?: string;
+      studioGenerated?: boolean;
+      error?: string;
+    };
+    if (!res.ok) {
+      throw new Error(data.error || `Premium image generation failed (${res.status}).`);
+    }
     // A local segmenter can return the person from a mirror photo. Only a
     // confirmed Gemini studio result is safe to show as a product image.
-    if (!data.studioGenerated) return null;
+    if (!data.studioGenerated) {
+      throw new Error(data.error || "Gemini did not return a clean product image.");
+    }
     if (data.url) {
       // Uploaded images are served from /uploads, outside the /api router.
       return `${API_BASE.replace(/\/api$/, "")}${data.url}`;
     }
     if (data.image) return `data:image/png;base64,${data.image}`;
     return null;
-  } catch {
-    return null;
+  } catch (error: unknown) {
+    throw error instanceof Error ? error : new Error("Premium image generation failed.");
   }
 }
 
@@ -568,6 +577,7 @@ export default function AddItemScreen() {
   const [manualPhotoQueue, setManualPhotoQueue] = useState<ManualPhoto[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [isRemovingBg, setIsRemovingBg] = useState(false);
+  const [imageExtractionError, setImageExtractionError] = useState<string | null>(null);
   const [scanDone, setScanDone] = useState(false);
   const [scanPhotoIndex, setScanPhotoIndex] = useState(0);
   const [scanPhotoTotal, setScanPhotoTotal] = useState(0);
@@ -709,6 +719,7 @@ export default function AddItemScreen() {
     setScanPhotoMime(mimeType);
     setIsScanning(true);
     setIsRemovingBg(false);
+    setImageExtractionError(null);
     setScanDone(false);
     scanScale.value = withSpring(0.97, { damping: 12 }, () => {
       scanScale.value = withSpring(1);
@@ -766,6 +777,9 @@ export default function AddItemScreen() {
               setScannedImage(cleanUri);
               setExtractedItemUri(cleanUri);
             }
+          }).catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : "Premium image generation failed.";
+            setImageExtractionError(message);
           });
         })
       ).then(() => setIsRemovingBg(false));
@@ -917,6 +931,9 @@ export default function AddItemScreen() {
               return next;
             });
             if (idx === 0) { setScannedImage(cleanUri); setExtractedItemUri(cleanUri); }
+          }).catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : "Premium image generation failed.";
+            setImageExtractionError(message);
           });
       })
     ).then(() => setIsRemovingBg(false));
@@ -1143,6 +1160,15 @@ export default function AddItemScreen() {
                   <Text style={[styles.rePickText, { color: colors.primaryForeground }]}>{detectedItems.length} items found · tap to repick</Text>
                 </TouchableOpacity>
               )}
+            </View>
+          )}
+
+          {imageExtractionError && !isRemovingBg && (
+            <View style={[styles.imageGenerationError, { backgroundColor: "#FDF0EE", borderColor: "#E78A6B" }]}>
+              <Feather name="alert-circle" size={15} color="#B42318" />
+              <Text style={[styles.imageGenerationErrorText, { color: "#B42318" }]}>
+                Product image was not created: {imageExtractionError}
+              </Text>
             </View>
           )}
 
@@ -1503,6 +1529,21 @@ const styles = StyleSheet.create({
     borderRadius: 100,
   },
   rePickText: { color: "#F9F8F6", fontSize: 11, fontWeight: "600" },
+  imageGenerationError: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 10,
+  },
+  imageGenerationErrorText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+  },
   scanButtons: { flexDirection: "row", gap: 10 },
   scanBtn: {
     flex: 1,
