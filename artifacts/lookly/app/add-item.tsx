@@ -71,7 +71,8 @@ function formatPriceInput(value: string, currency: Currency): string {
   if (currency === "USD") {
     const normalized = value.replace(/[^\d.]/g, "");
     const [whole = "", ...decimalParts] = normalized.split(".");
-    return decimalParts.length ? `${whole}.${decimalParts.join("").slice(0, 2)}` : whole;
+    const groupedWhole = whole.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    return decimalParts.length ? `${groupedWhole}.${decimalParts.join("").slice(0, 2)}` : groupedWhole;
   }
 
   // Sum and roubles are usually whole amounts. Group the thousands as the
