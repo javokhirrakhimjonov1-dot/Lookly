@@ -41,6 +41,15 @@ function formatMoney(value: number, currency: Currency = "USD"): string {
   return `$${amount}`;
 }
 
+function formatTotalAmount(value: number, currency: Currency): string {
+  const amount = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 })
+    .format(value)
+    .replace(/,/g, " ");
+  if (currency === "UZS") return `${amount} soʻm`;
+  if (currency === "RUB") return `₽${amount}`;
+  return `$${amount}`;
+}
+
 function CostPerWearCard({ item }: { item: ClothingItem }) {
   const colors = useColors();
   const { t } = useLanguage();
@@ -135,7 +144,10 @@ export default function StatsScreen() {
       .filter((currency) => totalByCurrency[currency] > 0)
       .map((currency) => formatMoney(totalByCurrency[currency], currency))
       .join(" · ");
-    return { total, totalValue, totalWears, unworn, workwearCount, byCategory, mostWorn, bestValue, leastWorn, maxCat };
+    const totalValueCurrencies = (Object.keys(totalByCurrency) as Currency[])
+      .filter((currency) => totalByCurrency[currency] > 0)
+      .map((currency) => ({ currency, value: totalByCurrency[currency] }));
+    return { total, totalValue, totalValueCurrencies, totalWears, unworn, workwearCount, byCategory, mostWorn, bestValue, leastWorn, maxCat };
   }, [items]);
 
   return (
@@ -183,9 +195,18 @@ export default function StatsScreen() {
                   style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                 >
                   <Feather name={s.icon} size={18} color={s.color} />
-                  <Text style={[styles.summaryValue, { color: colors.foreground }]}>
-                    {s.value}
-                  </Text>
+                  {s.label === t("stat_total_value") && stats.totalValueCurrencies.length ? (
+                    <View style={styles.currencyTotals}>
+                      {stats.totalValueCurrencies.map(({ currency, value }) => (
+                        <View key={currency} style={styles.currencyTotalRow}>
+                          <Text style={[styles.currencyCode, { color: colors.mutedForeground }]}>{currency}</Text>
+                          <Text style={[styles.currencyAmount, { color: colors.foreground }]}>{formatTotalAmount(value, currency)}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <Text style={[styles.summaryValue, { color: colors.foreground }]}>{s.value}</Text>
+                  )}
                   <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>
                     {s.label}
                   </Text>
@@ -294,6 +315,10 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   summaryValue: { fontSize: 24, fontWeight: "800", marginTop: 4 },
+  currencyTotals: { gap: 4, marginTop: 4 },
+  currencyTotalRow: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 6 },
+  currencyCode: { fontSize: 10, fontWeight: "800", letterSpacing: 0.7 },
+  currencyAmount: { flex: 1, textAlign: "right", fontSize: 15, fontWeight: "800" },
   summaryLabel: { fontSize: 12, fontWeight: "500", flexWrap: "wrap" },
   section: {
     borderRadius: 18,

@@ -87,13 +87,22 @@ export default function ProfileScreen() {
   };
 
   const handleUpload = async () => {
-    setPhotoLoading(true);
-    try { await uploadBodyPhoto(); } finally { setPhotoLoading(false); }
+    // iPhone and in-app browsers do not reliably report when a file chooser is
+    // cancelled. Do not turn the screen into a blocking "Processing" state
+    // until an image actually exists; cancelling must leave both choices usable.
+    try {
+      await uploadBodyPhoto();
+    } catch {
+      Alert.alert("Photo not added", "Please try again, or open Lookly in Safari or Chrome.");
+    }
   };
 
   const handleCapture = async () => {
-    setPhotoLoading(true);
-    try { await captureBodyPhoto(); } finally { setPhotoLoading(false); }
+    try {
+      await captureBodyPhoto();
+    } catch {
+      Alert.alert("Photo not added", "Please try again, or open Lookly in Safari or Chrome.");
+    }
   };
 
   const handleClear = async () => {
