@@ -241,6 +241,19 @@ async function removeBg(
   }
 }
 
+// Studio-product rendering is deliberately serialized.  Sending several
+// image-generation requests at once makes a small production server compete
+// for memory and makes every customer wait longer.  Saving an item remains
+// immediate; this queue quietly upgrades one saved image at a time.
+let studioUpgradeQueue: Promise<void> = Promise.resolve();
+
+function enqueueStudioUpgrade(task: () => Promise<void>): void {
+  studioUpgradeQueue = studioUpgradeQueue
+    .catch(() => undefined)
+    .then(task)
+    .catch(() => undefined);
+}
+
 async function compressForUpload(uri: string): Promise<{ uri: string; base64: string; mimeType: string }> {
   const result = await ImageManipulator.manipulateAsync(
     uri,
@@ -561,7 +574,7 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
 export default function AddItemScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { addItem, addBulkItems, items: wardrobeItems } = useWardrobe();
+  const { addItem, addBulkItems, updateItem, items: wardrobeItems } = useWardrobe();
   const { preferredCurrency } = useUserProfile();
 
   const [name, setName] = useState("");
@@ -595,6 +608,28 @@ export default function AddItemScreen() {
 
   const [detectedItems, setDetectedItems] = useState<DetectedItem[]>([]);
   const [showPicker, setShowPicker] = useState(false);
+
+  const upgradeSavedItemImage = (item: DetectedItem, itemId: string) => {
+    if (item._extractedUri) {
+      void updateItem(itemId, { imageUri: item._extractedUri });
+      return;
+    }
+    if (!item._photoBase64) return;
+    const color = resolveColor(item.colorName, item.colorHex);
+    // The premium studio image is optional work after Save. It never holds
+    // the customer on this screen or prevents the wardrobe from opening.
+    enqueueStudioUpgrade(async () => {
+      try {
+        const cleanUri = await removeBg(
+          item.name, item.category, color.name, color.hex, item.material,
+          item.brandLogo, item._photoBase64, item._photoMime,
+        );
+        if (cleanUri) await updateItem(itemId, { imageUri: cleanUri });
+      } catch {
+        // Keep the compact original photo if generation is temporarily busy.
+      }
+    });
+  };
 
   const scanScale = useSharedValue(1);
   const scanCardOpacity = useSharedValue(0);
@@ -677,23 +712,8 @@ export default function AddItemScreen() {
     setShowPicker(false);
     setIsSaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const itemsWithExtractedImages = await Promise.all(
-      items.map(async (item) => ({
-        item,
-        extractedUri: item._extractedUri ?? await removeBg(
-          item.name,
-          item.category,
-          item.colorName,
-          item.colorHex,
-          item.material,
-          item.brandLogo,
-          item._photoBase64,
-          item._photoMime,
-        ),
-      }))
-    );
-    await addBulkItems(
-      itemsWithExtractedImages.map(({ item, extractedUri }) => {
+    const savedItems = await addBulkItems(
+      items.map((item) => {
         const color = resolveColor(item.colorName, item.colorHex);
         return {
           name: item.name,
@@ -706,12 +726,14 @@ export default function AddItemScreen() {
           fabricWeight: item.fabricWeight ?? "medium",
           isWorkwear: false,
           tags: item.tags.length > 0 ? item.tags : [item.category],
-          // Never use a mirror/person source photo as a product catalog card.
-          imageUri: extractedUri ?? undefined,
+          // Save a compact image immediately. The premium product image is
+          // generated after this screen has already finished its work.
+          imageUri: item._extractedUri ?? item._photoUri ?? undefined,
           brandLogo: item.brandLogo ?? undefined,
         };
       })
     );
+    savedItems.forEach((savedItem, index) => upgradeSavedItemImage(items[index]!, savedItem.id));
     setIsSaving(false);
     leaveAddItem();
   };
@@ -776,6 +798,8 @@ export default function AddItemScreen() {
       }
 
       // Fire BG removal — UI is already unblocked, image swaps silently when ready
+      // Background work is deferred until the customer saves an item.
+      /*
       setIsRemovingBg(true);
       Promise.allSettled(
         taggedItems.map((item, idx) => {
@@ -800,6 +824,7 @@ export default function AddItemScreen() {
           });
         })
       ).then(() => setIsRemovingBg(false));
+      */
 
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "The photo could not be analyzed.";
@@ -935,6 +960,8 @@ export default function AddItemScreen() {
     }
 
     // ── BG removal runs in background, updates cards silently ──
+    // Background work is deferred until the customer saves an item.
+    /*
     setIsRemovingBg(true);
     Promise.allSettled(
       allItems.map((item, idx) => {
@@ -954,6 +981,7 @@ export default function AddItemScreen() {
           });
       })
     ).then(() => setIsRemovingBg(false));
+    */
   };
 
   const handleWebFileInput = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1018,27 +1046,27 @@ export default function AddItemScreen() {
     setIsSaving(true);
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      let cleanImageUri = extractedItemUri;
-      if (!cleanImageUri && scanPhotoBase64) {
-        setIsRemovingBg(true);
-        cleanImageUri = await removeBg(
-          name.trim(), category, selectedColor.name, selectedColor.hex, material,
-          brandLogo, scanPhotoBase64, scanPhotoMime,
-        );
-        setIsRemovingBg(false);
-      }
       const price = priceNumber(purchasePrice);
-      await addItem({
+      const savedItem = await addItem({
         name: name.trim(), category, color: selectedColor.name, colorHex: selectedColor.hex,
         seasons, fabricWeight, isWorkwear,
         purchasePrice: !isNaN(price) && price > 0 ? price : undefined,
         purchaseCurrency: !isNaN(price) && price > 0 ? purchaseCurrency : undefined,
         tags: tagsForSave(),
-        // Preserve visual quality: an unavailable studio image is preferable
-        // to saving the unprocessed source photograph as a product card.
-        imageUri: cleanImageUri ?? undefined,
+        // The item is saved immediately. Its studio product image replaces
+        // this compact source photo in the background.
+        imageUri: extractedItemUri ?? compressedPhotoUri ?? scannedImage ?? undefined,
         brandLogo: brandLogo ?? undefined,
       });
+      if (savedItem && scanPhotoBase64) {
+        upgradeSavedItemImage({
+          name: name.trim(), category, colorName: selectedColor.name,
+          colorHex: selectedColor.hex, material, fabricWeight, seasons,
+          tags: tagsForSave(), brandLogo, locationHint: itemLocationHint,
+          _photoBase64: scanPhotoBase64, _photoMime: scanPhotoMime,
+          _extractedUri: extractedItemUri ?? undefined,
+        }, savedItem.id);
+      }
       const [nextPhoto, ...remainingPhotos] = manualPhotoQueue;
       if (nextPhoto) {
         setManualPhotoQueue(remainingPhotos);

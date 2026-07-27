@@ -66,8 +66,8 @@ export interface SavedOutfit {
 
 interface WardrobeContextValue {
   items: ClothingItem[];
-  addItem: (item: Omit<ClothingItem, "id" | "createdAt" | "timesWorn">) => Promise<void>;
-  addBulkItems: (items: Omit<ClothingItem, "id" | "createdAt" | "timesWorn">[]) => Promise<void>;
+  addItem: (item: Omit<ClothingItem, "id" | "createdAt" | "timesWorn">) => Promise<ClothingItem | undefined>;
+  addBulkItems: (items: Omit<ClothingItem, "id" | "createdAt" | "timesWorn">[]) => Promise<ClothingItem[]>;
   removeItem: (id: string) => Promise<void>;
   updateItem: (id: string, updates: Partial<ClothingItem>) => Promise<void>;
   markWorn: (ids: string[]) => Promise<void>;
@@ -194,7 +194,7 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
       outfitsRef.current = [];
       if (!user) {
         setIsLoading(false);
-        return;
+        return undefined;
       }
 
       setIsLoading(true);
@@ -337,7 +337,7 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
           "Wardrobe limit reached",
           `Your pilot wardrobe can contain up to ${MAX_WARDROBE_ITEMS} items. Delete an item before adding another one.`,
         );
-        return;
+        return undefined;
       }
       const newItem: ClothingItem = {
         ...item,
@@ -353,6 +353,7 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
         await persistImage(newItem.id, newItem.imageUri);
       }
       syncItemToServer(newItem);
+      return newItem;
     },
     [persistItems, persistImage]
   );
@@ -365,14 +366,14 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
           "Wardrobe limit reached",
           `Your pilot wardrobe can contain up to ${MAX_WARDROBE_ITEMS} items. Delete an item before adding another one.`,
         );
-        return;
+        return [];
       }
       if (newItems.length > available) {
         Alert.alert(
           "Too many items selected",
           `You can add ${available} more item${available === 1 ? "" : "s"} to this wardrobe.`,
         );
-        return;
+        return [];
       }
       const built: ClothingItem[] = newItems.map((item) => ({
         ...item,
@@ -390,6 +391,7 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
         )
       );
       built.forEach((item) => syncItemToServer(item));
+      return built;
     },
     [persistItems, persistImage]
   );
