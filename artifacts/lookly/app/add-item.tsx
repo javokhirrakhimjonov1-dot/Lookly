@@ -190,11 +190,15 @@ async function removeBg(
   brandLogo?: BrandLogo | null,
   photoBase64?: string,
   photoMimeType?: string,
+  locationHint?: string,
 ): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 90_000);
   try {
     const res = await fetch(`${API_BASE}/remove-bg`, {
       method: "POST",
       headers: await apiAuthHeaders(),
+      signal: controller.signal,
       body: JSON.stringify({
         itemName,
         category,
@@ -204,6 +208,7 @@ async function removeBg(
         brandLogo: brandLogo ?? undefined,
         photoBase64,
         mimeType: photoMimeType,
+        locationHint,
       }),
     });
     const data = await res.json().catch(() => ({})) as {
@@ -227,7 +232,12 @@ async function removeBg(
     if (data.image) return `data:image/png;base64,${data.image}`;
     return null;
   } catch (error: unknown) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Premium product image took too long. Please try again.");
+    }
     throw error instanceof Error ? error : new Error("Premium image generation failed.");
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -574,6 +584,7 @@ export default function AddItemScreen() {
   const [compressedPhotoUri, setCompressedPhotoUri] = useState<string | null>(null);
   const [scanPhotoBase64, setScanPhotoBase64] = useState<string | null>(null);
   const [scanPhotoMime, setScanPhotoMime] = useState<string>("image/jpeg");
+  const [itemLocationHint, setItemLocationHint] = useState("");
   const [manualPhotoQueue, setManualPhotoQueue] = useState<ManualPhoto[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [isRemovingBg, setIsRemovingBg] = useState(false);
@@ -626,6 +637,11 @@ export default function AddItemScreen() {
           : null
     );
     setBrandLogo(item.brandLogo ?? null);
+    setItemLocationHint(item.locationHint ?? "");
+    if (item._photoBase64) setScanPhotoBase64(item._photoBase64);
+    if (item._photoMime) setScanPhotoMime(item._photoMime);
+    if (item._photoUri) setScannedImage(item._extractedUri ?? item._photoUri);
+    setExtractedItemUri(item._extractedUri ?? null);
     setScanDone(true);
     scanCardOpacity.value = withTiming(1, { duration: 400 });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -637,6 +653,7 @@ export default function AddItemScreen() {
     setCompressedPhotoUri(photo.uri);
     setScanPhotoBase64(photo.base64);
     setScanPhotoMime(photo.mimeType);
+    setItemLocationHint("");
     setDetectedItems([]);
     setName("");
     setCategory(null);
