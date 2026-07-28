@@ -211,16 +211,15 @@ export async function syncItemToServer(item: ClothingItem): Promise<void> {
     if (!isUuid(item.id)) return;
     const { data: authData } = await supabase.auth.getUser();
     if (!authData.user) return;
-    const uploadedPhotoPath = await uploadPrivateImage(authData.user.id, item.id, item.imageUri);
-    // Do not erase an already-uploaded photo if a temporary local/blob URI
-    // cannot be read during a later metadata-only sync.
+    // Save the lightweight wardrobe record before any slow image work. This
+    // means an item survives navigation, refreshes and slow connections even
+    // if studio processing or Storage uploads are still running.
     const { data: existing } = await supabase
       .from("wardrobe_items")
       .select("photo_path")
       .eq("id", item.id)
       .maybeSingle();
-    const photoPath = uploadedPhotoPath ?? existing?.photo_path ?? null;
-    await supabase.from("wardrobe_items").upsert({
+    const { error } = await supabase.from("wardrobe_items").upsert({
       id: item.id,
       user_id: authData.user.id,
       name: item.name,
@@ -233,11 +232,26 @@ export async function syncItemToServer(item: ClothingItem): Promise<void> {
       purchase_price: item.purchasePrice ?? null,
       purchase_currency: item.purchaseCurrency ?? "USD",
       times_worn: item.timesWorn,
-      photo_path: photoPath,
+      // Keep an existing cloud image while a replacement is being prepared.
+      photo_path: existing?.photo_path ?? null,
       tags: item.tags,
       brand_logo: item.brandLogo ?? null,
       created_at: item.createdAt,
     });
+    if (error || !item.imageUri) return;
+
+    // Image upload is deliberately non-blocking. Product art can take longer
+    // than the metadata save, but it must never make the user wait to save an
+    // item or cause that item to disappear after a refresh.
+    void (async () => {
+      const photoPath = await uploadPrivateImage(authData.user!.id, item.id, item.imageUri);
+      if (!photoPath) return;
+      await supabase
+        .from("wardrobe_items")
+        .update({ photo_path: photoPath })
+        .eq("id", item.id)
+        .eq("user_id", authData.user!.id);
+    })();
     return;
   }
 

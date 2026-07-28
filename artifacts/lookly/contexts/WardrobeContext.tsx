@@ -352,7 +352,9 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
       if (newItem.imageUri) {
         await persistImage(newItem.id, newItem.imageUri);
       }
-      syncItemToServer(newItem);
+      // The cloud record is lightweight and must finish before we report a
+      // successful save. Its image upload continues in the background.
+      await syncItemToServer(newItem);
       return newItem;
     },
     [persistItems, persistImage]
@@ -390,7 +392,9 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
           item.imageUri ? persistImage(item.id, item.imageUri) : Promise.resolve()
         )
       );
-      built.forEach((item) => syncItemToServer(item));
+      // Persist each lightweight record first; image uploads continue in the
+      // background so adding several items stays responsive and durable.
+      await Promise.all(built.map((item) => syncItemToServer(item)));
       return built;
     },
     [persistItems, persistImage]
