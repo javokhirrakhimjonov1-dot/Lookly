@@ -113,6 +113,36 @@ function isClearlyClosedToeFootwear(item: ClothingItem): boolean {
   );
 }
 
+/** Put the user's most weather-suitable clothes first. Store products only fill
+ * a genuine shortage after this ranking has been applied. */
+function rankWardrobeForTrip(items: ClothingItem[], tier: TempTier, hasRain: boolean): ClothingItem[] {
+  const preferredWeight: Record<TempTier, Record<ClothingItem["fabricWeight"], number>> = {
+    freezing: { light: -5, medium: 1, heavy: 6 },
+    cold: { light: -4, medium: 2, heavy: 5 },
+    cool: { light: -1, medium: 4, heavy: 3 },
+    mild: { light: 2, medium: 4, heavy: 1 },
+    warm: { light: 5, medium: 2, heavy: -2 },
+    hot: { light: 6, medium: 1, heavy: -4 },
+  };
+  const weatherWords = hasRain
+    ? ["waterproof", "water-resistant", "rain", "quick-dry", "hood", "rubber"]
+    : tier === "hot" || tier === "warm"
+      ? ["linen", "cotton", "breathable", "light", "short", "mesh"]
+      : tier === "cold" || tier === "freezing"
+        ? ["wool", "thermal", "knit", "coat", "puffer", "fleece"]
+        : ["layer", "overshirt", "jacket", "cardigan", "denim"];
+
+  return [...items].sort((a, b) => {
+    const score = (item: ClothingItem) => {
+      const text = (item.name + " " + item.tags.join(" ")).toLowerCase();
+      return preferredWeight[tier][item.fabricWeight]
+        + weatherWords.reduce((total, word) => total + (text.includes(word) ? 3 : 0), 0)
+        - Math.min(item.timesWorn, 3) * 0.15;
+    };
+    return score(b) - score(a) || a.name.localeCompare(b.name);
+  });
+}
+
 /** Keep the "consider packing" rail useful: every missing slot should suggest a
  * different, weather-appropriate item rather than repeating the same label. */
 function chooseSuggestions(options: string[], count: number): string[] {
@@ -203,18 +233,19 @@ function generatePackingList(
   const shoesNeeded = Math.min(3, Math.max(1, Math.ceil(days / 3)));
   const outerNeeded = needsOuterwear ? Math.min(2, Math.ceil(days / 4)) : 0;
 
-  const tops = wardrobe.filter((i) => i.category === "tops" && weightOk(i));
-  const bottoms = wardrobe.filter((i) => i.category === "bottoms" && weightOk(i));
-  const dresses = wardrobe.filter((i) => i.category === "dresses" && weightOk(i));
-  const outer = wardrobe.filter((i) => i.category === "outerwear");
+  const tops = rankWardrobeForTrip(wardrobe.filter((i) => i.category === "tops" && weightOk(i)), tripTier, hasRain);
+  const bottoms = rankWardrobeForTrip(wardrobe.filter((i) => i.category === "bottoms" && weightOk(i)), tripTier, hasRain);
+  const dresses = rankWardrobeForTrip(wardrobe.filter((i) => i.category === "dresses" && weightOk(i)), tripTier, hasRain);
+  const outer = rankWardrobeForTrip(wardrobe.filter((i) => i.category === "outerwear"), tripTier, hasRain);
   const allShoes = wardrobe.filter((i) => i.category === "shoes");
   // Wet pavements and cool days need closed footwear. Unknown footwear is not
   // suggested until its type is confirmed in the item form.
   const needsClosedToeShoes = hasRain || avgLow < 22;
-  const shoes = needsClosedToeShoes
+  const shoeCandidates = needsClosedToeShoes
     ? allShoes.filter((item) => !isOpenToeFootwear(item) && isClearlyClosedToeFootwear(item))
     : allShoes;
-  const access = wardrobe.filter((i) => i.category === "accessories");
+  const shoes = rankWardrobeForTrip(shoeCandidates, tripTier, hasRain);
+  const access = rankWardrobeForTrip(wardrobe.filter((i) => i.category === "accessories"), tripTier, hasRain);
 
   const result: PackingCategory[] = [];
 
