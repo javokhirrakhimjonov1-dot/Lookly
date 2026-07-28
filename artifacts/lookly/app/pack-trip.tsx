@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -62,26 +63,39 @@ interface PackingCategory {
   needed: number;
   reason: string;
   fromWardrobe: ClothingItem[];
-  needToBuy: string[];
+  needToBuy: ShopProduct[];
 }
 
 // ─────────────────────────────────────────────
 // Buy-item image mapping
 // ─────────────────────────────────────────────
-function getBuyImageUri(label: string): string {
-  const l = label.toLowerCase();
-  if (l.includes("sandal"))                      return "https://images.unsplash.com/photo-1603487742131-4160ec999306?w=300&h=380&fit=crop&auto=format&q=75";
-  if (l.includes("sneaker") || l.includes("shoe")) return "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=300&h=380&fit=crop&auto=format&q=75";
-  if (l.includes("heavy") && l.includes("coat")) return "https://images.unsplash.com/photo-1547949003-9792a18a2601?w=300&h=380&fit=crop&auto=format&q=75";
-  if (l.includes("jacket") || l.includes("cardigan")) return "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=300&h=380&fit=crop&auto=format&q=75";
-  if (l.includes("linen") || (l.includes("light") && l.includes("top"))) return "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=300&h=380&fit=crop&auto=format&q=75";
-  if (l.includes("knit") || l.includes("warm") || l.includes("wool")) return "https://images.unsplash.com/photo-1576566588028-4147f3842f27?w=300&h=380&fit=crop&auto=format&q=75";
-  if (l.includes("top") || l.includes("shirt") || l.includes("tee")) return "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=300&h=380&fit=crop&auto=format&q=75";
-  if (l.includes("trouser") || l.includes("skirt"))  return "https://images.unsplash.com/photo-1594938298603-c8148c4b4816?w=300&h=380&fit=crop&auto=format&q=75";
-  if (l.includes("jean") || l.includes("bottom"))    return "https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=300&h=380&fit=crop&auto=format&q=75";
-  if (l.includes("scarf") || l.includes("belt") || l.includes("accessor")) return "https://images.unsplash.com/photo-1551803091-e20673f15770?w=300&h=380&fit=crop&auto=format&q=75";
-  if (l.includes("rain"))  return "https://images.unsplash.com/photo-1530521954074-e0a103ceff5c?w=300&h=380&fit=crop&auto=format&q=75";
-  return   "https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?w=300&h=380&fit=crop&auto=format&q=75";
+type ShopKind = "tops" | "bottoms" | "outerwear" | "shoes" | "accessories";
+
+interface ShopProduct {
+  id: string;
+  kind: ShopKind;
+  name: string;
+  store: "TerraPro" | "Just2010";
+  imageUrl: string;
+  productUrl: string;
+  priceUz: number;
+}
+
+const SHOP_PRODUCTS: ShopProduct[] = [
+  { id: "just-tee", kind: "tops", name: "Essential cotton tee", store: "Just2010", priceUz: 99900, productUrl: "https://just2010.uz/catalog/futbolki/489435/", imageUrl: "https://just2010.uz/upload/iblock/eee/buorh58k93lo4xp6js1jggze2gglpwec.jpg" },
+  { id: "just-overshirt", kind: "outerwear", name: "Lightweight overshirt", store: "Just2010", priceUz: 109900, productUrl: "https://just2010.uz/catalog/rubashki/489427/", imageUrl: "https://just2010.uz/upload/iblock/95d/mu4juweaixfrrqcomfugv14gvmqdai7l.jpg" },
+  { id: "just-trousers", kind: "bottoms", name: "Classic trousers", store: "Just2010", priceUz: 199900, productUrl: "https://just2010.uz/catalog/bryuki_1/483373/", imageUrl: "https://just2010.uz/upload/iblock/88f/jv85t9zle49ocxtfkc4aqce2m6vqtdso.jpg" },
+  { id: "just-jeans", kind: "bottoms", name: "Straight-fit jeans", store: "Just2010", priceUz: 189900, productUrl: "https://just2010.uz/catalog/dzhinsy/489426/", imageUrl: "https://just2010.uz/upload/iblock/e39/uetul3n9nbgxc5057bbs3ly70c6o5896.jpg" },
+  { id: "just-chinos", kind: "bottoms", name: "Lightweight chinos", store: "Just2010", priceUz: 199900, productUrl: "https://just2010.uz/catalog/chinosy/489431/", imageUrl: "https://just2010.uz/upload/iblock/346/x3q1i44qotpcmq2mg0as3ysaknnpijyc.jpg" },
+  { id: "just-shoes", kind: "shoes", name: "Everyday closed-toe shoes", store: "Just2010", priceUz: 239900, productUrl: "https://just2010.uz/catalog/obuv/489440/", imageUrl: "https://just2010.uz/upload/iblock/ba8/pwgayysbwib6m4bl4b4gsf04go7usmev.jpg" },
+  { id: "just-belt", kind: "accessories", name: "Leather belt", store: "Just2010", priceUz: 109900, productUrl: "https://just2010.uz/catalog/sumki_i_aksessuary/484185/", imageUrl: "https://just2010.uz/upload/iblock/480/fm6bu21y4wx5bk7fm5bhuz8b3rpu9nmb.jpg" },
+  { id: "terra-tee-black", kind: "tops", name: "TerraPro cotton T-shirt", store: "TerraPro", priceUz: 149990, productUrl: "https://terrapro.uz/catalog/futbolka_1/149031/", imageUrl: "https://terrapro.uz/upload/iblock/251/tt1cosm0942zjyr3gsf1wkotk40ruvgi/optimized_SS24CR2-25-20246%201.jpg" },
+  { id: "terra-tee-light", kind: "tops", name: "TerraPro short-sleeve tee", store: "TerraPro", priceUz: 199990, productUrl: "https://terrapro.uz/catalog/futbolka_1/210168/", imageUrl: "https://terrapro.uz/upload/iblock/3e0/8hkcebjf32unt917j3mv4buup9reg68o.jpg" },
+  { id: "terra-tee-classic", kind: "tops", name: "TerraPro premium T-shirt", store: "TerraPro", priceUz: 199990, productUrl: "https://terrapro.uz/catalog/futbolka_1/147980/", imageUrl: "https://terrapro.uz/upload/iblock/f35/jju0l8thz0qdi5jnqak7gcpkkup8cc5m/optimized_SS24CL2-25-19784%20%201.jpg" },
+];
+
+function shopSuggestions(kind: ShopKind, count: number): ShopProduct[] {
+  return SHOP_PRODUCTS.filter((item) => item.kind === kind).slice(0, Math.max(0, count));
 }
 
 /** Treat unclear footwear as unsuitable for rainy or cool-weather packing. */
@@ -210,7 +224,7 @@ function generatePackingList(
     needed: topsNeeded,
     reason: `${topsNeeded} tops for ${days} days at ${Math.round(avgHigh)}°C avg`,
     fromWardrobe: tops.slice(0, topsNeeded),
-    needToBuy: chooseSuggestions(packingOptions("tops", tripTier, hasRain), topsNeeded - tops.length),
+    needToBuy: shopSuggestions("tops", topsNeeded - tops.length),
   });
 
   result.push({
@@ -219,7 +233,7 @@ function generatePackingList(
     needed: bottomsNeeded,
     reason: `${bottomsNeeded} bottoms for the trip`,
     fromWardrobe: [...bottoms, ...dresses].slice(0, bottomsNeeded),
-    needToBuy: chooseSuggestions(packingOptions("bottoms", tripTier, hasRain), bottomsNeeded - bottoms.length - dresses.length),
+    needToBuy: shopSuggestions("bottoms", bottomsNeeded - bottoms.length - dresses.length),
   });
 
   if (needsOuterwear && outerNeeded > 0) {
@@ -229,7 +243,7 @@ function generatePackingList(
       needed: outerNeeded,
       reason: needsHeavy ? "Heavy coat required — lows below 10°C" : "Light jacket for cool evenings",
       fromWardrobe: outer.slice(0, outerNeeded),
-      needToBuy: chooseSuggestions(packingOptions("outerwear", tripTier, hasRain), outerNeeded - outer.length),
+      needToBuy: shopSuggestions("outerwear", outerNeeded - outer.length),
     });
   }
 
@@ -239,7 +253,7 @@ function generatePackingList(
     needed: shoesNeeded,
     reason: `${shoesNeeded} pairs — ${isHot ? "sandals / sneakers for heat" : "closed-toe for cooler temps"}`,
     fromWardrobe: shoes.slice(0, shoesNeeded),
-    needToBuy: chooseSuggestions(packingOptions("shoes", tripTier, hasRain), shoesNeeded - shoes.length),
+    needToBuy: shopSuggestions("shoes", shoesNeeded - shoes.length),
   });
 
   if (hasRain) {
@@ -261,7 +275,7 @@ function generatePackingList(
     needed: Math.min(access.length, 3),
     reason: "Scarves, belts, bags for variety",
     fromWardrobe: access.slice(0, 3),
-    needToBuy: access.length === 0 ? chooseSuggestions(packingOptions("accessories", tripTier, hasRain), 2) : [],
+    needToBuy: access.length === 0 ? shopSuggestions("accessories", 2) : [],
   });
 
   return result;
@@ -990,19 +1004,28 @@ export default function PackTripScreen() {
                   <View style={styles.toBuySection}>
                     <Text style={[styles.matchesLabel, { color: "#D97706" }]}>CONSIDER PACKING</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.buyCardRow}>
-                      {cat.needToBuy.map((item, i) => (
-                        <View key={i} style={[styles.buyCard, { backgroundColor: colors.secondary, borderColor: "#FDE68A" }]}>
+                      {cat.needToBuy.map((item) => (
+                        <Pressable
+                          key={item.id}
+                          accessibilityRole="link"
+                          accessibilityLabel={`View ${item.name} at ${item.store}`}
+                          onPress={() => { void Linking.openURL(item.productUrl); }}
+                          style={[styles.buyCard, { backgroundColor: colors.secondary, borderColor: "#FDE68A" }]}
+                        >
                           <Image
-                            source={{ uri: getBuyImageUri(item) }}
+                            source={{ uri: item.imageUrl }}
                             style={styles.buyCardImg}
                             contentFit="cover"
                             transition={200}
                           />
                           <View style={styles.buyCardLabel}>
                             <Feather name="shopping-bag" size={10} color="#D97706" />
-                            <Text style={styles.buyCardText} numberOfLines={2}>{item}</Text>
+                            <View style={styles.buyCardCopy}>
+                              <Text style={styles.buyCardText} numberOfLines={2}>{item.name}</Text>
+                              <Text style={styles.buyCardMeta}>{item.store} · {item.priceUz.toLocaleString("en-US")} UZS</Text>
+                            </View>
                           </View>
-                        </View>
+                        </Pressable>
                       ))}
                     </ScrollView>
                   </View>
@@ -1100,5 +1123,7 @@ const styles = StyleSheet.create({
     gap: 5,
     padding: 10,
   },
+  buyCardCopy: { flex: 1, gap: 3 },
   buyCardText: { flex: 1, fontSize: 11, fontWeight: "600", color: "#92400E", lineHeight: 15 },
+  buyCardMeta: { fontSize: 9, fontWeight: "500", color: "#A16207" },
 });
