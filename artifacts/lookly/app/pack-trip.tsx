@@ -62,6 +62,8 @@ interface PackingCategory {
   icon: React.ComponentProps<typeof Feather>["name"];
   needed: number;
   reason: string;
+  weatherTier: TempTier;
+  hasRain: boolean;
   fromWardrobe: ClothingItem[];
   needToBuy: ShopProduct[];
 }
@@ -137,6 +139,39 @@ function shopSuggestions(kind: ShopKind, count: number, tier: TempTier, hasRain:
     .filter((item) => item.kind === kind)
     .slice(0, Math.max(0, count))
     .map((item) => ({ ...item, weatherReason: shopWeatherReason(item, tier, hasRain) }));
+}
+
+/** Only add accessories that solve a real weather need. This prevents a
+ * scarf, gym accessory, or belt from appearing merely because it is owned. */
+function isWeatherRelevantAccessory(item: ClothingItem, tier: TempTier, hasRain: boolean): boolean {
+  const text = `${item.name} ${item.tags.join(" ")}`.toLowerCase();
+  const includesAny = (words: string[]) => words.some((word) => text.includes(word));
+  if (hasRain) return includesAny(["umbrella", "rain", "waterproof", "water-resistant", "quick-dry", "visor", "cap"]);
+  if (tier === "freezing" || tier === "cold") return includesAny(["scarf", "beanie", "glove", "wool sock", "thermal sock"]);
+  if (tier === "cool") return includesAny(["light scarf", "scarf", "cap", "sunglass"]);
+  // Mild-to-hot trips need sun protection, not winter accessories.
+  return includesAny(["sunglass", "sun hat", "sunhat", "cap", "visor", "uv"]);
+}
+
+function wardrobeWeatherReason(item: ClothingItem, tier: TempTier, hasRain: boolean): string {
+  const text = `${item.name} ${item.tags.join(" ")}`.toLowerCase();
+  if (hasRain) {
+    if (item.category === "shoes") return "Closed-toe coverage is safer for wet streets.";
+    if (text.includes("waterproof") || text.includes("water-resistant")) return "Its weather-resistant finish suits the rain forecast.";
+    return "A practical layer for changeable, rainy conditions.";
+  }
+  if (tier === "hot" || tier === "warm") {
+    if (item.fabricWeight === "light" || ["linen", "cotton", "mesh", "breathable", "short"].some((word) => text.includes(word))) return "Its lighter construction is more comfortable in warm weather.";
+    if (item.category === "shoes") return "A walking-friendly option for warm days and cooler evenings.";
+    return "Chosen to keep the outfit comfortable as temperatures stay warm.";
+  }
+  if (tier === "freezing" || tier === "cold") {
+    if (item.fabricWeight === "heavy") return "Its heavier fabric helps retain warmth in colder air.";
+    if (item.category === "shoes") return "Closed-toe coverage is more comfortable when temperatures drop.";
+    return "A useful layer for keeping warm through the trip.";
+  }
+  if (tier === "cool") return "Easy to layer for cool mornings and milder afternoons.";
+  return "A flexible choice for comfortable daytime-to-evening weather.";
 }
 
 /** Treat unclear footwear as unsuitable for rainy or cool-weather packing. */
@@ -286,7 +321,11 @@ function generatePackingList(
     ? allShoes.filter((item) => !isOpenToeFootwear(item) && isClearlyClosedToeFootwear(item))
     : allShoes;
   const shoes = rankWardrobeForTrip(shoeCandidates, tripTier, hasRain);
-  const access = rankWardrobeForTrip(wardrobe.filter((i) => i.category === "accessories"), tripTier, hasRain);
+  const access = rankWardrobeForTrip(
+    wardrobe.filter((i) => i.category === "accessories" && isWeatherRelevantAccessory(i, tripTier, hasRain)),
+    tripTier,
+    hasRain,
+  );
 
   const result: PackingCategory[] = [];
 
@@ -294,6 +333,8 @@ function generatePackingList(
     category: "Tops",
     icon: "wind",
     needed: topsNeeded,
+    weatherTier: tripTier,
+    hasRain,
     reason: `${topsNeeded} tops for ${days} days at ${Math.round(avgHigh)}°C avg`,
     fromWardrobe: tops.slice(0, topsNeeded),
     needToBuy: shopSuggestions("tops", topsNeeded - tops.length, tripTier, hasRain),
@@ -303,6 +344,8 @@ function generatePackingList(
     category: "Bottoms",
     icon: "minus",
     needed: bottomsNeeded,
+    weatherTier: tripTier,
+    hasRain,
     reason: `${bottomsNeeded} bottoms for the trip`,
     fromWardrobe: [...bottoms, ...dresses].slice(0, bottomsNeeded),
     needToBuy: shopSuggestions("bottoms", bottomsNeeded - bottoms.length - dresses.length, tripTier, hasRain),
@@ -313,6 +356,8 @@ function generatePackingList(
       category: "Outerwear",
       icon: "layers",
       needed: outerNeeded,
+      weatherTier: tripTier,
+      hasRain,
       reason: needsHeavy ? "Heavy coat required — lows below 10°C" : "Light jacket for cool evenings",
       fromWardrobe: outer.slice(0, outerNeeded),
       needToBuy: shopSuggestions("outerwear", outerNeeded - outer.length, tripTier, hasRain),
@@ -323,6 +368,8 @@ function generatePackingList(
     category: "Shoes",
     icon: "chevrons-up",
     needed: shoesNeeded,
+    weatherTier: tripTier,
+    hasRain,
     reason: `${shoesNeeded} pairs — ${isHot ? "sandals / sneakers for heat" : "closed-toe for cooler temps"}`,
     fromWardrobe: shoes.slice(0, shoesNeeded),
     needToBuy: shopSuggestions("shoes", shoesNeeded - shoes.length, tripTier, hasRain),
@@ -333,6 +380,8 @@ function generatePackingList(
       category: "Rain Gear",
       icon: "cloud-rain",
       needed: 1,
+      weatherTier: tripTier,
+      hasRain,
       reason: "Precipitation forecast — pack a rain layer",
       fromWardrobe: outer.filter((i) =>
         i.tags?.includes("waterproof") || i.name.toLowerCase().includes("rain")
@@ -341,14 +390,22 @@ function generatePackingList(
     });
   }
 
-  result.push({
-    category: "Accessories",
-    icon: "circle",
-    needed: Math.min(access.length, 3),
-    reason: "Scarves, belts, bags for variety",
-    fromWardrobe: access.slice(0, 3),
-    needToBuy: access.length === 0 ? shopSuggestions("accessories", 2, tripTier, hasRain) : [],
-  });
+  if (access.length > 0) {
+    result.push({
+      category: "Weather accessories",
+      icon: "circle",
+      needed: Math.min(access.length, 3),
+      reason: hasRain
+        ? "Only rain-ready accessories are included for this forecast"
+        : tripTier === "warm" || tripTier === "hot"
+          ? "Only sun-protection accessories are included for warm weather"
+          : "Only accessories that help with this temperature are included",
+      weatherTier: tripTier,
+      hasRain,
+      fromWardrobe: access.slice(0, 3),
+      needToBuy: [],
+    });
+  }
 
   return result;
 }
@@ -596,10 +653,12 @@ function PackItemCard({
   item,
   checked,
   onToggle,
+  weatherReason,
 }: {
   item: ClothingItem;
   checked: boolean;
   onToggle: () => void;
+  weatherReason: string;
 }) {
   const colors = useColors();
   const categoryLabel = item.category.charAt(0).toUpperCase() + item.category.slice(1);
@@ -638,6 +697,7 @@ function PackItemCard({
           <View style={[pkStyles.swatch, { backgroundColor: item.colorHex }]} />
           <Text style={[pkStyles.metaText, { color: colors.mutedForeground }]} numberOfLines={1}>{categoryLabel}</Text>
         </View>
+        <Text style={[pkStyles.weatherReason, { color: colors.mutedForeground }]} numberOfLines={2}>{weatherReason}</Text>
       </View>
     </Pressable>
   );
@@ -705,6 +765,7 @@ const pkStyles = StyleSheet.create({
     borderColor: "rgba(0,0,0,0.08)",
   },
   metaText: { fontSize: 10, fontWeight: "500", color: "#78716C" },
+  weatherReason: { fontSize: 9, lineHeight: 12, fontWeight: "500", color: "#78716C" },
 });
 
 // ─────────────────────────────────────────────
@@ -1065,6 +1126,7 @@ export default function PackTripScreen() {
                           item={item}
                           checked={checkedItems.has(item.id)}
                           onToggle={() => toggleChecked(item.id)}
+                          weatherReason={wardrobeWeatherReason(item, cat.weatherTier, cat.hasRain)}
                         />
                       ))}
                     </ScrollView>
@@ -1198,6 +1260,6 @@ const styles = StyleSheet.create({
   },
   buyCardCopy: { flex: 1, gap: 3 },
   buyCardText: { flex: 1, fontSize: 11, fontWeight: "600", color: "#92400E", lineHeight: 15 },
-  buyCardReason: { fontSize: 9, lineHeight: 13, color: "#7C5A35" },
+  buyCardReason: { fontSize: 10, lineHeight: 14, fontWeight: "600", color: "#7C5A35", marginTop: 2 },
   buyCardMeta: { fontSize: 9, fontWeight: "500", color: "#A16207" },
 });

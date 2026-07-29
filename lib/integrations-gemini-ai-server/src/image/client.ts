@@ -15,9 +15,10 @@ const IMAGE_GENERATION_CONFIG = {
 export async function generateImageBuffer(
   prompt: string,
   _size: "1024x1024" | "1024x1536" | "1536x1024" = "1024x1024",
+  model = getGeminiImageModel(),
 ): Promise<Buffer> {
   const response = await geminiGenerateContent(
-    getGeminiImageModel(),
+    model,
     [{ role: "user", parts: [{ text: prompt }] }],
     {
       generationConfig: {
@@ -35,9 +36,10 @@ export async function editImageFromBase64(
   imageMime: string,
   prompt: string,
   _size: "1024x1024" | "1024x1536" | "1536x1024" = "1024x1536",
+  model = getGeminiImageModel(),
 ): Promise<Buffer> {
   const response = await geminiGenerateContent(
-    getGeminiImageModel(),
+    model,
     [
       {
         role: "user",
@@ -68,6 +70,7 @@ export async function generateImageFromReferences(
   references: Array<{ imageBase64: string; imageMime: string }>,
   prompt: string,
   _size: "1024x1024" | "1024x1536" | "1536x1024" = "1024x1536",
+  model = getGeminiImageModel(),
 ): Promise<Buffer> {
   const parts = [
     ...references.map((reference) => ({
@@ -76,7 +79,7 @@ export async function generateImageFromReferences(
     { text: prompt },
   ];
   const response = await geminiGenerateContent(
-    getGeminiImageModel(),
+    model,
     [{ role: "user", parts }],
     {
       generationConfig: {

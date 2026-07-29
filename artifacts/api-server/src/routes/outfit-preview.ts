@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   generateImageBuffer,
   generateImageFromReferences,
+  getGeminiImageModel,
 } from "@workspace/integrations-gemini-ai-server";
 
 const router = Router();
@@ -38,6 +39,29 @@ async function withGenerationTimeout<T>(operation: Promise<T>, timeoutMs = 70_00
     ]);
   } finally {
     if (timeout) clearTimeout(timeout);
+  }
+}
+
+/** Gemini 3.1 is the preferred high-fidelity preview engine. Some billing
+ * projects do not yet have it enabled, so retry exactly once with Gemini 2.5
+ * Flash Image, Google's stable low-latency image model, when access to the
+ * requested model itself is rejected. */
+async function generatePreviewWithModelFallback(
+  references: Array<{ imageBase64: string; imageMime: string }>,
+  prompt: string,
+) {
+  const create = (model: string) => references.length > 0
+    ? generateImageFromReferences(references, prompt, "1024x1536", model)
+    : generateImageBuffer(prompt, "1024x1536", model);
+
+  try {
+    return await withGenerationTimeout(create(getGeminiImageModel()));
+  } catch (error: unknown) {
+    const detail = error instanceof Error ? error.message : String(error);
+    const modelUnavailable = /404|not found|not supported|model.*(?:unavailable|access)/i.test(detail);
+    if (!modelUnavailable || getGeminiImageModel() === "gemini-2.5-flash-image") throw error;
+    console.warn("[outfit-preview] preferred image model unavailable; retrying stable fallback");
+    return withGenerationTimeout(create("gemini-2.5-flash-image"));
   }
 }
 
@@ -131,11 +155,7 @@ router.post("/outfit-preview", async (req, res) => {
   );
 
   try {
-    const image = await withGenerationTimeout(
-      references.length > 0
-        ? generateImageFromReferences(references, prompt, "1024x1536")
-        : generateImageBuffer(prompt, "1024x1536"),
-    );
+    const image = await generatePreviewWithModelFallback(references, prompt);
     res.json({
       image: image.toString("base64"),
       mimeType: "image/png",
