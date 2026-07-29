@@ -139,6 +139,8 @@ interface DetectedItem {
   _photoUri?: string;
   _photoBase64?: string;
   _photoMime?: string;
+  _photoIndex?: number;
+  _photoTotal?: number;
   _extractedUri?: string;
   _isDuplicate?: boolean;
   _duplicateOf?: { name: string; color: string; category: string; fabricWeight: string };
@@ -149,22 +151,6 @@ type ManualPhoto = {
   base64: string;
   mimeType: string;
 };
-
-function nameWords(n: string): Set<string> {
-  return new Set(n.toLowerCase().split(/\s+/).filter((w) => w.length > 2));
-}
-
-function isSimilarToWardrobe(
-  detected: DetectedItem,
-  existing: ClothingItem
-): boolean {
-  if (detected.category !== existing.category) return false;
-  if (detected.colorName.toLowerCase() !== existing.color.toLowerCase()) return false;
-  const da = nameWords(detected.name);
-  const db = nameWords(existing.name);
-  const shared = [...da].filter((w) => db.has(w));
-  return shared.length >= Math.max(1, Math.min(2, Math.floor(Math.min(da.size, db.size) * 0.5)));
-}
 
 /** Vision models often label the left and right sides of one pair separately.
  * Keep the pair as one wardrobe item, while preserving the useful shoe details. */
@@ -383,9 +369,15 @@ interface ItemPickerProps {
 function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss }: ItemPickerProps) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const [selected, setSelected] = useState<Set<number>>(
-    new Set(items.map((_, i) => i).filter((i) => !items[i]?._isDuplicate))
-  );
+  const [selected, setSelected] = useState<Set<number>>(() => new Set(items.map((_, i) => i)));
+
+  // The sheet stays mounted between scans. Reset every new batch so an old
+  // selection never hides items from the next multi-photo upload.
+  useEffect(() => {
+    if (visible) setSelected(new Set(items.map((_, index) => index)));
+  }, [items, visible]);
+
+  const photoCount = Math.max(1, ...items.map((item) => item._photoTotal ?? 1));
 
   const toggleSelect = (idx: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -418,6 +410,11 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
               <Text style={[styles.pickerTitle, { color: colors.foreground }]}>
                 {items.length} items detected
               </Text>
+              {photoCount > 1 ? (
+                <Text style={[styles.pickerSubtitle, { color: colors.mutedForeground }]}>
+                  Results from {photoCount} selected photos
+                </Text>
+              ) : null}
               <Text style={[styles.pickerSubtitle, { color: colors.mutedForeground }]}>
                 {items.filter((i) => i._isDuplicate).length > 0
                   ? `${items.filter((i) => i._isDuplicate).length} already in wardrobe · deselected`
@@ -595,7 +592,7 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
 export default function AddItemScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { addItem, addBulkItems, items: wardrobeItems } = useWardrobe();
+  const { addItem, addBulkItems } = useWardrobe();
   const { preferredCurrency } = useUserProfile();
 
   const [name, setName] = useState("");
@@ -845,19 +842,12 @@ export default function AddItemScreen() {
         return;
       }
 
-      const taggedItems = items.map((item) => {
-        const existingMatch = wardrobeItems.find((w) => isSimilarToWardrobe(item, w));
-        return {
-          ...item,
-          _photoUri: photoRef,
-          _photoBase64: base64,
-          _photoMime: mimeType,
-          _isDuplicate: !!existingMatch,
-          _duplicateOf: existingMatch
-            ? { name: existingMatch.name, color: existingMatch.color, category: existingMatch.category, fabricWeight: existingMatch.fabricWeight }
-            : undefined,
-        };
-      });
+      const taggedItems = items.map((item) => ({
+        ...item,
+        _photoUri: photoRef,
+        _photoBase64: base64,
+        _photoMime: mimeType,
+      }));
       setDetectedItems(taggedItems);
       setIsScanning(false);
       setScanDone(true);
@@ -982,16 +972,15 @@ export default function AddItemScreen() {
           // Do not discard items merely because they look similar to something
           // in another selected photo. The user must be able to see and decide
           // on every item found across the complete upload batch.
-          const wardrobeDup = wardrobeItems.find((w) => isSimilarToWardrobe(item, w));
           allItems.push({
             ...item,
-            _photoUri: asset.uri,
+            // Use the processed URI that was actually sent to AI. iPhone
+            // picker URIs can expire after another selected photo is opened.
+            _photoUri: compressed.uri,
             _photoBase64: compressed.base64,
             _photoMime: compressed.mimeType,
-            _isDuplicate: !!wardrobeDup,
-            _duplicateOf: wardrobeDup
-              ? { name: wardrobeDup.name, color: wardrobeDup.color, category: wardrobeDup.category, fabricWeight: wardrobeDup.fabricWeight }
-              : undefined,
+            _photoIndex: idx,
+            _photoTotal: assets.length,
           });
         }
       } catch {
@@ -1028,12 +1017,11 @@ export default function AddItemScreen() {
     }
 
     // ── Show picker immediately (non-blocking) ──
-    if (allItems.length === 1) {
-      applyDetectedItem(allItems[0]!);
-    } else {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setShowPicker(true);
-    }
+    // Always show the batch selector. Even when one photo yields one item,
+    // this proves every selected image was processed instead of silently
+    // opening the first result and making later photos feel lost.
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setShowPicker(true);
 
     // ── BG removal runs in background, updates cards silently ──
     // Background work is deferred until the customer saves an item.
@@ -1392,6 +1380,7 @@ export default function AddItemScreen() {
 
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Item name</Text>
+          <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>AI suggests a name. Edit it to any personal name you prefer.</Text>
           <TextInput
             value={name}
             onChangeText={setName}
