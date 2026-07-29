@@ -12,7 +12,7 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 }
 
 router.post("/remove-bg", async (req, res) => {
-  const { photoBase64, mimeType = "image/jpeg", itemName, category, colorName, material, brandLogo } = req.body as {
+  const { photoBase64, mimeType = "image/jpeg", itemName, category, colorName, material, brandLogo, locationHint } = req.body as {
     photoBase64?: string;
     mimeType?: string;
     itemName?: string;
@@ -20,6 +20,7 @@ router.post("/remove-bg", async (req, res) => {
     colorName?: string;
     material?: string;
     brandLogo?: { brand?: string; description?: string } | null;
+    locationHint?: string;
   };
 
   if (!photoBase64) {
@@ -36,6 +37,7 @@ router.post("/remove-bg", async (req, res) => {
       "Re-render it as an ultra-sharp 8K-quality retail asset: no blur, camera noise, pixelation, glare, muddy gradients, harsh shadows, or phone-camera artifacts. Use bright, clean, diffused professional studio lighting and natural, premium material detail.",
       "Make fabric look pristine, freshly steamed, ironed, lint-free, and wrinkle-free while preserving the garment's true construction. Leather should look smooth and high quality; cotton and knits should have clean, realistic texture.",
       brandLogo?.brand ? `Preserve the visible ${brandLogo.brand} mark exactly, in its real position and scale; do not invent extra branding.` : "Do not add any logo or branding not visible in the reference.",
+      locationHint ? `The requested item is specifically positioned as: ${locationHint}. Keep only that single item; do not return a second matching shoe, garment, or any person.` : "",
       "CRITICAL OUTPUT RULE: return ONLY one isolated product, never a model wearing it. If the source includes a mirror, person, selfie, hand, face, body, room, hanger, or other clothing, remove all of that completely and render only the named item.",
       "If multiple items appear, render ONLY the named item. Present it as a perfectly centered, upright, fully visible, symmetrical studio flat-lay or clean front-facing stock photo. The product must occupy about 70% of the canvas and have generous even margins: no cropping at any edge.",
       "Use a completely solid, clean, isolated warm off-white background with a subtle natural contact shadow only. No person, hands, face, body, hanger, room, labels, collage, duplicate item, or extra accessory. The final result must look ready for a premium fashion webshop catalog.",

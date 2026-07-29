@@ -275,19 +275,6 @@ async function removeBg(
   }
 }
 
-// Studio-product rendering is deliberately serialized.  Sending several
-// image-generation requests at once makes a small production server compete
-// for memory and makes every customer wait longer.  Saving an item remains
-// immediate; this queue quietly upgrades one saved image at a time.
-let studioUpgradeQueue: Promise<void> = Promise.resolve();
-
-function enqueueStudioUpgrade(task: () => Promise<void>): void {
-  studioUpgradeQueue = studioUpgradeQueue
-    .catch(() => undefined)
-    .then(task)
-    .catch(() => undefined);
-}
-
 async function compressForUpload(uri: string): Promise<{ uri: string; base64: string; mimeType: string }> {
   const result = await ImageManipulator.manipulateAsync(
     uri,
@@ -608,7 +595,7 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
 export default function AddItemScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { addItem, addBulkItems, updateItem, items: wardrobeItems } = useWardrobe();
+  const { addItem, addBulkItems, items: wardrobeItems } = useWardrobe();
   const { preferredCurrency } = useUserProfile();
 
   const [name, setName] = useState("");
@@ -635,6 +622,7 @@ export default function AddItemScreen() {
   const [manualPhotoQueue, setManualPhotoQueue] = useState<ManualPhoto[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [isRemovingBg, setIsRemovingBg] = useState(false);
+  const [saveProgress, setSaveProgress] = useState("Saving to wardrobe...");
   const [imageExtractionError, setImageExtractionError] = useState<string | null>(null);
   const [scanDone, setScanDone] = useState(false);
   const [scanPhotoIndex, setScanPhotoIndex] = useState(0);
@@ -671,26 +659,18 @@ export default function AddItemScreen() {
     setPurchasePrice("");
   };
 
-  const upgradeSavedItemImage = (item: DetectedItem, itemId: string) => {
-    if (item._extractedUri) {
-      void updateItem(itemId, { imageUri: item._extractedUri });
-      return;
-    }
-    if (!item._photoBase64) return;
+  const createCleanProductImage = async (item: DetectedItem): Promise<string | undefined> => {
+    if (item._extractedUri) return item._extractedUri;
+    if (!item._photoBase64) return item._photoUri;
     const color = resolveColor(item.colorName, item.colorHex);
-    // The premium studio image is optional work after Save. It never holds
-    // the customer on this screen or prevents the wardrobe from opening.
-    enqueueStudioUpgrade(async () => {
-      try {
-        const cleanUri = await removeBg(
-          item.name, item.category, color.name, color.hex, item.material,
-          item.brandLogo, item._photoBase64, item._photoMime,
-        );
-        if (cleanUri) await updateItem(itemId, { imageUri: cleanUri });
-      } catch {
-        // Keep the compact original photo if generation is temporarily busy.
-      }
-    });
+    const cleanUri = await removeBg(
+      item.name, item.category, color.name, color.hex, item.material,
+      item.brandLogo, item._photoBase64, item._photoMime, item.locationHint,
+    );
+    if (!cleanUri) {
+      throw new Error("The clean product image was not returned. Please try again.");
+    }
+    return cleanUri;
   };
 
   const scanScale = useSharedValue(1);
@@ -773,11 +753,14 @@ export default function AddItemScreen() {
     if (items.length === 0) return;
     setShowPicker(false);
     setIsSaving(true);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const savedItems = await addBulkItems(
-      items.map((item) => {
+    try {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const preparedItems: Array<Omit<ClothingItem, "id" | "createdAt" | "timesWorn">> = [];
+      for (const [index, item] of items.entries()) {
+        setSaveProgress(`Preparing clean product image ${index + 1} of ${items.length}...`);
+        const imageUri = await createCleanProductImage(item);
         const color = resolveColor(item.colorName, item.colorHex);
-        return {
+        preparedItems.push({
           name: item.name,
           category: item.category,
           color: color.name,
@@ -788,16 +771,23 @@ export default function AddItemScreen() {
           fabricWeight: item.fabricWeight ?? "medium",
           isWorkwear: false,
           tags: item.tags.length > 0 ? item.tags : [item.category],
-          // Save a compact image immediately. The premium product image is
-          // generated after this screen has already finished its work.
-          imageUri: item._extractedUri ?? item._photoUri ?? undefined,
+          imageUri,
           brandLogo: item.brandLogo ?? undefined,
-        };
-      })
-    );
-    savedItems.forEach((savedItem, index) => upgradeSavedItemImage(items[index]!, savedItem.id));
-    setIsSaving(false);
-    leaveAddItem();
+        });
+      }
+      setSaveProgress("Saving clean items to your wardrobe...");
+      await addBulkItems(preparedItems);
+      leaveAddItem();
+    } catch (error) {
+      setShowPicker(true);
+      Alert.alert(
+        "Clean product image unavailable",
+        error instanceof Error ? error.message : "Please try again."
+      );
+    } finally {
+      setIsSaving(false);
+      setSaveProgress("Saving to wardrobe...");
+    }
   };
 
   const handlePickerDismiss = () => {
@@ -1114,26 +1104,27 @@ export default function AddItemScreen() {
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       const price = priceNumber(purchasePrice);
-      const savedItem = await addItem({
+      let imageUri = extractedItemUri ?? compressedPhotoUri ?? scannedImage ?? undefined;
+      if (!extractedItemUri && scanPhotoBase64) {
+        setSaveProgress("Creating your clean product image...");
+        imageUri = await createCleanProductImage({
+          name: name.trim(), category, colorName: selectedColor.name,
+          colorHex: selectedColor.hex, material, fabricWeight, seasons,
+          tags: tagsForSave(), brandLogo, locationHint: itemLocationHint,
+          _photoBase64: scanPhotoBase64, _photoMime: scanPhotoMime,
+          _photoUri: compressedPhotoUri ?? scannedImage ?? undefined,
+        });
+      }
+      setSaveProgress("Saving to wardrobe...");
+      await addItem({
         name: name.trim(), category, color: selectedColor.name, colorHex: selectedColor.hex,
         seasons, fabricWeight, isWorkwear,
         purchasePrice: !isNaN(price) && price > 0 ? price : undefined,
         purchaseCurrency: !isNaN(price) && price > 0 ? purchaseCurrency : undefined,
         tags: tagsForSave(),
-        // The item is saved immediately. Its studio product image replaces
-        // this compact source photo in the background.
-        imageUri: extractedItemUri ?? compressedPhotoUri ?? scannedImage ?? undefined,
+        imageUri,
         brandLogo: brandLogo ?? undefined,
       });
-      if (savedItem && scanPhotoBase64) {
-        upgradeSavedItemImage({
-          name: name.trim(), category, colorName: selectedColor.name,
-          colorHex: selectedColor.hex, material, fabricWeight, seasons,
-          tags: tagsForSave(), brandLogo, locationHint: itemLocationHint,
-          _photoBase64: scanPhotoBase64, _photoMime: scanPhotoMime,
-          _extractedUri: extractedItemUri ?? undefined,
-        }, savedItem.id);
-      }
       const [nextPhoto, ...remainingPhotos] = manualPhotoQueue;
       if (nextPhoto) {
         setManualPhotoQueue(remainingPhotos);
@@ -1146,10 +1137,11 @@ export default function AddItemScreen() {
       }
       leaveAddItem();
     } catch (error) {
-      Alert.alert("Could not save item", error instanceof Error ? error.message : "Please try again.");
+      Alert.alert("Could not create clean product image", error instanceof Error ? error.message : "Please try again.");
     } finally {
       setIsRemovingBg(false);
       setIsSaving(false);
+      setSaveProgress("Saving to wardrobe...");
     }
   };
 
@@ -1157,7 +1149,7 @@ export default function AddItemScreen() {
     return (
       <View style={[styles.root, { backgroundColor: colors.background, alignItems: "center", justifyContent: "center", gap: 16 }]}>
         <ActivityIndicator size="large" color={colors.accent} />
-        <Text style={[styles.savingText, { color: colors.mutedForeground }]}>Saving to wardrobe...</Text>
+        <Text style={[styles.savingText, { color: colors.mutedForeground }]}>{saveProgress}</Text>
       </View>
     );
   }
