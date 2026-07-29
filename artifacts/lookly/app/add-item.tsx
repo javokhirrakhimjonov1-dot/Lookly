@@ -755,7 +755,10 @@ export default function AddItemScreen() {
   };
 
   const handlePickerAddAll = async (items: DetectedItem[]) => {
-    if (items.length === 0) return;
+    // Prevent a second tap from starting a competing save while the first
+    // extraction is still running. Competing requests used to make the picker
+    // appear again on mobile, which felt like an endless selection loop.
+    if (items.length === 0 || isSaving) return;
     setShowPicker(false);
     setIsSaving(true);
     try {
@@ -782,12 +785,21 @@ export default function AddItemScreen() {
       }
       setSaveProgress("Saving clean items to your wardrobe...");
       await addBulkItems(preparedItems);
+      // Clear the completed scan before leaving. This also prevents a stale
+      // picker from being restored if navigation is briefly delayed on mobile.
+      setDetectedItems([]);
+      setScanDone(false);
       leaveAddItem();
     } catch (error) {
-      setShowPicker(true);
+      const message = error instanceof Error ? error.message : "Please try again.";
+      // Do not send the person back into selection automatically. Nothing was
+      // saved, so they can clearly see the error and choose to scan again.
+      setDetectedItems([]);
+      setScanDone(false);
+      setImageExtractionError(message);
       Alert.alert(
         "Clean product image unavailable",
-        error instanceof Error ? error.message : "Please try again."
+        `${message}\n\nNo items were saved. Tap Scan with AI to try again.`
       );
     } finally {
       setIsSaving(false);
