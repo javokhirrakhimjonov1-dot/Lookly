@@ -36,10 +36,12 @@ function WeatherAtmosphere({
   code,
   temperature,
   windSpeed,
+  isNight,
 }: {
   code: number;
   temperature: number;
   windSpeed: number;
+  isNight: boolean;
 }) {
   const scene = getWeatherScene(code, temperature, windSpeed);
   const pulse = useRef(new Animated.Value(0)).current;
@@ -70,13 +72,29 @@ function WeatherAtmosphere({
   const fallY = fall.interpolate({ inputRange: [0, 1], outputRange: [-18, 160] });
   const glowScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1.12] });
   const glowOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.34, 0.62] });
+  const rayX = drift.interpolate({ inputRange: [0, 1], outputRange: [-30, 24] });
+  const rainImpactScale = fall.interpolate({ inputRange: [0, 0.72, 0.93, 1], outputRange: [0.55, 0.55, 1.22, 1.38] });
+  const rainImpactOpacity = fall.interpolate({ inputRange: [0, 0.72, 0.93, 1], outputRange: [0, 0, 0.64, 0] });
 
   return (
     <View pointerEvents="none" style={styles.atmosphere}>
-      {(scene === "sun" || scene === "heat") && (
+      {isNight && (
+        <>
+          <View style={styles.nightShade} />
+          <Animated.View style={[styles.moonGlow, { opacity: glowOpacity, transform: [{ scale: glowScale }] }]} />
+          <View style={styles.moon} />
+          {Array.from({ length: 16 }, (_, index) => (
+            <Animated.View key={`star-${index}`} style={[styles.star, { left: `${5 + ((index * 23) % 92)}%`, top: 8 + ((index * 31) % 70), opacity: index % 3 === 0 ? glowOpacity : 0.52 }]} />
+          ))}
+        </>
+      )}
+      {(scene === "sun" || scene === "heat") && !isNight && (
         <>
           <Animated.View style={[styles.sunGlow, scene === "heat" && styles.heatGlow, { opacity: glowOpacity, transform: [{ scale: glowScale }] }]} />
           <Animated.View style={[styles.sunRing, { transform: [{ scale: glowScale }] }]} />
+          <Animated.View style={[styles.sunRays, { opacity: glowOpacity, transform: [{ translateX: rayX }] }]}>
+            <View style={[styles.sunRay, styles.sunRayOne]} /><View style={[styles.sunRay, styles.sunRayTwo]} /><View style={[styles.sunRay, styles.sunRayThree]} /><View style={[styles.sunRay, styles.sunRayFour]} />
+          </Animated.View>
         </>
       )}
 
@@ -97,6 +115,7 @@ function WeatherAtmosphere({
       )}
 
       {(scene === "rain" || scene === "snow") && (
+        <>
         <Animated.View style={[styles.precipitation, { transform: [{ translateY: fallY }] }]}>
           {Array.from({ length: 13 }, (_, index) => (
             <View
@@ -112,6 +131,8 @@ function WeatherAtmosphere({
             />
           ))}
         </Animated.View>
+        {scene === "rain" && <><Animated.View style={[styles.rainImpact, styles.rainImpactOne, { opacity: rainImpactOpacity, transform: [{ scaleX: rainImpactScale }] }]} /><Animated.View style={[styles.rainImpact, styles.rainImpactTwo, { opacity: rainImpactOpacity, transform: [{ scaleX: rainImpactScale }] }]} /><Animated.View style={[styles.rainImpact, styles.rainImpactThree, { opacity: rainImpactOpacity, transform: [{ scaleX: rainImpactScale }] }]} /></>}
+        </>
       )}
     </View>
   );
@@ -141,13 +162,14 @@ export default function WeatherWidget() {
   };
 
   const scene = getWeatherScene(weather.weatherCode, weather.temperature, weather.windSpeed);
-  const sceneImage = scene === "sun" || scene === "heat" ? weatherScenes.sunny : weatherScenes.moody;
+  const isNight = new Date().getHours() >= 19 || new Date().getHours() < 6;
+  const sceneImage = !isNight && (scene === "sun" || scene === "heat") ? weatherScenes.sunny : weatherScenes.moody;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.primary }]}>
       <Image source={sceneImage} resizeMode="cover" style={styles.sceneImage} />
       <View style={styles.sceneShade} />
-      <WeatherAtmosphere code={weather.weatherCode} temperature={weather.temperature} windSpeed={weather.windSpeed} />
+      <WeatherAtmosphere code={weather.weatherCode} temperature={weather.temperature} windSpeed={weather.windSpeed} isNight={isNight} />
       <View style={styles.left}>
         <Text style={[styles.city, { color: colors.primaryForeground, opacity: 0.7 }]}>
           Tashkent
@@ -161,11 +183,6 @@ export default function WeatherWidget() {
       </View>
       <View style={styles.right}>
         <WeatherIcon code={weather.weatherCode} color={colors.primaryForeground} size={42} />
-        <View style={[styles.tipBox, { backgroundColor: "rgba(255,255,255,0.12)" }]}>
-          <Text style={[styles.tipText, { color: colors.primaryForeground }]}>
-            {getOutfitTip(weather.temperature, weather.weatherCode)}
-          </Text>
-        </View>
         <View style={styles.statRow}>
           <View style={styles.stat}>
             <Feather name="droplet" size={11} color={colors.primaryForeground} style={{ opacity: 0.7 }} />
@@ -201,6 +218,10 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(10, 18, 27, 0.34)",
   },
+  nightShade: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(2, 10, 28, 0.58)" },
+  moonGlow: { position: "absolute", width: 104, height: 104, borderRadius: 999, right: 24, top: -22, backgroundColor: "rgba(215, 231, 255, 0.18)" },
+  moon: { position: "absolute", width: 38, height: 38, borderRadius: 999, right: 57, top: 12, backgroundColor: "rgba(248, 245, 220, 0.92)" },
+  star: { position: "absolute", width: 2, height: 2, borderRadius: 999, backgroundColor: "#FFFFFF" },
   atmosphere: {
     ...StyleSheet.absoluteFillObject,
     overflow: "hidden",
@@ -231,6 +252,12 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 240, 196, 0.22)",
     borderRadius: 999,
   },
+  sunRays: { position: "absolute", width: 310, height: 210, right: -116, top: -72, transform: [{ rotate: "-21deg" }] },
+  sunRay: { position: "absolute", height: 16, borderRadius: 999, backgroundColor: "rgba(255, 227, 153, 0.13)" },
+  sunRayOne: { width: 250, top: 4, right: -12 },
+  sunRayTwo: { width: 210, top: 52, right: 8 },
+  sunRayThree: { width: 286, top: 100, right: -18 },
+  sunRayFour: { width: 164, top: 148, right: 28 },
   cloudGroup: {
     position: "absolute",
     right: -34,
@@ -311,6 +338,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "rgba(247, 251, 255, 0.9)",
   },
+  rainImpact: { position: "absolute", width: 42, height: 8, bottom: 13, borderWidth: 1, borderColor: "rgba(211, 237, 255, 0.85)", borderRadius: 999 },
+  rainImpactOne: { left: "15%" },
+  rainImpactTwo: { left: "50%", bottom: 31 },
+  rainImpactThree: { right: "11%", bottom: 21 },
   left: {
     flex: 1,
     gap: 2,

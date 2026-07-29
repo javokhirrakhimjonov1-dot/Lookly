@@ -321,7 +321,7 @@ function OutfitCard({
             <Text style={[styles.generatingText, { color: colors.mutedForeground }]}>
               {canGeneratePreview ? "Your weather-ready look is ready" : "A complete weather-safe look needs more items"}
             </Text>
-            <Text style={[styles.categoryLine, { color: colors.mutedForeground }]} numberOfLines={2}>
+            <Text style={[styles.categoryLine, { color: colors.mutedForeground, display: "none" }]} numberOfLines={2}>
               {resolvedItems.map((item) => item.name).join(" · ")}
             </Text>
           </View>
@@ -329,7 +329,7 @@ function OutfitCard({
           <View style={styles.instantFallback}>
             <Feather name="layers" size={32} color={colors.border} />
             <Text style={[styles.generatingText, { color: colors.mutedForeground }]}>{t("ob_outfit_pieces")}</Text>
-            <Text style={[styles.categoryLine, { color: colors.mutedForeground }]} numberOfLines={2}>
+            <Text style={[styles.categoryLine, { color: colors.mutedForeground, display: "none" }]} numberOfLines={2}>
               {resolvedItems.map((item) => item.name).join(" · ")}
             </Text>
           </View>
