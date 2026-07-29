@@ -148,8 +148,13 @@ function shopWeatherReason(item: ShopProduct, tier: TempTier, hasRain: boolean):
 }
 
 function shopSuggestions(kind: ShopKind, count: number, tier: TempTier, hasRain: boolean): ShopProduct[] {
+  const weatherNeedsProtectedFootwear = kind === "shoes" && (hasRain || tier === "freezing" || tier === "cold" || tier === "cool");
   return SHOP_PRODUCTS
     .filter((item) => item.kind === kind)
+    // Do not offer sandals as a substitute for a shoe the forecast needs to
+    // protect. It is better to show no shop footwear than to make a dishonest
+    // recommendation while we have no verified closed-toe catalog item.
+    .filter((item) => !weatherNeedsProtectedFootwear || !/sandal|slide|open-toe|flip.?flop/i.test(item.name))
     .slice(0, Math.max(0, count))
     .map((item) => ({ ...item, weatherReason: shopWeatherReason(item, tier, hasRain) }));
 }
