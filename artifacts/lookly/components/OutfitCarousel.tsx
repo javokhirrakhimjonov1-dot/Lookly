@@ -67,7 +67,65 @@ interface Outfit {
   name: string;
   mood: string;
   weatherNote?: string | null;
+  isComplete?: boolean;
   items: OutfitItem[];
+}
+
+type ImageReference = { imageBase64: string; imageMime: string };
+
+async function imageUriToReference(uri?: string): Promise<ImageReference | null> {
+  if (!uri) return null;
+  if (uri.startsWith("data:")) {
+    const [header, imageBase64 = ""] = uri.split(",", 2);
+    const imageMime = header.match(/^data:([^;]+)/)?.[1] ?? "image/png";
+    return imageBase64 ? { imageBase64, imageMime } : null;
+  }
+  try {
+    const response = await fetch(uri);
+    if (!response.ok) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    let binary = "";
+    for (let index = 0; index < bytes.length; index += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+    }
+    return {
+      imageBase64: globalThis.btoa(binary),
+      imageMime: response.headers.get("content-type")?.split(";")[0] || "image/png",
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function generateTodayPreview(
+  items: ClothingItem[], weather: string, temperature: number,
+  bodyPhotoBase64: string | null, bodyPhotoMime: string,
+  gender: string | null, age: number | null, mood: string,
+): Promise<string> {
+  const itemImages = (await Promise.all(items.map((item) => imageUriToReference(item.imageUri))))
+    .filter((image): image is ImageReference => !!image);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 80_000);
+  try {
+    const response = await fetch(`${API_BASE}/outfit-preview`, {
+      method: "POST",
+      headers: await apiAuthHeaders(),
+      signal: controller.signal,
+      body: JSON.stringify({
+        items: items.map((item) => ({ name: item.name, color: item.color, colorHex: item.colorHex, category: item.category })),
+        weather, temperature, mood,
+        userBodyPhotoBase64: bodyPhotoBase64 ?? undefined,
+        userBodyPhotoMime: bodyPhotoBase64 ? bodyPhotoMime : undefined,
+        userGender: gender ?? undefined, userAge: age ?? undefined, itemImages,
+      }),
+    });
+    if (!response.ok) throw new Error(`Preview unavailable (${response.status})`);
+    const data = await response.json() as { image?: string; mimeType?: string };
+    if (!data.image) throw new Error("Preview response contained no image");
+    return `data:${data.mimeType || "image/png"};base64,${data.image}`;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 interface SquadModalProps {
@@ -194,6 +252,7 @@ function OutfitCard({
   weatherDesc,
   cardWidth,
   cardH,
+  autoPreview,
 }: {
   outfit: Outfit;
   wardrobeMap: Map<string, ClothingItem>;
@@ -201,16 +260,17 @@ function OutfitCard({
   weatherDesc: string;
   cardWidth: number;
   cardH: number;
+  autoPreview: boolean;
 }) {
   const colors = useColors();
   const { t } = useLanguage();
   const { createPoll } = useSquadVote();
   const moodColor = MOOD_COLORS[outfit.mood] ?? colors.accent;
-  // Home cards stay instant. A paid AI preview is requested only after the
-  // person taps Build Look, where it can use the exact selected outfit.
-  const [previewImage] = useState<string | null>(null);
-  const [isGenerating] = useState(false);
-  const [genFailed] = useState(false);
+  const { bodyPhotoBase64, bodyPhotoMime, gender, age } = useUserProfile();
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [genFailed, setGenFailed] = useState(false);
+  const previewStartedFor = useRef<string | null>(null);
   const [showSquadModal, setShowSquadModal] = useState(false);
   const [pollSent, setPollSent] = useState(false);
 
@@ -218,6 +278,21 @@ function OutfitCard({
     .map((oi) => wardrobeMap.get(oi.itemId))
     .filter((i): i is ClothingItem => !!i);
   const itemImages = resolvedItems.filter((item) => !!item.imageUri).slice(0, 3);
+  const outfitKey = resolvedItems.map((item) => item.id).sort().join("|");
+  const canGeneratePreview = autoPreview && outfit.isComplete !== false && resolvedItems.length >= 2;
+
+  useEffect(() => {
+    if (!canGeneratePreview || !outfitKey || previewStartedFor.current === outfitKey) return;
+    previewStartedFor.current = outfitKey;
+    let cancelled = false;
+    setIsGenerating(true);
+    setGenFailed(false);
+    void generateTodayPreview(resolvedItems, weatherDesc, temperature, bodyPhotoBase64, bodyPhotoMime, gender, age, outfit.mood)
+      .then((image) => { if (!cancelled) setPreviewImage(image); })
+      .catch(() => { if (!cancelled) setGenFailed(true); })
+      .finally(() => { if (!cancelled) setIsGenerating(false); });
+    return () => { cancelled = true; };
+  }, [age, bodyPhotoBase64, bodyPhotoMime, canGeneratePreview, gender, outfit.mood, outfitKey, resolvedItems, temperature, weatherDesc]);
 
   const handleSendToSquad = async (friendNames: string[]) => {
     const pollItems: PollOutfitData["items"] = resolvedItems.map((i) => ({
@@ -249,7 +324,9 @@ function OutfitCard({
         {itemImages.length > 0 ? (
           <View style={styles.instantFallback}>
             <Feather name="user" size={34} color={colors.border} />
-            <Text style={[styles.generatingText, { color: colors.mutedForeground }]}>Ready for your model preview</Text>
+            <Text style={[styles.generatingText, { color: colors.mutedForeground }]}>
+              {canGeneratePreview ? "Creating today’s model preview" : "A complete weather-safe look needs more items"}
+            </Text>
             <Text style={[styles.categoryLine, { color: colors.mutedForeground }]} numberOfLines={2}>
               {resolvedItems.map((item) => item.name).join(" · ")}
             </Text>
@@ -497,6 +574,7 @@ export default function OutfitCarousel() {
                 weatherDesc={wDesc}
                 cardWidth={cardWidth}
                 cardH={cardH}
+                autoPreview={i === 0}
               />
             ))}
           </ScrollView>
