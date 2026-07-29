@@ -79,6 +79,7 @@ interface ShopProduct {
   imageUrl: string;
   productUrl: string;
   priceUz: number;
+  weatherReason?: string;
 }
 
 const SHOP_PRODUCTS: ShopProduct[] = [
@@ -94,8 +95,48 @@ const SHOP_PRODUCTS: ShopProduct[] = [
   { id: "terra-tee-classic", kind: "tops", name: "TerraPro premium T-shirt", store: "TerraPro", priceUz: 199990, productUrl: "https://terrapro.uz/catalog/futbolka_1/147980/", imageUrl: "https://terrapro.uz/upload/iblock/f35/jju0l8thz0qdi5jnqak7gcpkkup8cc5m/optimized_SS24CL2-25-19784%20%201.jpg" },
 ];
 
-function shopSuggestions(kind: ShopKind, count: number): ShopProduct[] {
-  return SHOP_PRODUCTS.filter((item) => item.kind === kind).slice(0, Math.max(0, count));
+/** Explain the practical weather benefit without guessing unverified product specs. */
+function shopWeatherReason(item: ShopProduct, tier: TempTier, hasRain: boolean): string {
+  const productName = item.name.toLowerCase();
+
+  if (hasRain) {
+    if (item.kind === "shoes") return "Closed-toe coverage is a safer choice for wet streets.";
+    if (item.kind === "outerwear") return "An extra layer helps when rain and cooler air arrive.";
+    if (item.kind === "bottoms") return "Full-length coverage is more practical for wet, changeable days.";
+    return "A useful layer for changeable, rainy weather.";
+  }
+
+  if (tier === "hot" || tier === "warm") {
+    if (productName.includes("linen") || productName.includes("lightweight")) {
+      return "Its light feel helps air circulate in warm weather.";
+    }
+    if (item.kind === "tops") return "Short sleeves keep this option comfortable in the heat.";
+    if (item.kind === "shoes") return "A closed-toe everyday option for walking while keeping the look light.";
+    if (item.kind === "bottoms") return "A lighter full-length option for warm days and cooler evenings.";
+    return "A practical finishing piece for warm-weather outfits.";
+  }
+
+  if (tier === "freezing" || tier === "cold") {
+    if (item.kind === "outerwear") return "An extra layer helps retain warmth in cold air.";
+    if (item.kind === "bottoms") return "Full-length coverage gives more comfort when temperatures drop.";
+    if (item.kind === "shoes") return "Closed-toe coverage is more comfortable in cold conditions.";
+    return "A useful piece for building a warmer outfit.";
+  }
+
+  if (tier === "cool") {
+    if (item.kind === "outerwear") return "Easy to layer on cool mornings and take off later.";
+    if (item.kind === "bottoms") return "Full-length coverage works well through a cool day.";
+    return "A versatile choice for mild, layered weather.";
+  }
+
+  return "A flexible choice for comfortable daytime-to-evening weather.";
+}
+
+function shopSuggestions(kind: ShopKind, count: number, tier: TempTier, hasRain: boolean): ShopProduct[] {
+  return SHOP_PRODUCTS
+    .filter((item) => item.kind === kind)
+    .slice(0, Math.max(0, count))
+    .map((item) => ({ ...item, weatherReason: shopWeatherReason(item, tier, hasRain) }));
 }
 
 /** Treat unclear footwear as unsuitable for rainy or cool-weather packing. */
@@ -255,7 +296,7 @@ function generatePackingList(
     needed: topsNeeded,
     reason: `${topsNeeded} tops for ${days} days at ${Math.round(avgHigh)}°C avg`,
     fromWardrobe: tops.slice(0, topsNeeded),
-    needToBuy: shopSuggestions("tops", topsNeeded - tops.length),
+    needToBuy: shopSuggestions("tops", topsNeeded - tops.length, tripTier, hasRain),
   });
 
   result.push({
@@ -264,7 +305,7 @@ function generatePackingList(
     needed: bottomsNeeded,
     reason: `${bottomsNeeded} bottoms for the trip`,
     fromWardrobe: [...bottoms, ...dresses].slice(0, bottomsNeeded),
-    needToBuy: shopSuggestions("bottoms", bottomsNeeded - bottoms.length - dresses.length),
+    needToBuy: shopSuggestions("bottoms", bottomsNeeded - bottoms.length - dresses.length, tripTier, hasRain),
   });
 
   if (needsOuterwear && outerNeeded > 0) {
@@ -274,7 +315,7 @@ function generatePackingList(
       needed: outerNeeded,
       reason: needsHeavy ? "Heavy coat required — lows below 10°C" : "Light jacket for cool evenings",
       fromWardrobe: outer.slice(0, outerNeeded),
-      needToBuy: shopSuggestions("outerwear", outerNeeded - outer.length),
+      needToBuy: shopSuggestions("outerwear", outerNeeded - outer.length, tripTier, hasRain),
     });
   }
 
@@ -284,7 +325,7 @@ function generatePackingList(
     needed: shoesNeeded,
     reason: `${shoesNeeded} pairs — ${isHot ? "sandals / sneakers for heat" : "closed-toe for cooler temps"}`,
     fromWardrobe: shoes.slice(0, shoesNeeded),
-    needToBuy: shopSuggestions("shoes", shoesNeeded - shoes.length),
+    needToBuy: shopSuggestions("shoes", shoesNeeded - shoes.length, tripTier, hasRain),
   });
 
   if (hasRain) {
@@ -306,7 +347,7 @@ function generatePackingList(
     needed: Math.min(access.length, 3),
     reason: "Scarves, belts, bags for variety",
     fromWardrobe: access.slice(0, 3),
-    needToBuy: access.length === 0 ? shopSuggestions("accessories", 2) : [],
+    needToBuy: access.length === 0 ? shopSuggestions("accessories", 2, tripTier, hasRain) : [],
   });
 
   return result;
@@ -1054,6 +1095,7 @@ export default function PackTripScreen() {
                             <View style={styles.buyCardCopy}>
                               <Text style={styles.buyCardText} numberOfLines={2}>{item.name}</Text>
                               <Text style={styles.buyCardMeta}>{item.store} · {item.priceUz.toLocaleString("en-US")} UZS</Text>
+                              <Text style={styles.buyCardReason} numberOfLines={3}>{item.weatherReason}</Text>
                             </View>
                           </View>
                         </Pressable>
@@ -1156,5 +1198,6 @@ const styles = StyleSheet.create({
   },
   buyCardCopy: { flex: 1, gap: 3 },
   buyCardText: { flex: 1, fontSize: 11, fontWeight: "600", color: "#92400E", lineHeight: 15 },
+  buyCardReason: { fontSize: 9, lineHeight: 13, color: "#7C5A35" },
   buyCardMeta: { fontSize: 9, fontWeight: "500", color: "#A16207" },
 });
