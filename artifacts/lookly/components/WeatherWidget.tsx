@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import React, { useEffect, useRef } from "react";
-import { ActivityIndicator, Animated, Easing, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Animated, Easing, Image, ImageSourcePropType, StyleSheet, Text, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import { useWeather } from "@/contexts/WeatherContext";
 
@@ -17,6 +17,11 @@ function WeatherIcon({ code, color, size = 28 }: { code: number; color: string; 
 }
 
 type WeatherScene = "sun" | "heat" | "cloud" | "rain" | "snow" | "wind";
+
+const weatherScenes: Record<"sunny" | "moody", ImageSourcePropType> = {
+  sunny: require("@/assets/images/weather-sun-city.png"),
+  moody: require("@/assets/images/weather-cloud-city.png"),
+};
 
 function getWeatherScene(code: number, temperature: number, windSpeed: number): WeatherScene {
   if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) return "snow";
@@ -135,8 +140,13 @@ export default function WeatherWidget() {
     return "Full winter armour today";
   };
 
+  const scene = getWeatherScene(weather.weatherCode, weather.temperature, weather.windSpeed);
+  const sceneImage = scene === "sun" || scene === "heat" ? weatherScenes.sunny : weatherScenes.moody;
+
   return (
     <View style={[styles.container, { backgroundColor: colors.primary }]}>
+      <Image source={sceneImage} resizeMode="cover" style={styles.sceneImage} />
+      <View style={styles.sceneShade} />
       <WeatherAtmosphere code={weather.weatherCode} temperature={weather.temperature} windSpeed={weather.windSpeed} />
       <View style={styles.left}>
         <Text style={[styles.city, { color: colors.primaryForeground, opacity: 0.7 }]}>
@@ -181,6 +191,15 @@ const styles = StyleSheet.create({
     minHeight: 140,
     overflow: "hidden",
     position: "relative",
+  },
+  sceneImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: undefined,
+    height: undefined,
+  },
+  sceneShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(10, 18, 27, 0.34)",
   },
   atmosphere: {
     ...StyleSheet.absoluteFillObject,
@@ -296,6 +315,7 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
     zIndex: 1,
+    textShadowColor: "rgba(0,0,0,0.32)",
   },
   right: {
     alignItems: "flex-end",
@@ -322,6 +342,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     maxWidth: 160,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
   },
   tipText: {
     fontSize: 12,
