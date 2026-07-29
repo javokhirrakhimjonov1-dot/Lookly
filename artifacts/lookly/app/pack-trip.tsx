@@ -90,7 +90,9 @@ const SHOP_PRODUCTS: ShopProduct[] = [
   { id: "just-trousers", kind: "bottoms", name: "Classic trousers", store: "Just2010", priceUz: 199900, productUrl: "https://just2010.uz/catalog/bryuki_1/483373/", imageUrl: "https://just2010.uz/upload/iblock/88f/jv85t9zle49ocxtfkc4aqce2m6vqtdso.jpg" },
   { id: "just-jeans", kind: "bottoms", name: "Straight-fit jeans", store: "Just2010", priceUz: 189900, productUrl: "https://just2010.uz/catalog/dzhinsy/489426/", imageUrl: "https://just2010.uz/upload/iblock/e39/uetul3n9nbgxc5057bbs3ly70c6o5896.jpg" },
   { id: "just-chinos", kind: "bottoms", name: "Lightweight chinos", store: "Just2010", priceUz: 199900, productUrl: "https://just2010.uz/catalog/chinosy/489431/", imageUrl: "https://just2010.uz/upload/iblock/346/x3q1i44qotpcmq2mg0as3ysaknnpijyc.jpg" },
-  { id: "just-shoes", kind: "shoes", name: "Everyday closed-toe shoes", store: "Just2010", priceUz: 239900, productUrl: "https://just2010.uz/catalog/obuv/489440/", imageUrl: "https://just2010.uz/upload/iblock/ba8/pwgayysbwib6m4bl4b4gsf04go7usmev.jpg" },
+  // The supplier image is an open sandal. Its name must match the actual product
+  // so we never promise closed-toe rain protection for an open-toe shoe.
+  { id: "just-shoes", kind: "shoes", name: "Everyday open-toe sandals", store: "Just2010", priceUz: 239900, productUrl: "https://just2010.uz/catalog/obuv/489440/", imageUrl: "https://just2010.uz/upload/iblock/ba8/pwgayysbwib6m4bl4b4gsf04go7usmev.jpg" },
   { id: "just-belt", kind: "accessories", name: "Leather belt", store: "Just2010", priceUz: 109900, productUrl: "https://just2010.uz/catalog/sumki_i_aksessuary/484185/", imageUrl: "https://just2010.uz/upload/iblock/480/fm6bu21y4wx5bk7fm5bhuz8b3rpu9nmb.jpg" },
   { id: "terra-tee-black", kind: "tops", name: "TerraPro cotton T-shirt", store: "TerraPro", priceUz: 149990, productUrl: "https://terrapro.uz/catalog/futbolka_1/149031/", imageUrl: "https://terrapro.uz/upload/iblock/251/tt1cosm0942zjyr3gsf1wkotk40ruvgi/optimized_SS24CR2-25-20246%201.jpg" },
   { id: "terra-tee-light", kind: "tops", name: "TerraPro short-sleeve tee", store: "TerraPro", priceUz: 199990, productUrl: "https://terrapro.uz/catalog/futbolka_1/210168/", imageUrl: "https://terrapro.uz/upload/iblock/3e0/8hkcebjf32unt917j3mv4buup9reg68o.jpg" },
@@ -100,21 +102,32 @@ const SHOP_PRODUCTS: ShopProduct[] = [
 /** Explain the practical weather benefit without guessing unverified product specs. */
 function shopWeatherReason(item: ShopProduct, tier: TempTier, hasRain: boolean): string {
   const productName = item.name.toLowerCase();
+  const openToe = /sandal|slide|open-toe|flip.?flop/.test(productName);
 
   if (hasRain) {
-    if (item.kind === "shoes") return "Closed-toe coverage is a safer choice for wet streets.";
+    if (item.kind === "shoes") {
+      return openToe
+        ? "Best saved for the dry parts of the trip; open toes are not ideal on wet streets."
+        : "Closed-toe coverage is a safer choice for wet streets.";
+    }
     if (item.kind === "outerwear") return "An extra layer helps when rain and cooler air arrive.";
     if (item.kind === "bottoms") return "Full-length coverage is more practical for wet, changeable days.";
-    return "A useful layer for changeable, rainy weather.";
+    if (productName.includes("cotton")) return "A breathable base layer that can be paired with a light rain shell.";
+    if (productName.includes("short-sleeve")) return "A light option for dry breaks between showers; add a shell if needed.";
+    return "A flexible top for layering when conditions change.";
   }
 
   if (tier === "hot" || tier === "warm") {
     if (productName.includes("linen") || productName.includes("lightweight")) {
       return "Its light feel helps air circulate in warm weather.";
     }
-    if (item.kind === "tops") return "Short sleeves keep this option comfortable in the heat.";
-    if (item.kind === "shoes") return "A closed-toe everyday option for walking while keeping the look light.";
-    if (item.kind === "bottoms") return "A lighter full-length option for warm days and cooler evenings.";
+    if (item.kind === "tops") {
+      if (productName.includes("essential")) return "A simple breathable base for sunny, warm days.";
+      if (productName.includes("premium")) return "A relaxed warm-weather option with room for airflow.";
+      return "Short sleeves help keep this option comfortable in the heat.";
+    }
+    if (item.kind === "shoes") return openToe ? "Open-toe airflow makes this a better pick for dry, warm days." : "A walking-friendly option for warm days and cooler evenings.";
+    if (item.kind === "bottoms") return productName.includes("jean") ? "Denim works best for cooler evenings after a warm day." : "A lighter full-length option for warm days and cooler evenings.";
     return "A practical finishing piece for warm-weather outfits.";
   }
 
@@ -906,7 +919,11 @@ export default function PackTripScreen() {
         }
       }
 
-      const hasRain = parsed.some((d) => d.precipitation > 1);
+      // One isolated shower on a longer trip should not make every suggestion
+      // sound like rain gear. Short trips still treat a single wet day seriously.
+      const rainyDays = parsed.filter((d) => d.precipitation > 1).length;
+      const rainThreshold = parsed.length <= 2 ? 1 : Math.max(2, Math.ceil(parsed.length * 0.35));
+      const hasRain = rainyDays >= rainThreshold;
       setForecasts(parsed);
       setPackingList(generatePackingList(tripDays, parsed, wardrobe, hasRain));
     } catch {
