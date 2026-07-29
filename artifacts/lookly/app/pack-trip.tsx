@@ -173,14 +173,21 @@ function isWeatherRelevantAccessory(item: ClothingItem, tier: TempTier, hasRain:
 
 function wardrobeWeatherReason(item: ClothingItem, tier: TempTier, hasRain: boolean): string {
   const text = `${item.name} ${item.tags.join(" ")}`.toLowerCase();
+  const openToe = isOpenToeFootwear(item);
   if (hasRain) {
-    if (item.category === "shoes") return "Closed-toe coverage is safer for wet streets.";
+    if (item.category === "shoes") return openToe
+      ? "Best kept for dry periods; open toes are not ideal on wet streets."
+      : "Closed-toe coverage is safer for wet streets.";
     if (text.includes("waterproof") || text.includes("water-resistant")) return "Its weather-resistant finish suits the rain forecast.";
-    return "A practical layer for changeable, rainy conditions.";
+    if (item.category === "outerwear") return "A useful outer layer when showers and cooler air arrive.";
+    if (item.category === "bottoms") return "Full-length coverage is more practical for a wet, changeable day.";
+    if (text.includes("cotton") || text.includes("short sleeve")) return "A breathable base layer that works under a light rain shell.";
+    return "A flexible layer to pair with a rain-ready outer layer when needed.";
   }
   if (tier === "hot" || tier === "warm") {
     if (item.fabricWeight === "light" || ["linen", "cotton", "mesh", "breathable", "short"].some((word) => text.includes(word))) return "Its lighter construction is more comfortable in warm weather.";
-    if (item.category === "shoes") return "A walking-friendly option for warm days and cooler evenings.";
+    if (item.category === "shoes") return openToe ? "Open-toe airflow helps keep feet cooler on dry, warm days." : "A walking-friendly option for warm days and cooler evenings.";
+    if (item.category === "bottoms") return "A practical lower layer for a warm day that may cool off later.";
     return "Chosen to keep the outfit comfortable as temperatures stay warm.";
   }
   if (tier === "freezing" || tier === "cold") {
@@ -188,7 +195,12 @@ function wardrobeWeatherReason(item: ClothingItem, tier: TempTier, hasRain: bool
     if (item.category === "shoes") return "Closed-toe coverage is more comfortable when temperatures drop.";
     return "A useful layer for keeping warm through the trip.";
   }
-  if (tier === "cool") return "Easy to layer for cool mornings and milder afternoons.";
+  if (tier === "cool") {
+    if (item.category === "shoes") return "Closed-toe footwear is more comfortable through cool mornings and evenings.";
+    if (item.category === "bottoms") return "Full-length coverage is comfortable as the day stays cool.";
+    if (item.category === "outerwear") return "Easy to add for a cool morning and take off later.";
+    return "Easy to layer for cool mornings and milder afternoons.";
+  }
   return "A flexible choice for comfortable daytime-to-evening weather.";
 }
 
