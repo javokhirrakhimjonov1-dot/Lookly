@@ -95,6 +95,7 @@ function makePreviewPrompt(
     "Asset type: Lookly outfit preview in a mobile wardrobe app.",
     personInstruction,
     presentationInstruction,
+    "SAFETY AND MODESTY REQUIREMENT: The model must be fully and modestly clothed in every result. Never show a bare chest, exposed torso, underwear, genital area, buttocks, or see-through clothing. Do not remove, open, unbutton, unzip, shorten, or alter any selected garment. If a selected shirt, jacket, cardigan, or overshirt could expose skin when open, render it fully fastened or layered so the torso stays completely covered.",
     userAge ? `The model should read as approximately ${userAge} years old, while remaining an adult editorial fashion model.` : "",
     garmentInstruction,
     "Render a premium, photorealistic, full-length fashion editorial photograph — never a 2D avatar, cartoon, flat vector, clothing chart, split-screen, text label, or mood board.",

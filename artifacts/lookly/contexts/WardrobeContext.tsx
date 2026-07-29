@@ -138,6 +138,17 @@ function stripImages(items: ClothingItem[]): Omit<ClothingItem, "imageUri">[] {
   return items.map(({ imageUri: _img, ...rest }) => rest);
 }
 
+function isSockLike(item: Pick<ClothingItem, "name" | "category" | "tags">): boolean {
+  const text = `${item.category} ${item.name} ${(item.tags ?? []).join(" ")}`.toLowerCase();
+  return /\b(sock|socks|hosiery|tights|stocking|stockings)\b/.test(text);
+}
+
+// Older AI scans classified socks as accessories. Keep their original details,
+// but show and use them in the dedicated Socks category going forward.
+function normalizeItemCategory(item: ClothingItem): ClothingItem {
+  return item.category === "accessories" && isSockLike(item) ? { ...item, category: "socks" } : item;
+}
+
 function stripOutfitForStorage(outfit: SavedOutfit) {
   const { previewImage: _preview, items, ...rest } = outfit;
   const strippedItems = Object.fromEntries(
@@ -216,7 +227,7 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
               return uri ? { ...item, imageUri: uri } : item;
             })
           );
-          merged = withImages;
+          merged = withImages.map(normalizeItemCategory);
         }
 
         // Merge server items. A fresh signed Storage URL from Supabase must
@@ -225,9 +236,9 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
           for (const serverItem of serverItems) {
             const existingIndex = merged.findIndex((localItem) => localItem.id === serverItem.id);
             if (existingIndex === -1) {
-              merged.push(serverItem);
+              merged.push(normalizeItemCategory(serverItem));
             } else if (serverItem.imageUri) {
-              merged[existingIndex] = { ...merged[existingIndex]!, imageUri: serverItem.imageUri };
+              merged[existingIndex] = { ...normalizeItemCategory(merged[existingIndex]!), imageUri: serverItem.imageUri };
             }
           }
         }

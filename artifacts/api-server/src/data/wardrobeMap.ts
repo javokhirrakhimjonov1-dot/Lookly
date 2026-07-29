@@ -1,7 +1,7 @@
 import type { Category, Item, Season, Weight } from "../engine/weatherEngine";
 
 export interface StoredWardrobeItem { id: string; name: string; category: string; color?: string; colorHex?: string; seasons?: string[]; fabricWeight?: string; tags?: string[]; material?: string; timesWorn?: number; lastWornDaysAgo?: number; wearCount?: number; isWorkwear?: boolean; waterproof?: boolean; windproof?: boolean; warm?: boolean; fit?: Item["fit"]; }
-const categories = new Set<Category>(["tops","bottoms","dresses","outerwear","shoes","accessories"]);
+const categories = new Set<Category>(["tops","bottoms","dresses","outerwear","shoes","socks","accessories"]);
 const seasons = new Set<Season>(["spring","summer","fall","winter"]);
 const weights = new Set<Weight>(["light","medium","heavy"]);
 const neutrals = new Set(["black","white","grey","gray","beige","navy","brown","cream","olive","tan"]);

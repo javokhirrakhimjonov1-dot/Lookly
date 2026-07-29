@@ -3,11 +3,22 @@ import { geminiChatWithImage } from "@workspace/integrations-gemini-ai-server";
 
 const router = Router();
 
+const VALID_CATEGORIES = new Set(["tops", "bottoms", "dresses", "outerwear", "shoes", "socks", "accessories"]);
+
+function normalizeCategory(category: unknown, name: unknown, tags: unknown): string {
+  const raw = typeof category === "string" ? category.trim().toLowerCase() : "";
+  const searchable = `${raw} ${typeof name === "string" ? name : ""} ${Array.isArray(tags) ? tags.join(" ") : ""}`.toLowerCase();
+  if (/\b(sock|socks|hosiery|tights|stocking|stockings)\b/.test(searchable)) return "socks";
+  return VALID_CATEGORIES.has(raw) ? raw : "tops";
+}
+
 const SYSTEM_PROMPT = `You are a fashion expert and textile analyst. Examine the photo and identify ONLY the clothing items that are clearly and fully visible.
 
 Return a JSON object with a single key "items" containing an array. Each element is one clothing item with these exact fields:
 - name: specific descriptive name (e.g. "White linen button-down shirt", "Navy blue slim-fit jeans", "Brown leather loafers")
-- category: exactly one of "tops", "bottoms", "dresses", "outerwear", "shoes", "accessories"
+- category: exactly one of "tops", "bottoms", "dresses", "outerwear", "shoes", "socks", "accessories"
+- Socks, ankle socks, crew socks, hosiery, tights, and stockings are always category "socks". Never classify them as accessories.
+- Accessories are only watches, smart bands, belts, bags, jewellery, hats, scarves, or sunglasses.
 - colorName: dominant color name, pick the closest from: Black, White, Beige, Navy, Camel, Burgundy, Olive, Gray, Blush, Denim, Terracotta, Cream. If none match, pick the nearest.
 - colorHex: hex code matching colorName — Black:#1C1512, White:#F9F8F6, Beige:#E8D5B7, Navy:#1E3A5F, Camel:#C19A6B, Burgundy:#800020, Olive:#6B7C4D, Gray:#8A8A8A, Blush:#E8A0A0, Denim:#5B7FA6, Terracotta:#C8906A, Cream:#FAF0E6
 - material: fabric composition (e.g. "100% cotton", "80% polyester 20% elastane", "genuine leather", "silk blend", "wool knit", "linen"). Guess from appearance if not obvious.
@@ -107,7 +118,7 @@ router.post("/identify-clothing", async (req, res) => {
       const validSizes = ["small", "medium", "large"];
       return {
         name: item.name ?? "",
-        category: item.category ?? "tops",
+        category: normalizeCategory(item.category, item.name, item.tags),
         colorName: item.colorName ?? "Black",
         colorHex: item.colorHex ?? "#1C1512",
         material: item.material ?? "Unknown",

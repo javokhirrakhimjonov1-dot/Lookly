@@ -13,7 +13,7 @@
  */
 
 // ============ Types ============
-type Category = "tops" | "bottoms" | "dresses" | "outerwear" | "shoes" | "accessories";
+type Category = "tops" | "bottoms" | "dresses" | "outerwear" | "shoes" | "socks" | "accessories";
 type Season   = "spring" | "summer" | "fall" | "winter";
 type Weight   = "light" | "medium" | "heavy";
 type Fit      = "fitted" | "regular" | "oversized" | "wide-leg";
@@ -323,7 +323,7 @@ function colorScore(o: Item[]): number {
   return clamp01(s);
 }
 function varietyScore(o: Item[]): number {
-  const core = o.filter(i => i.category !== "accessories");
+  const core = o.filter(i => i.category !== "accessories" && i.category !== "socks");
   if (!core.length) return 1;
   const penalties = core.map(i => {
     const days = i.lastWornDaysAgo ?? 30;

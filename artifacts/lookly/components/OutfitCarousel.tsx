@@ -6,8 +6,6 @@ import { SvgXml } from "react-native-svg";
 import {
   ActivityIndicator,
   Modal,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -434,15 +432,14 @@ export default function OutfitCarousel() {
   const { gender, age, styleAesthetics, heatAdaptation, colorPalette } = useUserProfile();
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeIdx, setActiveIdx] = useState(0);
-  const scrollRef = useRef<ScrollView>(null);
+  const nextOptionIndex = useRef(0);
 
   const { width: screenW, height: screenH } = useWindowDimensions();
   const cardWidth = screenW - 36;
   const cardH = Math.min(Math.round(screenH * 0.58), 560);
   const wDesc = weatherDescLabel(temperature, weatherCode);
 
-  const fetchOutfits = useCallback(async () => {
+  const fetchOutfits = useCallback(async (showAnother = false) => {
     if (weatherLoading) return;
     setLoading(true);
     try {
@@ -466,7 +463,17 @@ export default function OutfitCarousel() {
         }),
       });
       const data = (await res.json()) as { outfits: Outfit[] };
-      setOutfits(data.outfits ?? []);
+      const choices = data.outfits ?? [];
+      if (choices.length === 0) {
+        setOutfits([]);
+      } else {
+        if (!showAnother) nextOptionIndex.current = 0;
+        const selected = choices[nextOptionIndex.current % choices.length]!;
+        nextOptionIndex.current += 1;
+        // Home should answer one simple question: what should I wear today?
+        // Refresh is the explicit request for a different weather-safe option.
+        setOutfits([selected]);
+      }
     } catch {
       setOutfits([]);
     } finally {
@@ -496,11 +503,6 @@ export default function OutfitCarousel() {
 
   const wardrobeMap = new Map(items.map((i) => [i.id, i]));
 
-  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const idx = Math.round(e.nativeEvent.contentOffset.x / cardWidth);
-    setActiveIdx(idx);
-  };
-
   return (
     <View style={styles.wrapper}>
       <View style={styles.sectionHeader}>
@@ -510,7 +512,7 @@ export default function OutfitCarousel() {
           </Text>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t("outfit_ideas")}</Text>
         </View>
-        <TouchableOpacity onPress={fetchOutfits} disabled={loading} style={styles.refreshBtn}>
+        <TouchableOpacity onPress={() => void fetchOutfits(true)} disabled={loading} style={styles.refreshBtn}>
           {loading ? (
             <ActivityIndicator size="small" color={colors.accent} />
           ) : (
@@ -553,18 +555,7 @@ export default function OutfitCarousel() {
           </TouchableOpacity>
         </View>
       ) : (
-        <>
-          <ScrollView
-            ref={scrollRef}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onMomentumScrollEnd={onScroll}
-            decelerationRate="fast"
-            snapToInterval={cardWidth + 12}
-            snapToAlignment="start"
-            contentContainerStyle={{ gap: 12, paddingRight: 18 }}
-          >
+        <View>
             {outfits.map((outfit, i) => (
               <OutfitCard
                 key={`${outfit.name}-${outfit.mood}-${outfit.items.map((x) => x.itemId).join("-")}`}
@@ -577,22 +568,7 @@ export default function OutfitCarousel() {
                 autoPreview={i === 0}
               />
             ))}
-          </ScrollView>
-
-          <View style={styles.dots}>
-            {outfits.map((_, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.dot,
-                  i === activeIdx
-                    ? { backgroundColor: colors.accent, width: 18 }
-                    : { backgroundColor: colors.border, width: 6 },
-                ]}
-              />
-            ))}
-          </View>
-        </>
+        </View>
       )}
     </View>
   );

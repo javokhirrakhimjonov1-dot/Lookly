@@ -649,18 +649,15 @@ export default function OutfitBuilderScreen() {
         setLockedSlots((ls) => { const n = new Set(ls); n.delete(slotKey); return n; });
         return next;
       }
-      // Lock the new slot
+      // Lock the explicitly selected slot. Do not fill other slots here:
+      // tapping one item must select exactly one item.
       const newLocked = new Set([...lockedSlots, slotKey]);
       setLockedSlots(newLocked);
-      // Place item, then immediately auto-fill remaining EMPTY unlocked slots
-      const withItem = { ...prev, [slotKey]: item };
-      const filled = localSmartFill(
-        withItem, items, newLocked, temperature, sessionCombos.current, "fill-empty"
-      );
-      sessionCombos.current.add(makeComboKey(filled));
-      return filled;
+      const next = { ...prev, [slotKey]: item };
+      sessionCombos.current.add(makeComboKey(next));
+      return next;
     });
-  }, [items, lockedSlots, temperature]);
+  }, [lockedSlots]);
 
   const clearSlot = useCallback((slotKey: OutfitSlotKey) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
