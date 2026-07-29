@@ -4,7 +4,7 @@ import { Image } from "expo-image";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -164,6 +164,40 @@ function isSimilarToWardrobe(
   const db = nameWords(existing.name);
   const shared = [...da].filter((w) => db.has(w));
   return shared.length >= Math.max(1, Math.min(2, Math.floor(Math.min(da.size, db.size) * 0.5)));
+}
+
+/** Vision models often label the left and right sides of one pair separately.
+ * Keep the pair as one wardrobe item, while preserving the useful shoe details. */
+function mergeDetectedShoePairs(items: DetectedItem[]): DetectedItem[] {
+  const merged: DetectedItem[] = [];
+  const used = new Set<number>();
+  const isSide = (item: DetectedItem) => /\b(left|right)\s+shoe\b/i.test(item.locationHint ?? "");
+
+  items.forEach((item, index) => {
+    if (used.has(index)) return;
+    const pairIndex = items.findIndex((candidate, candidateIndex) =>
+      candidateIndex > index
+      && !used.has(candidateIndex)
+      && item.category === "shoes"
+      && candidate.category === "shoes"
+      && item.name.trim().toLowerCase() === candidate.name.trim().toLowerCase()
+      && item.colorName.trim().toLowerCase() === candidate.colorName.trim().toLowerCase()
+      && isSide(item)
+      && isSide(candidate)
+    );
+    if (pairIndex >= 0) {
+      const pair = items[pairIndex]!;
+      used.add(pairIndex);
+      merged.push({
+        ...item,
+        locationHint: "pair of shoes",
+        tags: [...new Set([...item.tags, ...pair.tags, "pair"])],
+      });
+    } else {
+      merged.push(item);
+    }
+  });
+  return merged;
 }
 
 async function scanClothingItems(base64: string, mimeType: string): Promise<DetectedItem[]> {
@@ -608,6 +642,34 @@ export default function AddItemScreen() {
 
   const [detectedItems, setDetectedItems] = useState<DetectedItem[]>([]);
   const [showPicker, setShowPicker] = useState(false);
+  const scanRequestRef = useRef(0);
+
+  const cancelUpload = () => {
+    scanRequestRef.current += 1;
+    setShowPicker(false);
+    setDetectedItems([]);
+    setManualPhotoQueue([]);
+    setScannedImage(null);
+    setExtractedItemUri(null);
+    setCompressedPhotoUri(null);
+    setScanPhotoBase64(null);
+    setItemLocationHint("");
+    setImageExtractionError(null);
+    setIsScanning(false);
+    setIsRemovingBg(false);
+    setScanDone(false);
+    setScanPhotoIndex(0);
+    setScanPhotoTotal(0);
+    setName("");
+    setCategory(null);
+    setSelectedColor(null);
+    setSeasons([]);
+    setMaterial("");
+    setTags([]);
+    setFootwearType(null);
+    setBrandLogo(null);
+    setPurchasePrice("");
+  };
 
   const upgradeSavedItemImage = (item: DetectedItem, itemId: string) => {
     if (item._extractedUri) {
@@ -750,6 +812,7 @@ export default function AddItemScreen() {
   };
 
   const runScan = async (base64: string, mimeType: string, localUri?: string) => {
+    const scanRequest = ++scanRequestRef.current;
     const photoRef = localUri ?? `data:${mimeType};base64,${base64}`;
     setScannedImage(photoRef);
     setExtractedItemUri(null);
@@ -766,7 +829,8 @@ export default function AddItemScreen() {
 
     try {
       // ── Phase 1 (BLOCKING): identify items ──
-      const items = await scanClothingItems(base64, mimeType);
+      const items = mergeDetectedShoePairs(await scanClothingItems(base64, mimeType));
+      if (scanRequest !== scanRequestRef.current) return;
 
       if (items.length === 0) {
         // AI unavailable — keep photo, let user fill in manually
@@ -832,11 +896,12 @@ export default function AddItemScreen() {
       // AI unavailable — keep the photo, let user fill in details manually
       setScanDone(true);
     } finally {
-      setIsScanning(false);
+      if (scanRequest === scanRequestRef.current) setIsScanning(false);
     }
   };
 
   const handleScanPhoto = async (providedAssets?: ImagePicker.ImagePickerAsset[]) => {
+    const scanRequest = ++scanRequestRef.current;
     // iPhone Safari must receive the file-input click directly from this tap.
     // Native apps continue to use Expo's permission-aware picker.
     let assets: ImagePicker.ImagePickerAsset[];
@@ -902,7 +967,8 @@ export default function AddItemScreen() {
           base64: compressed.base64,
           mimeType: compressed.mimeType,
         });
-        const found = await scanClothingItems(compressed.base64, compressed.mimeType);
+        const found = mergeDetectedShoePairs(await scanClothingItems(compressed.base64, compressed.mimeType));
+        if (scanRequest !== scanRequestRef.current) return;
         for (const item of found) {
           // Do not discard items merely because they look similar to something
           // in another selected photo. The user must be able to see and decide
@@ -923,6 +989,7 @@ export default function AddItemScreen() {
         failedPhotos += 1;
       }
     }
+    if (scanRequest !== scanRequestRef.current) return;
     setIsScanning(false);
     setScanPhotoTotal(0);
 
@@ -1268,6 +1335,17 @@ export default function AddItemScreen() {
               </TouchableOpacity>
             )}
           </Animated.View>
+          {(scannedImage || isScanning) && (
+            <TouchableOpacity
+              onPress={cancelUpload}
+              style={[styles.cancelUploadButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel uploaded photo"
+            >
+              <Feather name="x" size={15} color={colors.mutedForeground} />
+              <Text style={[styles.cancelUploadText, { color: colors.mutedForeground }]}>Cancel upload</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {material ? (
@@ -1590,6 +1668,18 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   scanButtons: { flexDirection: "row", gap: 10 },
+  cancelUploadButton: {
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderRadius: 10,
+  },
+  cancelUploadText: { fontSize: 13, fontWeight: "600" },
   scanBtn: {
     flex: 1,
     flexDirection: "row",
