@@ -278,6 +278,9 @@ function OutfitCard({
   const itemImages = resolvedItems.filter((item) => !!item.imageUri).slice(0, 3);
   const outfitKey = resolvedItems.map((item) => item.id).sort().join("|");
   const canGeneratePreview = autoPreview && outfit.isComplete !== false && resolvedItems.length >= 2;
+  // Do not reveal a partly-updated image while generation is still running. On
+  // slower phones this used to flash a cropped torso behind the loading label.
+  const hasReadyPreview = !!previewImage && !isGenerating;
 
   useEffect(() => {
     if (!canGeneratePreview || !outfitKey || previewStartedFor.current === outfitKey) return;
@@ -338,11 +341,11 @@ function OutfitCard({
             </Text>
           </View>
         )}
-        {previewImage ? (
+        {hasReadyPreview ? (
           isSvgPreview(previewImage) ? (
             <SvgXml xml={decodeSvgPreview(previewImage)} width="100%" height="100%" />
           ) : (
-            <Image source={{ uri: previewSource(previewImage) }} style={styles.previewRaster} contentFit="cover" />
+            <Image source={{ uri: previewSource(previewImage) }} style={styles.previewRaster} contentFit="contain" />
           )
         ) : isGenerating ? (
           <View style={styles.generatingOverlay}>
@@ -366,7 +369,7 @@ function OutfitCard({
           <Text style={[styles.moodText, { color: colors.primaryForeground }]}>{outfit.mood.toUpperCase()}</Text>
         </View>
 
-        {previewImage && (
+        {hasReadyPreview && (
           <View style={styles.imageScrim} pointerEvents="none" />
         )}
       </View>
