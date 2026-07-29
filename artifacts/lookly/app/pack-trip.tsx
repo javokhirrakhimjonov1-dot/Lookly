@@ -727,7 +727,7 @@ function PackItemCard({
           <View style={[pkStyles.swatch, { backgroundColor: item.colorHex }]} />
           <Text style={[pkStyles.metaText, { color: colors.mutedForeground }]} numberOfLines={1}>{categoryLabel}</Text>
         </View>
-        <Text style={[pkStyles.weatherReason, { color: colors.mutedForeground }]} numberOfLines={2}>{weatherReason}</Text>
+        <Text style={[pkStyles.weatherReason, { color: colors.mutedForeground }]}>{weatherReason}</Text>
       </View>
     </Pressable>
   );
@@ -783,7 +783,9 @@ const pkStyles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "#D1D5DB",
   },
-  info: { padding: 8, gap: 4 },
+  // The explanation is part of the recommendation, not decorative text.
+  // Reserve space so it can wrap naturally on narrow screens.
+  info: { padding: 8, gap: 4, minHeight: 78 },
   name: { fontSize: 12, fontWeight: "700", color: "#1C1512", letterSpacing: 0.1 },
   metaRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   swatch: {
@@ -1191,7 +1193,7 @@ export default function PackTripScreen() {
                             <View style={styles.buyCardCopy}>
                               <Text style={styles.buyCardText} numberOfLines={2}>{item.name}</Text>
                               <Text style={styles.buyCardMeta}>{item.store} · {item.priceUz.toLocaleString("en-US")} UZS</Text>
-                              <Text style={styles.buyCardReason} numberOfLines={3}>{item.weatherReason}</Text>
+                              <Text style={styles.buyCardReason}>{item.weatherReason}</Text>
                             </View>
                           </View>
                         </Pressable>
@@ -1291,6 +1293,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 5,
     padding: 10,
+    minHeight: 112,
   },
   buyCardCopy: { flex: 1, gap: 3 },
   buyCardText: { flex: 1, fontSize: 11, fontWeight: "600", color: "#92400E", lineHeight: 15 },
