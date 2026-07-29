@@ -250,7 +250,6 @@ function OutfitCard({
   weatherDesc,
   cardWidth,
   cardH,
-  autoPreview,
 }: {
   outfit: Outfit;
   wardrobeMap: Map<string, ClothingItem>;
@@ -258,7 +257,6 @@ function OutfitCard({
   weatherDesc: string;
   cardWidth: number;
   cardH: number;
-  autoPreview: boolean;
 }) {
   const colors = useColors();
   const { t } = useLanguage();
@@ -268,7 +266,6 @@ function OutfitCard({
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [genFailed, setGenFailed] = useState(false);
-  const previewStartedFor = useRef<string | null>(null);
   const [showSquadModal, setShowSquadModal] = useState(false);
   const [pollSent, setPollSent] = useState(false);
 
@@ -276,24 +273,20 @@ function OutfitCard({
     .map((oi) => wardrobeMap.get(oi.itemId))
     .filter((i): i is ClothingItem => !!i);
   const itemImages = resolvedItems.filter((item) => !!item.imageUri).slice(0, 3);
-  const outfitKey = resolvedItems.map((item) => item.id).sort().join("|");
-  const canGeneratePreview = autoPreview && outfit.isComplete !== false && resolvedItems.length >= 2;
+  const canGeneratePreview = outfit.isComplete !== false && resolvedItems.length >= 2;
   // Do not reveal a partly-updated image while generation is still running. On
   // slower phones this used to flash a cropped torso behind the loading label.
   const hasReadyPreview = !!previewImage && !isGenerating;
 
-  useEffect(() => {
-    if (!canGeneratePreview || !outfitKey || previewStartedFor.current === outfitKey) return;
-    previewStartedFor.current = outfitKey;
-    let cancelled = false;
+  const handleCreatePreview = () => {
+    if (!canGeneratePreview || isGenerating) return;
     setIsGenerating(true);
     setGenFailed(false);
     void generateTodayPreview(resolvedItems, weatherDesc, temperature, bodyPhotoBase64, bodyPhotoMime, gender, age, outfit.mood)
-      .then((image) => { if (!cancelled) setPreviewImage(image); })
-      .catch(() => { if (!cancelled) setGenFailed(true); })
-      .finally(() => { if (!cancelled) setIsGenerating(false); });
-    return () => { cancelled = true; };
-  }, [age, bodyPhotoBase64, bodyPhotoMime, canGeneratePreview, gender, outfit.mood, outfitKey, resolvedItems, temperature, weatherDesc]);
+      .then(setPreviewImage)
+      .catch(() => setGenFailed(true))
+      .finally(() => setIsGenerating(false));
+  };
 
   const handleSendToSquad = async (friendNames: string[]) => {
     const pollItems: PollOutfitData["items"] = resolvedItems.map((i) => ({
@@ -326,7 +319,7 @@ function OutfitCard({
           <View style={styles.instantFallback}>
             <Feather name="user" size={34} color={colors.border} />
             <Text style={[styles.generatingText, { color: colors.mutedForeground }]}>
-              {canGeneratePreview ? "Creating today’s model preview" : "A complete weather-safe look needs more items"}
+              {canGeneratePreview ? "Your weather-ready look is ready" : "A complete weather-safe look needs more items"}
             </Text>
             <Text style={[styles.categoryLine, { color: colors.mutedForeground }]} numberOfLines={2}>
               {resolvedItems.map((item) => item.name).join(" · ")}
@@ -401,18 +394,25 @@ function OutfitCard({
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => router.push({
-            pathname: "/outfit-builder",
-            params: {
-              outfitItemIds: resolvedItems.map((item) => item.id).join(","),
-              preview: "true",
-            },
-          })}
+          onPress={() => {
+            if (hasReadyPreview) {
+              router.push({
+                pathname: "/outfit-builder",
+                params: {
+                  outfitItemIds: resolvedItems.map((item) => item.id).join(","),
+                  preview: "true",
+                },
+              });
+              return;
+            }
+            handleCreatePreview();
+          }}
+          disabled={isGenerating || (!hasReadyPreview && !canGeneratePreview)}
           style={[styles.buildBtn, { backgroundColor: colors.primary }]}
         >
-          <Feather name="scissors" size={13} color={colors.primaryForeground} />
+          {isGenerating ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Feather name="scissors" size={13} color={colors.primaryForeground} />}
           <Text style={[styles.buildBtnText, { color: colors.primaryForeground }]}>
-            {t("build_look")}
+            {isGenerating ? "Styling…" : hasReadyPreview ? t("build_look") : "Make today’s look"}
           </Text>
         </TouchableOpacity>
       </View>
@@ -568,7 +568,6 @@ export default function OutfitCarousel() {
                 weatherDesc={wDesc}
                 cardWidth={cardWidth}
                 cardH={cardH}
-                autoPreview={i === 0}
               />
             ))}
         </View>
