@@ -661,7 +661,12 @@ export default function AddItemScreen() {
 
   const createCleanProductImage = async (item: DetectedItem): Promise<string | undefined> => {
     if (item._extractedUri) return item._extractedUri;
-    if (!item._photoBase64) return item._photoUri;
+    // Never quietly store the original room/selfie photo as a wardrobe product.
+    // Every detected item must retain its compressed source so the server can
+    // produce one isolated catalog image for that specific item.
+    if (!item._photoBase64) {
+      throw new Error("The source photo is unavailable for clean product extraction. Please scan it again.");
+    }
     const color = resolveColor(item.colorName, item.colorHex);
     const cleanUri = await removeBg(
       item.name, item.category, color.name, color.hex, item.material,
@@ -833,6 +838,8 @@ export default function AddItemScreen() {
         return {
           ...item,
           _photoUri: photoRef,
+          _photoBase64: base64,
+          _photoMime: mimeType,
           _isDuplicate: !!existingMatch,
           _duplicateOf: existingMatch
             ? { name: existingMatch.name, color: existingMatch.color, category: existingMatch.category, fabricWeight: existingMatch.fabricWeight }
