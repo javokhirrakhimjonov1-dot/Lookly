@@ -6,6 +6,7 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -67,6 +68,7 @@ export default function ProfileScreen() {
   ];
 
   const [photoLoading, setPhotoLoading] = useState(false);
+  const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [localName, setLocalName] = useState(fullName);
   const [localAge, setLocalAge] = useState(age != null ? String(age) : "");
   const [showWeatherLocation, setShowWeatherLocation] = useState(false);
@@ -219,14 +221,14 @@ export default function ProfileScreen() {
       icon: "cloud" as const,
       label: t("weather_loc"),
       description: `${city} · Tap to refresh`,
-      onPress: () => setShowWeatherLocation((visible) => !visible),
+      onPress: () => setShowWeatherLocation(true),
       disabled: false,
     },
     {
       icon: "alert-circle" as const,
       label: "Report a bug",
       description: "Describe a problem and attach a screenshot.",
-      onPress: () => setShowBugReport((visible) => !visible),
+      onPress: () => setShowBugReport(true),
       disabled: false,
     },
     {
@@ -239,6 +241,7 @@ export default function ProfileScreen() {
   ];
 
   return (
+    <>
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.background }}
       contentContainerStyle={[
@@ -464,7 +467,11 @@ export default function ProfileScreen() {
       </View>
 
       {/* Language */}
-      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <TouchableOpacity
+        onPress={() => setShowLanguagePicker(true)}
+        activeOpacity={0.78}
+        style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}
+      >
         <View style={styles.sectionHeader}>
           <View style={[styles.sectionIconWrap, { backgroundColor: colors.accent + "22" }]}>
             <Feather name="globe" size={16} color={colors.accent} />
@@ -474,38 +481,13 @@ export default function ProfileScreen() {
             <Text style={[styles.sectionSub, { color: colors.mutedForeground }]}>{t("language_desc")}</Text>
           </View>
         </View>
-        <View style={styles.langRow}>
-          {LANG_OPTIONS.map((opt) => {
-            const active = lang === opt.key;
-            return (
-              <TouchableOpacity
-                key={opt.key}
-                onPress={() => setLang(opt.key)}
-                style={[
-                  styles.langPill,
-                  {
-                    backgroundColor: active ? colors.primary : colors.secondary,
-                    borderColor: active ? colors.primary : colors.border,
-                  },
-                ]}
-              >
-                <Text style={styles.langFlag}>{opt.flag}</Text>
-                <Text
-                  style={[
-                    styles.langPillText,
-                    { color: active ? colors.primaryForeground : colors.mutedForeground },
-                  ]}
-                >
-                  {opt.label}
-                </Text>
-                {active && (
-                  <Feather name="check" size={12} color={colors.primaryForeground} />
-                )}
-              </TouchableOpacity>
-            );
-          })}
+        <View style={styles.languageSummary}>
+          <Text style={[styles.languageSummaryText, { color: colors.foreground }]}>
+            {LANG_OPTIONS.find((option) => option.key === lang)?.label}
+          </Text>
+          <Feather name="chevron-right" size={17} color={colors.mutedForeground} />
         </View>
-      </View>
+      </TouchableOpacity>
 
       {/* Settings */}
       <View style={[styles.settingsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -556,12 +538,31 @@ export default function ProfileScreen() {
         })}
       </View>
 
-      {showWeatherLocation ? (
-        <View style={[styles.inlinePanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.inlinePanelTitle, { color: colors.foreground }]}>Weather location</Text>
-          <Text style={[styles.inlinePanelDescription, { color: colors.mutedForeground }]}>
-            Search for a city, or use your phone&apos;s current location.
-          </Text>
+      <Modal visible={showLanguagePicker} transparent animationType="slide" onRequestClose={() => setShowLanguagePicker(false)}>
+        <TouchableOpacity activeOpacity={1} onPress={() => setShowLanguagePicker(false)} style={styles.sheetBackdrop}>
+          <TouchableOpacity activeOpacity={1} onPress={(event) => event.stopPropagation()} style={[styles.sheet, { backgroundColor: colors.card }]}>
+            <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+            <View style={styles.sheetTitleRow}>
+              <Text style={[styles.sheetTitle, { color: colors.foreground }]}>{t("language_label")}</Text>
+              <TouchableOpacity onPress={() => setShowLanguagePicker(false)} style={[styles.sheetClose, { backgroundColor: colors.secondary }]}><Feather name="x" size={18} color={colors.foreground} /></TouchableOpacity>
+            </View>
+            <Text style={[styles.sheetDescription, { color: colors.mutedForeground }]}>{t("language_desc")}</Text>
+            {LANG_OPTIONS.map((option) => {
+              const selected = option.key === lang;
+              return <TouchableOpacity key={option.key} onPress={() => { setLang(option.key); setShowLanguagePicker(false); }} style={[styles.sheetOption, { borderColor: selected ? colors.accent : colors.border, backgroundColor: selected ? colors.accent + "18" : colors.secondary }]}>
+                <Text style={styles.langFlag}>{option.flag}</Text><Text style={[styles.sheetOptionText, { color: colors.foreground }]}>{option.label}</Text>{selected ? <Feather name="check" size={18} color={colors.accent} /> : null}
+              </TouchableOpacity>;
+            })}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal visible={showWeatherLocation} transparent animationType="slide" onRequestClose={() => setShowWeatherLocation(false)}>
+        <TouchableOpacity activeOpacity={1} onPress={() => setShowWeatherLocation(false)} style={styles.sheetBackdrop}>
+          <TouchableOpacity activeOpacity={1} onPress={(event) => event.stopPropagation()} style={[styles.sheet, { backgroundColor: colors.card }]}>
+            <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+            <View style={styles.sheetTitleRow}><Text style={[styles.sheetTitle, { color: colors.foreground }]}>Weather location</Text><TouchableOpacity onPress={() => setShowWeatherLocation(false)} style={[styles.sheetClose, { backgroundColor: colors.secondary }]}><Feather name="x" size={18} color={colors.foreground} /></TouchableOpacity></View>
+            <Text style={[styles.sheetDescription, { color: colors.mutedForeground }]}>Choose a city or let Lookly use your current location.</Text>
           <TextInput
             value={locationQuery}
             onChangeText={setLocationQuery}
@@ -589,12 +590,15 @@ export default function ProfileScreen() {
               <Text style={[styles.inlineButtonText, { color: colors.primaryForeground }]}>Save location</Text>
             </TouchableOpacity>
           </View>
-        </View>
-      ) : null}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
-      {showBugReport ? (
-        <View style={[styles.inlinePanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.inlinePanelTitle, { color: colors.foreground }]}>Report a bug</Text>
+      <Modal visible={showBugReport} transparent animationType="slide" onRequestClose={() => setShowBugReport(false)}>
+        <TouchableOpacity activeOpacity={1} onPress={() => setShowBugReport(false)} style={styles.sheetBackdrop}>
+          <TouchableOpacity activeOpacity={1} onPress={(event) => event.stopPropagation()} style={[styles.sheet, { backgroundColor: colors.card }]}>
+            <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+            <View style={styles.sheetTitleRow}><Text style={[styles.sheetTitle, { color: colors.foreground }]}>Report a bug</Text><TouchableOpacity onPress={() => setShowBugReport(false)} style={[styles.sheetClose, { backgroundColor: colors.secondary }]}><Feather name="x" size={18} color={colors.foreground} /></TouchableOpacity></View>
           <Text style={[styles.inlinePanelDescription, { color: colors.mutedForeground }]}>Tell us what happened. A screenshot is optional.</Text>
           <TextInput
             value={bugDescription}
@@ -627,9 +631,11 @@ export default function ProfileScreen() {
           >
             {bugSubmitting ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Text style={[styles.inlinePrimaryText, { color: colors.primaryForeground }]}>Send report</Text>}
           </TouchableOpacity>
-        </View>
-      ) : null}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </ScrollView>
+    </>
   );
 }
 
@@ -709,7 +715,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1,
   },
   photoActionText: { fontSize: 12, fontWeight: "600" },
-  langRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  languageSummary: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 2 },
+  languageSummaryText: { fontSize: 14, fontWeight: "700" },
   langPill: {
     flexDirection: "row", alignItems: "center", gap: 6,
     paddingHorizontal: 14, paddingVertical: 10, borderRadius: 100, borderWidth: 1,
@@ -737,4 +744,13 @@ const styles = StyleSheet.create({
   inlinePrimaryButton: { minHeight: 42, borderRadius: 12, alignItems: "center", justifyContent: "center", paddingHorizontal: 14 },
   inlinePrimaryText: { fontSize: 14, fontWeight: "700" },
   bugScreenshot: { width: 96, height: 72, borderRadius: 10, alignSelf: "flex-start" },
+  sheetBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(20, 15, 12, 0.42)" },
+  sheet: { borderTopLeftRadius: 26, borderTopRightRadius: 26, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 28, gap: 12 },
+  sheetHandle: { alignSelf: "center", width: 42, height: 4, borderRadius: 99, marginBottom: 2 },
+  sheetTitleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  sheetTitle: { fontSize: 20, fontWeight: "800" },
+  sheetDescription: { fontSize: 13, lineHeight: 19, marginBottom: 4 },
+  sheetClose: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  sheetOption: { minHeight: 58, borderWidth: 1, borderRadius: 15, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", gap: 11 },
+  sheetOptionText: { flex: 1, fontSize: 15, fontWeight: "700" },
 });

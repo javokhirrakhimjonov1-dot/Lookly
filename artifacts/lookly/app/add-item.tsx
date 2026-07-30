@@ -20,8 +20,11 @@ import {
   View,
 } from "react-native";
 import Animated, {
+  cancelAnimation,
+  interpolate,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
@@ -677,6 +680,8 @@ export default function AddItemScreen() {
 
   const scanScale = useSharedValue(1);
   const scanCardOpacity = useSharedValue(0);
+  const scanBeam = useSharedValue(0);
+  const scanPulse = useSharedValue(0);
 
   const topPad = getTopPadding(insets.top);
 
@@ -692,6 +697,36 @@ export default function AddItemScreen() {
   const scanCardStyle = useAnimatedStyle(() => ({
     opacity: scanCardOpacity.value,
   }));
+  const scanBeamStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scanBeam.value, [0, 0.15, 0.85, 1], [0, 0.82, 0.82, 0]),
+    transform: [{ translateY: interpolate(scanBeam.value, [0, 1], [-120, 220]) }],
+  }));
+  const scanPulseStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scanPulse.value, [0, 0.5, 1], [0.48, 1, 0.48]),
+    transform: [{ scale: interpolate(scanPulse.value, [0, 0.5, 1], [0.92, 1.08, 0.92]) }],
+  }));
+
+  // Keep the AI feedback lively without delaying either the scan or the
+  // background-removal request. The loop stops as soon as work is complete.
+  useEffect(() => {
+    if (!isScanning && !isRemovingBg) {
+      cancelAnimation(scanBeam);
+      cancelAnimation(scanPulse);
+      scanBeam.value = 0;
+      scanPulse.value = 0;
+      return;
+    }
+
+    scanBeam.value = 0;
+    scanPulse.value = 0;
+    scanBeam.value = withRepeat(withTiming(1, { duration: isScanning ? 1450 : 1850 }), -1, false);
+    scanPulse.value = withRepeat(withTiming(1, { duration: 950 }), -1, true);
+
+    return () => {
+      cancelAnimation(scanBeam);
+      cancelAnimation(scanPulse);
+    };
+  }, [isScanning, isRemovingBg, scanBeam, scanPulse]);
 
   const toggleSeason = (s: Season) => {
     setSeasons((prev) =>
@@ -1225,7 +1260,13 @@ export default function AddItemScreen() {
               <Image source={{ uri: scannedImage }} style={styles.scannedImage} contentFit="cover" />
               {isScanning && (
                 <View style={[styles.scanOverlay, { backgroundColor: "rgba(28,21,18,0.7)" }]}>
-                  <ActivityIndicator size="large" color={colors.primaryForeground} />
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[styles.scanBeam, { backgroundColor: colors.accent }, scanBeamStyle]}
+                  />
+                  <Animated.View style={[styles.aiScanOrb, { borderColor: colors.accent }, scanPulseStyle]}>
+                    <Feather name="search" size={18} color={colors.primaryForeground} />
+                  </Animated.View>
                   {scanPhotoTotal > 1 ? (
                     <>
                       <Text style={[styles.scanOverlayText, { color: colors.primaryForeground }]}>
@@ -1252,7 +1293,13 @@ export default function AddItemScreen() {
               )}
               {isRemovingBg && !isScanning && (
                 <View style={[styles.isolatingBadge, { backgroundColor: "rgba(28,21,18,0.82)" }]}>
-                  <ActivityIndicator size="small" color={colors.accent} />
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[styles.isolationSweep, { backgroundColor: colors.accent }, scanBeamStyle]}
+                  />
+                  <Animated.View style={[styles.isolatingOrb, { borderColor: colors.accent }, scanPulseStyle]}>
+                    <Feather name="scissors" size={13} color={colors.primaryForeground} />
+                  </Animated.View>
                   <Text style={[styles.isolatingText, { color: colors.primaryForeground }]}>Isolating garment…</Text>
                 </View>
               )}
@@ -1613,6 +1660,25 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
   },
+  scanBeam: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    height: 2,
+    shadowColor: "#F3B079",
+    shadowOpacity: 0.85,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  aiScanOrb: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(250,248,245,0.12)",
+  },
   scanOverlayText: { color: "#F9F8F6", fontSize: 14, fontWeight: "600" },
   scanDots: { flexDirection: "row", gap: 7, marginTop: 4 },
   scanDot: { width: 8, height: 8, borderRadius: 4 },
@@ -1620,12 +1686,30 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 10,
     left: 10,
+    overflow: "hidden",
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 100,
+  },
+  isolationSweep: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    opacity: 0.8,
+  },
+  isolatingOrb: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(250,248,245,0.12)",
   },
   isolatingText: { color: "#F9F8F6", fontSize: 11, fontWeight: "600" },
   scanDoneBadge: {
