@@ -10,6 +10,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -22,7 +23,7 @@ import Animated, {
 import { getApiBase } from "@/constants/api";
 import { apiAuthHeaders } from "@/lib/apiAuth";
 import { useColors } from "@/hooks/useColors";
-import { type ClothingItem, useWardrobe } from "@/contexts/WardrobeContext";
+import { getItemDisplayName, type ClothingItem, useWardrobe } from "@/contexts/WardrobeContext";
 
 function isLight(hex: string): boolean {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -66,11 +67,13 @@ interface Props {
 
 export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
   const colors = useColors();
-  const { items } = useWardrobe();
+  const { items, updateItem } = useWardrobe();
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
   const [seenIds, setSeenIds] = useState<string[]>([]);
+  const [customName, setCustomName] = useState("");
+  const [isSavingName, setIsSavingName] = useState(false);
 
   const suggestOpacity = useSharedValue(0);
   const suggestTranslate = useSharedValue(20);
@@ -88,6 +91,7 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
       suggestOpacity.value = 0;
       suggestTranslate.value = 20;
     }
+    setCustomName(item?.customName ?? "");
   }, [item?.id]);
 
   const handleFindMatches = async (excludeIds?: string[]) => {
@@ -130,6 +134,19 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
     if (!item) return;
     onClose();
     setTimeout(() => router.push(`/outfit-builder?anchorItemId=${item.id}`), 300);
+  };
+
+  const handleSaveName = async () => {
+    if (!item || isSavingName) return;
+    const nextName = customName.trim();
+    if (nextName === (item.customName ?? "")) return;
+    setIsSavingName(true);
+    try {
+      await updateItem(item.id, { customName: nextName || undefined });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } finally {
+      setIsSavingName(false);
+    }
   };
 
   const resolvedItem = (id: string) => items.find((i) => i.id === id);
@@ -192,7 +209,12 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
           </View>
 
           <View style={styles.itemInfo}>
-            <Text style={[styles.itemName, { color: colors.foreground }]}>{item.name}</Text>
+            <Text style={[styles.itemName, { color: colors.foreground }]}>{getItemDisplayName(item)}</Text>
+            {item.customName ? (
+              <Text style={[styles.aiDescription, { color: colors.mutedForeground }]}>
+                AI description: {item.name}
+              </Text>
+            ) : null}
             <Text style={[styles.itemMeta, { color: colors.mutedForeground }]}>
               {item.category.charAt(0).toUpperCase() + item.category.slice(1)} · {item.color}
             </Text>
@@ -223,6 +245,27 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
                 ))}
               </View>
             )}
+            <View style={styles.personalNameSection}>
+              <Text style={[styles.personalNameLabel, { color: colors.foreground }]}>Personal name (optional)</Text>
+              <View style={styles.personalNameRow}>
+                <TextInput
+                  value={customName}
+                  onChangeText={setCustomName}
+                  placeholder="e.g. My date-night shirt"
+                  placeholderTextColor={colors.mutedForeground}
+                  maxLength={60}
+                  style={[styles.personalNameInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]}
+                />
+                <TouchableOpacity
+                  onPress={() => void handleSaveName()}
+                  disabled={isSavingName || customName.trim() === (item.customName ?? "")}
+                  style={[styles.saveNameButton, { backgroundColor: colors.accent, opacity: isSavingName || customName.trim() === (item.customName ?? "") ? 0.5 : 1 }]}
+                >
+                  {isSavingName ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Text style={[styles.saveNameText, { color: colors.primaryForeground }]}>Save</Text>}
+                </TouchableOpacity>
+              </View>
+              {item.customName ? <Text style={[styles.personalNameHint, { color: colors.mutedForeground }]}>Clear it and save to restore the AI name as the title.</Text> : null}
+            </View>
           </View>
 
           <View style={styles.actions}>
@@ -402,7 +445,15 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   itemName: { fontSize: 22, fontWeight: "700" },
+  aiDescription: { fontSize: 13, lineHeight: 18 },
   itemMeta: { fontSize: 14 },
+  personalNameSection: { gap: 6, marginTop: 10 },
+  personalNameLabel: { fontSize: 13, fontWeight: "700" },
+  personalNameRow: { flexDirection: "row", gap: 8, alignItems: "center" },
+  personalNameInput: { flex: 1, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
+  saveNameButton: { minWidth: 64, minHeight: 42, borderRadius: 12, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },
+  saveNameText: { fontSize: 13, fontWeight: "700" },
+  personalNameHint: { fontSize: 11, lineHeight: 15 },
   seasonsRow: { flexDirection: "row", gap: 6, marginTop: 4 },
   seasonPill: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20 },
   seasonText: { fontSize: 11, fontWeight: "600" },

@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { useColors } from "@/hooks/useColors";
-import { type ClothingItem } from "@/contexts/WardrobeContext";
+import { getItemDisplayName, type ClothingItem } from "@/contexts/WardrobeContext";
 
 interface Props {
   item: ClothingItem;
@@ -23,6 +23,7 @@ export default function ClothingItemCard({ item, onPress }: Props) {
 
   const categoryLabel =
     item.category.charAt(0).toUpperCase() + item.category.slice(1);
+  const displayName = getItemDisplayName(item);
 
   const s = useMemo(() => makeStyles(colors), [colors]);
 
@@ -65,7 +66,7 @@ export default function ClothingItemCard({ item, onPress }: Props) {
       </View>
 
       <View style={s.info}>
-        <Text style={s.name} numberOfLines={1}>{item.name}</Text>
+        <Text style={s.name} numberOfLines={1}>{displayName}</Text>
 
         <View style={s.metaRow}>
           <View style={[s.swatch, { backgroundColor: item.colorHex }]} />

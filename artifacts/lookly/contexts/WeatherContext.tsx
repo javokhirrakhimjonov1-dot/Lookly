@@ -31,10 +31,15 @@ export interface WeatherData {
   weatherAlert: WeatherAlert | null;
   dismissAlert: () => void;
   refresh: () => void;
+  setManualLocation: (query: string) => Promise<{ error?: string }>;
+  useCurrentLocation: () => Promise<void>;
 }
 
 const TASHKENT = { lat: 41.2995, lon: 69.2401 };
 const ALERT_DISMISSED_KEY = "@lookly_alert_dismissed";
+const MANUAL_LOCATION_KEY = "@lookly_manual_weather_location";
+
+type SavedLocation = { city: string; lat: number; lon: number };
 
 function getCondition(code: number): { condition: string; detail: string } {
   if (code === 0) return { condition: "Sunny", detail: "Clear sky" };
@@ -114,26 +119,10 @@ export function WeatherProvider({ children }: { children: React.ReactNode }) {
     setWeatherAlert(null);
   }, [alertDismissedKey]);
 
-  const fetchWeather = useCallback(async () => {
+  const requestWeather = useCallback(async ({ lat, lon, city: locationName }: SavedLocation) => {
     setIsLoading(true);
     setError(null);
     try {
-      let lat = TASHKENT.lat;
-      let lon = TASHKENT.lon;
-      let locationName = "Tashkent";
-      try {
-        const permission = await Location.requestForegroundPermissionsAsync();
-        if (permission.status === "granted") {
-          const location = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
-          });
-          lat = location.coords.latitude;
-          lon = location.coords.longitude;
-          locationName = "Your location";
-        }
-      } catch {
-        // The existing Tashkent fallback remains available if location services fail.
-      }
       setCity(locationName);
 
       const currentUrl =
@@ -176,6 +165,62 @@ export function WeatherProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const fetchWeather = useCallback(async () => {
+    const saved = await AsyncStorage.getItem(MANUAL_LOCATION_KEY);
+    if (saved) {
+      try {
+        await requestWeather(JSON.parse(saved) as SavedLocation);
+        return;
+      } catch {
+        await AsyncStorage.removeItem(MANUAL_LOCATION_KEY);
+      }
+    }
+
+    let location: SavedLocation = { ...TASHKENT, city: "Tashkent" };
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status === "granted") {
+        const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        location = { lat: current.coords.latitude, lon: current.coords.longitude, city: "Your location" };
+      }
+    } catch {
+      // Tashkent remains the safe fallback when location services are unavailable.
+    }
+    await requestWeather(location);
+  }, [requestWeather]);
+
+  const setManualLocation = useCallback(async (query: string): Promise<{ error?: string }> => {
+    const name = query.trim();
+    if (!name) return { error: "Enter a city or town first." };
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=1&language=en&format=json`,
+      );
+      const result = await response.json();
+      const match = result.results?.[0];
+      if (!match) return { error: "We could not find that location. Try a city name." };
+      const location: SavedLocation = {
+        city: [match.name, match.country].filter(Boolean).join(", "),
+        lat: match.latitude,
+        lon: match.longitude,
+      };
+      await AsyncStorage.setItem(MANUAL_LOCATION_KEY, JSON.stringify(location));
+      await requestWeather(location);
+      return {};
+    } catch {
+      return { error: "We could not update the location. Check your connection and try again." };
+    } finally {
+      setIsLoading(false);
+    }
+  }, [requestWeather]);
+
+  const useCurrentLocation = useCallback(async () => {
+    await AsyncStorage.removeItem(MANUAL_LOCATION_KEY);
+    await fetchWeather();
+  }, [fetchWeather]);
+
   useEffect(() => {
     fetchWeather();
   }, [fetchWeather]);
@@ -200,6 +245,8 @@ export function WeatherProvider({ children }: { children: React.ReactNode }) {
         weatherAlert,
         dismissAlert,
         refresh: fetchWeather,
+        setManualLocation,
+        useCurrentLocation,
       }}
     >
       {children}

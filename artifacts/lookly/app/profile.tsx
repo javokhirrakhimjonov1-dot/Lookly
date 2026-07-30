@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -22,6 +23,7 @@ import { useWeather } from "@/contexts/WeatherContext";
 import { type UpcomingFeature, useFeatureWaitlist } from "@/contexts/FeatureWaitlistContext";
 import { type Gender, useUserProfile } from "@/contexts/UserProfileContext";
 import { type Language, useLanguage } from "@/contexts/LanguageContext";
+import { submitBugReport } from "@/contexts/serverSync";
 
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -36,7 +38,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { items } = useWardrobe();
   const { looks } = useSocial();
-  const { city, refresh: refreshWeather, isLoading: isWeatherLoading } = useWeather();
+  const { city, setManualLocation, useCurrentLocation } = useWeather();
   const { joinedFeatures, isLoading: isWaitlistLoading, updatingFeature, toggleWaitlist } = useFeatureWaitlist();
   const {
     fullName,
@@ -67,6 +69,13 @@ export default function ProfileScreen() {
   const [photoLoading, setPhotoLoading] = useState(false);
   const [localName, setLocalName] = useState(fullName);
   const [localAge, setLocalAge] = useState(age != null ? String(age) : "");
+  const [showWeatherLocation, setShowWeatherLocation] = useState(false);
+  const [locationQuery, setLocationQuery] = useState("");
+  const [manualLocationLoading, setManualLocationLoading] = useState(false);
+  const [showBugReport, setShowBugReport] = useState(false);
+  const [bugDescription, setBugDescription] = useState("");
+  const [bugScreenshotUri, setBugScreenshotUri] = useState<string | null>(null);
+  const [bugSubmitting, setBugSubmitting] = useState(false);
 
   const topPad = getTopPadding(insets.top);
   const myLooks = looks.filter((l) => l.isOwn);
@@ -116,9 +125,70 @@ export default function ProfileScreen() {
     }
   };
 
-  const refreshWeatherLocation = async () => {
-    await refreshWeather();
-    Alert.alert("Weather updated", "Lookly refreshed the weather for your current location, or Tashkent if location access is unavailable.");
+  const saveManualLocation = async () => {
+    setManualLocationLoading(true);
+    try {
+      const result = await setManualLocation(locationQuery);
+      if (result.error) {
+        Alert.alert("Location not found", result.error);
+        return;
+      }
+      setLocationQuery("");
+      setShowWeatherLocation(false);
+      Alert.alert("Location updated", "Lookly will use this location for weather-aware suggestions.");
+    } finally {
+      setManualLocationLoading(false);
+    }
+  };
+
+  const useDeviceWeatherLocation = async () => {
+    setManualLocationLoading(true);
+    try {
+      await useCurrentLocation();
+      setShowWeatherLocation(false);
+      Alert.alert("Location updated", "Lookly is using your current location when permission is available.");
+    } finally {
+      setManualLocationLoading(false);
+    }
+  };
+
+  const chooseBugScreenshot = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: false,
+        quality: 0.7,
+      });
+      if (!result.canceled) setBugScreenshotUri(result.assets[0]?.uri ?? null);
+    } catch {
+      Alert.alert("Screenshot not added", "Please try again.");
+    }
+  };
+
+  const sendBugReport = async () => {
+    if (bugDescription.trim().length < 5) {
+      Alert.alert("Add a little more detail", "Please describe what happened so we can reproduce it.");
+      return;
+    }
+
+    setBugSubmitting(true);
+    try {
+      const result = await submitBugReport({
+        description: bugDescription.trim(),
+        screenshotUri: bugScreenshotUri ?? undefined,
+        platform: Platform.OS,
+      });
+      if (result.error) {
+        Alert.alert("Report not sent", result.error);
+        return;
+      }
+      setBugDescription("");
+      setBugScreenshotUri(null);
+      setShowBugReport(false);
+      Alert.alert("Report sent", result.warning ?? "Thank you — your report will help us improve Lookly.");
+    } finally {
+      setBugSubmitting(false);
+    }
   };
 
   const toggleUpcomingFeature = async (feature: UpcomingFeature) => {
@@ -139,14 +209,25 @@ export default function ProfileScreen() {
       icon: "shield" as const,
       label: t("privacy"),
       description: `${t("coming_soon")} · ${t("coming_soon_hint")}`,
-      feature: "privacy_controls" as UpcomingFeature,
+      onPress: () => Alert.alert(
+        "Your privacy",
+        "Your wardrobe, personal names, body reference photo and saved looks are private to your signed-in account. Other Lookly users cannot browse them."
+      ),
+      disabled: false,
     },
     {
       icon: "cloud" as const,
       label: t("weather_loc"),
       description: `${city} · Tap to refresh`,
-      onPress: () => { void refreshWeatherLocation(); },
-      disabled: isWeatherLoading,
+      onPress: () => setShowWeatherLocation((visible) => !visible),
+      disabled: false,
+    },
+    {
+      icon: "alert-circle" as const,
+      label: "Report a bug",
+      description: "Describe a problem and attach a screenshot.",
+      onPress: () => setShowBugReport((visible) => !visible),
+      disabled: false,
     },
     {
       icon: "info" as const,
@@ -186,7 +267,7 @@ export default function ProfileScreen() {
             ].filter(Boolean).join(" · ")}
           </Text>
         ) : null}
-        <Text style={[styles.location, { color: colors.mutedForeground }]}>{t("tashkent_uz")}</Text>
+        <Text style={[styles.location, { color: colors.mutedForeground }]}>{city}</Text>
         <View style={styles.statsRow}>
           <View style={styles.stat}>
             <Text style={[styles.statNumber, { color: colors.foreground }]}>{items.length}</Text>
@@ -436,7 +517,11 @@ export default function ProfileScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.rowLabel, { color: colors.foreground }]}>{row.label}</Text>
-              <Text style={[styles.rowDesc, { color: colors.mutedForeground }]}>{row.description}</Text>
+              <Text style={[styles.rowDesc, { color: colors.mutedForeground }]}>
+                {row.label === t("privacy")
+                  ? "Your wardrobe, photos and saved looks are private to your account."
+                  : row.description}
+              </Text>
             </View>
           </>;
 
@@ -470,6 +555,80 @@ export default function ProfileScreen() {
           </TouchableOpacity>;
         })}
       </View>
+
+      {showWeatherLocation ? (
+        <View style={[styles.inlinePanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.inlinePanelTitle, { color: colors.foreground }]}>Weather location</Text>
+          <Text style={[styles.inlinePanelDescription, { color: colors.mutedForeground }]}>
+            Search for a city, or use your phone&apos;s current location.
+          </Text>
+          <TextInput
+            value={locationQuery}
+            onChangeText={setLocationQuery}
+            placeholder="e.g. Samarkand, Uzbekistan"
+            placeholderTextColor={colors.mutedForeground}
+            style={[styles.inlineInput, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
+            autoCapitalize="words"
+            returnKeyType="done"
+            onSubmitEditing={() => { void saveManualLocation(); }}
+          />
+          <View style={styles.inlineActions}>
+            <TouchableOpacity
+              onPress={() => { void useDeviceWeatherLocation(); }}
+              disabled={manualLocationLoading}
+              style={[styles.inlineButton, { borderColor: colors.border, backgroundColor: colors.secondary }]}
+            >
+              {manualLocationLoading ? <ActivityIndicator size="small" color={colors.accent} /> : <Feather name="navigation" size={14} color={colors.accent} />}
+              <Text style={[styles.inlineButtonText, { color: colors.foreground }]}>Use current location</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => { void saveManualLocation(); }}
+              disabled={!locationQuery.trim() || manualLocationLoading}
+              style={[styles.inlineButton, { borderColor: colors.primary, backgroundColor: colors.primary, opacity: !locationQuery.trim() || manualLocationLoading ? 0.55 : 1 }]}
+            >
+              <Text style={[styles.inlineButtonText, { color: colors.primaryForeground }]}>Save location</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+
+      {showBugReport ? (
+        <View style={[styles.inlinePanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.inlinePanelTitle, { color: colors.foreground }]}>Report a bug</Text>
+          <Text style={[styles.inlinePanelDescription, { color: colors.mutedForeground }]}>Tell us what happened. A screenshot is optional.</Text>
+          <TextInput
+            value={bugDescription}
+            onChangeText={setBugDescription}
+            placeholder="What were you trying to do? What happened instead?"
+            placeholderTextColor={colors.mutedForeground}
+            multiline
+            textAlignVertical="top"
+            style={[styles.inlineInput, styles.bugInput, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
+          />
+          <View style={styles.inlineActions}>
+            <TouchableOpacity
+              onPress={() => { void chooseBugScreenshot(); }}
+              style={[styles.inlineButton, { borderColor: colors.border, backgroundColor: colors.secondary }]}
+            >
+              <Feather name="image" size={14} color={colors.accent} />
+              <Text style={[styles.inlineButtonText, { color: colors.foreground }]}>{bugScreenshotUri ? "Replace screenshot" : "Add screenshot"}</Text>
+            </TouchableOpacity>
+            {bugScreenshotUri ? (
+              <TouchableOpacity onPress={() => setBugScreenshotUri(null)} style={[styles.inlineButton, { borderColor: colors.border, backgroundColor: colors.secondary }]}>
+                <Text style={[styles.inlineButtonText, { color: colors.destructive }]}>Remove</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          {bugScreenshotUri ? <Image source={{ uri: bugScreenshotUri }} style={styles.bugScreenshot} contentFit="cover" /> : null}
+          <TouchableOpacity
+            onPress={() => { void sendBugReport(); }}
+            disabled={bugSubmitting}
+            style={[styles.inlinePrimaryButton, { backgroundColor: colors.primary, opacity: bugSubmitting ? 0.6 : 1 }]}
+          >
+            {bugSubmitting ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Text style={[styles.inlinePrimaryText, { color: colors.primaryForeground }]}>Send report</Text>}
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -564,4 +723,18 @@ const styles = StyleSheet.create({
   rowDesc: { fontSize: 12 },
   waitlistButton: { flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 1, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7 },
   waitlistButtonText: { fontSize: 11, fontWeight: "700" },
+  inlinePanel: { borderWidth: 1, borderRadius: 18, padding: 16, gap: 10 },
+  inlinePanelTitle: { fontSize: 16, fontWeight: "700" },
+  inlinePanelDescription: { fontSize: 13, lineHeight: 19 },
+  inlineInput: { minHeight: 44, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, fontSize: 14 },
+  bugInput: { minHeight: 100, paddingTop: 12 },
+  inlineActions: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  inlineButton: {
+    minHeight: 40, borderRadius: 11, borderWidth: 1, paddingHorizontal: 12,
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+  },
+  inlineButtonText: { fontSize: 13, fontWeight: "700" },
+  inlinePrimaryButton: { minHeight: 42, borderRadius: 12, alignItems: "center", justifyContent: "center", paddingHorizontal: 14 },
+  inlinePrimaryText: { fontSize: 14, fontWeight: "700" },
+  bugScreenshot: { width: 96, height: 72, borderRadius: 10, alignSelf: "flex-start" },
 });

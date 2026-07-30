@@ -21,6 +21,7 @@ create table if not exists public.wardrobe_items (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   name text not null check (char_length(trim(name)) > 0),
+  custom_name text,
   category text not null check (category in ('tops', 'bottoms', 'dresses', 'outerwear', 'shoes', 'socks', 'accessories')),
   color text not null default '',
   color_hex text not null default '',
@@ -41,6 +42,11 @@ create table if not exists public.wardrobe_items (
 alter table public.wardrobe_items
   add column if not exists purchase_currency text not null default 'USD'
   check (purchase_currency in ('USD', 'UZS', 'RUB'));
+
+-- An owner can give an item a personal name without replacing the AI's
+-- descriptive name, which remains useful for styling and weather matching.
+alter table public.wardrobe_items
+  add column if not exists custom_name text;
 
 alter table public.profiles
   add column if not exists preferred_currency text not null default 'USD'
@@ -140,6 +146,30 @@ drop policy if exists "Users manage their own feature waitlist" on public.featur
 create policy "Users manage their own feature waitlist"
 on public.feature_waitlist for all to authenticated
 using ((select auth.uid()) = user_id)
+with check ((select auth.uid()) = user_id);
+
+-- Private reports from pilot users. Reports are visible only to the user who
+-- submitted them; project owners can review them in the Supabase dashboard.
+create table if not exists public.bug_reports (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  description text not null check (char_length(trim(description)) between 5 and 4000),
+  screenshot_path text,
+  platform text,
+  created_at timestamptz not null default now()
+);
+
+alter table public.bug_reports enable row level security;
+grant select, insert on public.bug_reports to authenticated;
+
+drop policy if exists "Users view their own bug reports" on public.bug_reports;
+create policy "Users view their own bug reports"
+on public.bug_reports for select to authenticated
+using ((select auth.uid()) = user_id);
+
+drop policy if exists "Users submit their own bug reports" on public.bug_reports;
+create policy "Users submit their own bug reports"
+on public.bug_reports for insert to authenticated
 with check ((select auth.uid()) = user_id);
 
 insert into storage.buckets (id, name, public)

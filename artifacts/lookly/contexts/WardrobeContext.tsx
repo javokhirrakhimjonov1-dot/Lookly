@@ -40,6 +40,8 @@ export interface BrandLogo {
 
 export interface ClothingItem {
   id: string;
+  /** Optional nickname chosen by the owner. The AI name stays in `name` for recommendations. */
+  customName?: string;
   name: string;
   category: ClothingCategory;
   color: string;
@@ -54,6 +56,11 @@ export interface ClothingItem {
   tags: string[];
   brandLogo?: BrandLogo;
   createdAt: string;
+}
+
+/** The name people see in the app, without losing the AI's descriptive name. */
+export function getItemDisplayName(item: Pick<ClothingItem, "name" | "customName">): string {
+  return item.customName?.trim() || item.name;
 }
 
 export interface SavedOutfit {

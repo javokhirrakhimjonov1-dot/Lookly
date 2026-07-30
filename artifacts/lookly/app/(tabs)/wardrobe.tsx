@@ -8,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
@@ -40,6 +41,7 @@ export default function WardrobeScreen() {
   const { items, removeItem, isLoading } = useWardrobe();
   const [activeCategory, setActiveCategory] = useState<"all" | ClothingCategory>("all");
   const [selectedItem, setSelectedItem] = useState<ClothingItem | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const CATEGORIES: { key: "all" | ClothingCategory; label: string }[] = [
     { key: "all", label: t("cat_all") },
@@ -55,10 +57,15 @@ export default function WardrobeScreen() {
   const topPad = getTopPadding(insets.top);
   const bottomPad = getBottomPadding(insets.bottom, 100);
 
-  const filtered =
-    activeCategory === "all"
-      ? items
-      : items.filter((i) => i.category === activeCategory);
+  const normalizedSearch = searchQuery.trim().toLocaleLowerCase();
+  const filtered = items.filter((item) => {
+    const matchesCategory = activeCategory === "all" || item.category === activeCategory;
+    const searchableText = [item.customName, item.name, item.category, item.color, ...(item.tags ?? [])]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase();
+    return matchesCategory && (!normalizedSearch || searchableText.includes(normalizedSearch));
+  });
 
   const handleDelete = (id: string) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -133,6 +140,25 @@ export default function WardrobeScreen() {
             />
           ))}
         </ScrollView>
+        <View style={[styles.searchBar, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+          <Feather name="search" size={17} color={colors.mutedForeground} />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search your wardrobe"
+            placeholderTextColor={colors.mutedForeground}
+            style={[styles.searchInput, { color: colors.foreground }]}
+            autoCapitalize="none"
+            autoCorrect={false}
+            clearButtonMode="while-editing"
+            accessibilityLabel="Search your wardrobe"
+          />
+          {searchQuery.length > 0 ? (
+            <TouchableOpacity onPress={() => setSearchQuery("")} accessibilityLabel="Clear wardrobe search">
+              <Feather name="x-circle" size={17} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
 
       {/* ── Grid ── */}
@@ -242,6 +268,22 @@ const styles = StyleSheet.create({
   },
   pills: {
     paddingRight: 18,
+  },
+  searchBar: {
+    minHeight: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+  },
+  searchInput: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 14,
+    fontWeight: "500",
+    paddingVertical: 9,
   },
   gridContent: {
     paddingHorizontal: 14,

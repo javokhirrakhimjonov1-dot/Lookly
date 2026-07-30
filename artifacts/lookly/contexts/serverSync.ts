@@ -8,6 +8,7 @@ const PRIVATE_IMAGE_BUCKET = "lookly-private";
 type SupabaseWardrobeItem = {
   id: string;
   name: string;
+  custom_name?: string | null;
   category: ClothingItem["category"];
   color: string;
   color_hex: string;
@@ -47,6 +48,7 @@ async function toClientItem(item: SupabaseWardrobeItem): Promise<ClothingItem> {
   return {
     id: item.id,
     name: item.name,
+    customName: item.custom_name ?? undefined,
     category: item.category,
     color: item.color,
     colorHex: item.color_hex,
@@ -133,6 +135,21 @@ async function uploadPrivateImage(userId: string, itemId: string, imageUri?: str
   }
 }
 
+async function uploadBugReportScreenshot(userId: string, reportId: string, imageUri?: string): Promise<string | null> {
+  if (!supabase || !imageUri) return null;
+  try {
+    const file = await imageUriToUpload(imageUri);
+    const path = `${userId}/bug-reports/${reportId}.${extensionForContentType(file.contentType)}`;
+    const { error } = await supabase.storage.from(PRIVATE_IMAGE_BUCKET).upload(path, file.bytes, {
+      contentType: file.contentType,
+      upsert: true,
+    });
+    return error ? null : path;
+  } catch {
+    return null;
+  }
+}
+
 async function uploadOutfitPreview(userId: string, outfitId: string, preview?: string): Promise<string | null> {
   if (!supabase || !preview) return null;
   try {
@@ -166,6 +183,32 @@ async function downloadOutfitPreview(path: string | null): Promise<string | unde
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+export async function submitBugReport(input: {
+  description: string;
+  screenshotUri?: string;
+  platform?: string;
+}): Promise<{ error?: string; warning?: string }> {
+  if (!supabase) return { error: "Your secure cloud connection is unavailable." };
+
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError || !authData.user) return { error: "Please sign in before sending a report." };
+
+  const reportId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const screenshotPath = await uploadBugReportScreenshot(authData.user.id, reportId, input.screenshotUri);
+  const { error } = await supabase.from("bug_reports").insert({
+    user_id: authData.user.id,
+    description: input.description.trim(),
+    screenshot_path: screenshotPath,
+    platform: input.platform ?? null,
+  });
+
+  if (error) return { error: "We couldn't send your report right now. Please try again." };
+  if (input.screenshotUri && !screenshotPath) {
+    return { warning: "Your report was sent, but the screenshot could not be attached." };
+  }
+  return {};
 }
 
 export async function fetchServerItems(): Promise<ClothingItem[]> {
@@ -223,6 +266,7 @@ export async function syncItemToServer(item: ClothingItem): Promise<void> {
       id: item.id,
       user_id: authData.user.id,
       name: item.name,
+      custom_name: item.customName?.trim() || null,
       category: item.category,
       color: item.color,
       color_hex: item.colorHex,
