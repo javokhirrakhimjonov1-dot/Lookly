@@ -75,7 +75,7 @@ export default function HomeScreen() {
   const { items } = useWardrobe();
   const { looks } = useSocial();
   const { deals } = useDeals();
-  const { weatherAlert, dismissAlert, condition, temperature } = useWeather();
+  const { weatherAlert, dismissAlert } = useWeather();
   const { fullName } = useUserProfile();
   const { myPolls } = useSquadVote();
   const { joinedFeatures, isLoading: isWaitlistLoading, updatingFeature, toggleWaitlist } = useFeatureWaitlist();
@@ -183,19 +183,19 @@ export default function HomeScreen() {
       <WeatherWidget />
 
       <TouchableOpacity
-        onPress={() => router.push("/outfit-builder?autoStart=true")}
+        onPress={() => router.push("/outfit-builder")}
         style={[styles.weatherLookCard, { backgroundColor: colors.accent }]}
         activeOpacity={0.88}
       >
         <View style={styles.weatherLookLeft}>
-          <Text style={styles.weatherLookLabel}>{t("today_weather")}</Text>
-          <Text style={[styles.weatherLookTitle, { color: colors.primaryForeground }]}>{t("make_your_look")}</Text>
+          <Text style={styles.weatherLookLabel}>{t("style_yourself")}</Text>
+          <Text style={[styles.weatherLookTitle, { color: colors.primaryForeground }]}>{t("make_look_with_ai")}</Text>
           <Text style={[styles.weatherLookSub, { color: colors.primaryForeground + "CC" }]}>
-            {t("ai_outfit_desc")} {temperature}°C · {condition}
+            {t("manual_look_desc")}
           </Text>
         </View>
         <View style={styles.weatherLookIconWrap}>
-          <Feather name="cloud" size={22} color="rgba(250,248,245,0.7)" />
+          <Feather name="sliders" size={22} color="rgba(250,248,245,0.7)" />
           <Feather name="arrow-right" size={20} color={colors.primaryForeground} style={{ marginTop: 6 }} />
         </View>
       </TouchableOpacity>

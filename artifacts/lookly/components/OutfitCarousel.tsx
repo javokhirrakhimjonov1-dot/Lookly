@@ -374,7 +374,9 @@ function OutfitCard({
             {outfit.name}
           </Text>
           <Text style={[styles.weatherNote, { color: colors.mutedForeground }]} numberOfLines={1}>
-            {outfit.weatherNote ?? `${temperature}°C · ${weatherDesc}`}
+            {hasReadyPreview
+              ? (outfit.weatherNote ?? `${temperature}°C · ${weatherDesc}`)
+              : t("ai_pick_today_desc")}
           </Text>
         </View>
 
@@ -412,7 +414,7 @@ function OutfitCard({
         >
           {isGenerating ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Feather name="scissors" size={13} color={colors.primaryForeground} />}
           <Text style={[styles.buildBtnText, { color: colors.primaryForeground }]}>
-            {isGenerating ? "Styling…" : hasReadyPreview ? t("build_look") : "Make today’s look"}
+            {isGenerating ? "Styling…" : hasReadyPreview ? t("build_look") : t("ai_pick_today")}
           </Text>
         </TouchableOpacity>
       </View>

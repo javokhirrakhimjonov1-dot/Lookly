@@ -590,23 +590,14 @@ export default function OutfitBuilderScreen() {
   const [isAutoLoading, setIsAutoLoading] = useState(false);
   const [autoWeatherNote, setAutoWeatherNote] = useState<string | null>(null);
 
-  const { autoStart, anchorItemId, outfitItemIds, preview } = useLocalSearchParams<{
-    autoStart?: string;
+  const { anchorItemId, outfitItemIds, preview } = useLocalSearchParams<{
     anchorItemId?: string;
     outfitItemIds?: string;
     preview?: string;
   }>();
-  const autoStartFired = useRef(false);
   const anchorFired = useRef(false);
   const outfitIdeaFired = useRef(false);
   const pendingPreviewPieces = useRef<ClothingItem[] | null>(null);
-
-  useEffect(() => {
-    if (autoStart === "true" && !autoStartFired.current && items.length > 0) {
-      autoStartFired.current = true;
-      void handleAutoSuggest();
-    }
-  });
 
   useEffect(() => {
     if (!outfitItemIds || outfitIdeaFired.current || items.length === 0) return;
