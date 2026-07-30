@@ -61,16 +61,28 @@ export default function ProfileScreen() {
     { key: "prefer_not_to_say", label: t("gender_prefer_not") },
   ];
 
-  const LANG_OPTIONS: { key: Language; flag: string; label: string }[] = [
+const LANG_OPTIONS: { key: Language; flag: string; label: string }[] = [
     { key: "en", flag: "🇬🇧", label: "English" },
     { key: "ru", flag: "🇷🇺", label: "Русский" },
     { key: "uz", flag: "🇺🇿", label: "O'zbekcha" },
-  ];
+];
+
+const CITY_SUGGESTIONS = [
+  { city: "Tashkent", country: "Uzbekistan" },
+  { city: "Samarkand", country: "Uzbekistan" },
+  { city: "Bukhara", country: "Uzbekistan" },
+  { city: "Antalya", country: "Türkiye" },
+  { city: "Istanbul", country: "Türkiye" },
+  { city: "Dubai", country: "United Arab Emirates" },
+] as const;
 
   const [photoLoading, setPhotoLoading] = useState(false);
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [localName, setLocalName] = useState(fullName);
-  const [localAge, setLocalAge] = useState(age != null ? String(age) : "");
+  const [showPersonalEditor, setShowPersonalEditor] = useState(false);
+  const [draftGender, setDraftGender] = useState<Gender | null>(gender);
+  const [draftAge, setDraftAge] = useState<number | null>(age);
+  const [profileSaving, setProfileSaving] = useState(false);
   const [showWeatherLocation, setShowWeatherLocation] = useState(false);
   const [locationQuery, setLocationQuery] = useState("");
   const [manualLocationLoading, setManualLocationLoading] = useState(false);
@@ -89,12 +101,32 @@ export default function ProfileScreen() {
     if (localName !== fullName) await setFullName(localName.trim());
   };
 
-  const handleAgeBlur = async () => {
-    const parsed = parseInt(localAge, 10);
-    const valid = !isNaN(parsed) && parsed >= 13 && parsed <= 99;
-    const newAge = valid ? parsed : null;
-    if (newAge !== age) await setAge(newAge);
-    if (!valid) setLocalAge(age != null ? String(age) : "");
+  const citySuggestions = CITY_SUGGESTIONS.filter(({ city, country }) =>
+    `${city} ${country}`.toLocaleLowerCase().includes(locationQuery.trim().toLocaleLowerCase()),
+  ).slice(0, 5);
+
+  const personalDetailsSummary = [
+    gender ? GENDER_OPTIONS.find((option) => option.key === gender)?.label : "Not set",
+    age != null ? `${age} years old` : "Not set",
+  ].join(" · ");
+
+  const openPersonalEditor = () => {
+    setDraftGender(gender);
+    setDraftAge(age);
+    setShowPersonalEditor(true);
+  };
+
+  const savePersonalDetails = async () => {
+    setProfileSaving(true);
+    try {
+      if (draftGender !== gender) await setGender(draftGender);
+      if (draftAge !== age) await setAge(draftAge);
+      setShowPersonalEditor(false);
+    } catch {
+      Alert.alert("Couldn't save changes", "Please try again.");
+    } finally {
+      setProfileSaving(false);
+    }
   };
 
   const handleUpload = async () => {
@@ -127,10 +159,15 @@ export default function ProfileScreen() {
     }
   };
 
-  const saveManualLocation = async () => {
+  const saveManualLocation = async (requestedLocation = locationQuery) => {
+    const requested = requestedLocation.trim();
+    if (!requested) {
+      Alert.alert("Choose a city", "Start typing a city name or use your current location.");
+      return;
+    }
     setManualLocationLoading(true);
     try {
-      const result = await setManualLocation(locationQuery);
+      const result = await setManualLocation(requested);
       if (result.error) {
         Alert.alert("Location not found", result.error);
         return;
@@ -313,55 +350,22 @@ export default function ProfileScreen() {
           />
         </View>
 
-        {/* Gender */}
         <View style={styles.fieldGroup}>
-          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>{t("gender_label")}</Text>
-          <View style={styles.genderRow}>
-            {GENDER_OPTIONS.map((opt) => {
-              const active = gender === opt.key;
-              return (
-                <TouchableOpacity
-                  key={opt.key}
-                  onPress={() => setGender(active ? null : opt.key)}
-                  style={[
-                    styles.genderPill,
-                    {
-                      backgroundColor: active ? colors.primary : colors.secondary,
-                      borderColor: active ? colors.primary : colors.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.genderPillText,
-                      { color: active ? colors.primaryForeground : colors.mutedForeground },
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Age */}
-        <View style={styles.fieldGroup}>
-          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>{t("age_label")}</Text>
-          <View style={styles.ageRow}>
-            <TextInput
-              style={[styles.ageInput, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
-              value={localAge}
-              onChangeText={setLocalAge}
-              onBlur={handleAgeBlur}
-              placeholder={t("age_placeholder")}
-              placeholderTextColor={colors.mutedForeground}
-              keyboardType="number-pad"
-              maxLength={3}
-              returnKeyType="done"
-            />
-            <Text style={[styles.ageHint, { color: colors.mutedForeground }]}>{t("years_old_hint")}</Text>
-          </View>
+          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>PERSONAL DETAILS</Text>
+          <TouchableOpacity
+            activeOpacity={0.75}
+            onPress={openPersonalEditor}
+            style={[styles.profileDetailsEditor, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+          >
+            <View style={[styles.profileDetailsIcon, { backgroundColor: colors.card }]}>
+              <Feather name="sliders" size={18} color={colors.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.profileDetailsValue, { color: colors.foreground }]}>Edit gender and age</Text>
+              <Text style={[styles.profileDetailsHint, { color: colors.mutedForeground }]}>{personalDetailsSummary}</Text>
+            </View>
+            <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+          </TouchableOpacity>
         </View>
 
         {(fullName || gender || age) ? (
@@ -557,6 +561,40 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </Modal>
 
+      <Modal visible={showPersonalEditor} transparent animationType="slide" onRequestClose={() => setShowPersonalEditor(false)}>
+        <TouchableOpacity activeOpacity={1} onPress={() => setShowPersonalEditor(false)} style={styles.sheetBackdrop}>
+          <TouchableOpacity activeOpacity={1} onPress={(event) => event.stopPropagation()} style={[styles.sheet, { backgroundColor: colors.card }]}>
+            <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+            <View style={styles.sheetTitleRow}>
+              <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Personal details</Text>
+              <TouchableOpacity onPress={() => setShowPersonalEditor(false)} style={[styles.sheetClose, { backgroundColor: colors.secondary }]}><Feather name="x" size={18} color={colors.foreground} /></TouchableOpacity>
+            </View>
+            <Text style={[styles.sheetSectionLabel, { color: colors.mutedForeground }]}>{t("gender_label")}</Text>
+            <View style={styles.editorGenderGrid}>
+              {GENDER_OPTIONS.map((opt) => {
+                const selected = draftGender === opt.key;
+                return <TouchableOpacity key={opt.key} onPress={() => setDraftGender(opt.key)} style={[styles.editorGenderOption, { backgroundColor: selected ? colors.primary : colors.secondary, borderColor: selected ? colors.primary : colors.border }]}>
+                  <Text style={[styles.editorGenderText, { color: selected ? colors.primaryForeground : colors.foreground }]}>{opt.label}</Text>
+                </TouchableOpacity>;
+              })}
+            </View>
+            <Text style={[styles.sheetSectionLabel, { color: colors.mutedForeground }]}>{t("age_label")}</Text>
+            <Text style={[styles.agePickerHint, { color: colors.mutedForeground }]}>Scroll to choose your age</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.agePickerRow}>
+              {Array.from({ length: 87 }, (_, index) => index + 13).map((optionAge) => {
+                const selected = draftAge === optionAge;
+                return <TouchableOpacity key={optionAge} onPress={() => setDraftAge(optionAge)} style={[styles.agePickerOption, { backgroundColor: selected ? colors.primary : colors.secondary, borderColor: selected ? colors.primary : colors.border }]}>
+                  <Text style={[styles.agePickerText, { color: selected ? colors.primaryForeground : colors.foreground }]}>{optionAge}</Text>
+                </TouchableOpacity>;
+              })}
+            </ScrollView>
+            <TouchableOpacity disabled={profileSaving} onPress={() => { void savePersonalDetails(); }} style={[styles.saveProfileButton, { backgroundColor: colors.primary, opacity: profileSaving ? 0.6 : 1 }]}>
+              {profileSaving ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Text style={[styles.saveProfileText, { color: colors.primaryForeground }]}>Save changes</Text>}
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       <Modal visible={showWeatherLocation} transparent animationType="slide" onRequestClose={() => setShowWeatherLocation(false)}>
         <TouchableOpacity activeOpacity={1} onPress={() => setShowWeatherLocation(false)} style={styles.sheetBackdrop}>
           <TouchableOpacity activeOpacity={1} onPress={(event) => event.stopPropagation()} style={[styles.sheet, { backgroundColor: colors.card }]}>
@@ -573,6 +611,20 @@ export default function ProfileScreen() {
             returnKeyType="done"
             onSubmitEditing={() => { void saveManualLocation(); }}
           />
+          <View style={styles.locationSuggestions}>
+            <Text style={[styles.locationSuggestionsLabel, { color: colors.mutedForeground }]}>{locationQuery.trim() ? "Suggested places" : "Popular places"}</Text>
+            {citySuggestions.map(({ city, country }) => {
+              const display = `${city}, ${country}`;
+              return <TouchableOpacity key={display} onPress={() => setLocationQuery(display)} style={[styles.locationSuggestion, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+                <Feather name="map-pin" size={16} color={colors.accent} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.locationSuggestionCity, { color: colors.foreground }]}>{city}</Text>
+                  <Text style={[styles.locationSuggestionCountry, { color: colors.mutedForeground }]}>{country}</Text>
+                </View>
+              </TouchableOpacity>;
+            })}
+            {locationQuery.trim().length > 1 && citySuggestions.length === 0 ? <Text style={[styles.locationNoSuggestion, { color: colors.mutedForeground }]}>No suggested city yet — you can still save this location.</Text> : null}
+          </View>
           <View style={styles.inlineActions}>
             <TouchableOpacity
               onPress={() => { void useDeviceWeatherLocation(); }}
@@ -666,6 +718,13 @@ const styles = StyleSheet.create({
   sectionSub: { fontSize: 12, lineHeight: 17, marginTop: 2 },
   fieldGroup: { gap: 7 },
   fieldLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.8 },
+  profileDetailsEditor: {
+    minHeight: 72, borderWidth: 1, borderRadius: 16, padding: 12,
+    flexDirection: "row", alignItems: "center", gap: 12,
+  },
+  profileDetailsIcon: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  profileDetailsValue: { fontWeight: "700", fontSize: 15 },
+  profileDetailsHint: { fontSize: 13, marginTop: 3 },
   textInput: {
     borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11,
     fontSize: 15, fontWeight: "500",
@@ -735,6 +794,12 @@ const styles = StyleSheet.create({
   inlinePanelDescription: { fontSize: 13, lineHeight: 19 },
   inlineInput: { minHeight: 44, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, fontSize: 14 },
   bugInput: { minHeight: 100, paddingTop: 12 },
+  locationSuggestions: { marginTop: 2, gap: 7 },
+  locationSuggestionsLabel: { fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 },
+  locationSuggestion: { borderWidth: 1, borderRadius: 13, padding: 11, flexDirection: "row", alignItems: "center", gap: 10 },
+  locationSuggestionCity: { fontSize: 14, fontWeight: "700" },
+  locationSuggestionCountry: { fontSize: 12, marginTop: 1 },
+  locationNoSuggestion: { fontSize: 13, lineHeight: 19 },
   inlineActions: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   inlineButton: {
     minHeight: 40, borderRadius: 11, borderWidth: 1, paddingHorizontal: 12,
@@ -751,6 +816,16 @@ const styles = StyleSheet.create({
   sheetTitle: { fontSize: 20, fontWeight: "800" },
   sheetDescription: { fontSize: 13, lineHeight: 19, marginBottom: 4 },
   sheetClose: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  sheetSectionLabel: { fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.8, marginTop: 8, marginBottom: -3 },
+  editorGenderGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  editorGenderOption: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 11 },
+  editorGenderText: { fontSize: 13, fontWeight: "700" },
+  agePickerHint: { fontSize: 13, marginBottom: 0 },
+  agePickerRow: { gap: 8, paddingRight: 4 },
+  agePickerOption: { minWidth: 54, height: 50, borderRadius: 14, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  agePickerText: { fontSize: 16, fontWeight: "800" },
+  saveProfileButton: { marginTop: 8, minHeight: 50, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  saveProfileText: { fontWeight: "800", fontSize: 15 },
   sheetOption: { minHeight: 58, borderWidth: 1, borderRadius: 15, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", gap: 11 },
   sheetOptionText: { flex: 1, fontSize: 15, fontWeight: "700" },
 });

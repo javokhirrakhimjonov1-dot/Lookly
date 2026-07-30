@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import * as ImageManipulator from "expo-image-manipulator";
@@ -47,15 +47,15 @@ import { useUserProfile } from "@/contexts/UserProfileContext";
 const CATEGORIES: {
   key: ClothingCategory;
   label: string;
-  icon: React.ComponentProps<typeof Feather>["name"];
+  icon: React.ComponentProps<typeof MaterialCommunityIcons>["name"];
 }[] = [
-  { key: "tops", label: "Tops", icon: "wind" },
-  { key: "bottoms", label: "Bottoms", icon: "minus" },
-  { key: "dresses", label: "Dresses", icon: "star" },
-  { key: "outerwear", label: "Outerwear", icon: "layers" },
-  { key: "shoes", label: "Shoes", icon: "chevrons-up" },
-  { key: "socks", label: "Socks", icon: "grid" },
-  { key: "accessories", label: "Accessories", icon: "circle" },
+  { key: "tops", label: "Tops", icon: "tshirt-crew-outline" },
+  { key: "bottoms", label: "Bottoms", icon: "human-male" },
+  { key: "dresses", label: "Dresses", icon: "human-female" },
+  { key: "outerwear", label: "Outerwear", icon: "hanger" },
+  { key: "shoes", label: "Shoes", icon: "shoe-sneaker" },
+  { key: "socks", label: "Socks", icon: "foot-print" },
+  { key: "accessories", label: "Accessories", icon: "sunglasses" },
 ];
 
 const SEASONS: Season[] = ["spring", "summer", "fall", "winter"];
@@ -104,16 +104,6 @@ const COLOR_SWATCHES: { name: string; hex: string }[] = [
   { name: "Terracotta", hex: "#C8906A" },
   { name: "Cream", hex: "#FAF0E6" },
 ];
-
-const CATEGORY_ICONS: Record<ClothingCategory, React.ComponentProps<typeof Feather>["name"]> = {
-  tops: "wind",
-  bottoms: "minus",
-  dresses: "star",
-  outerwear: "layers",
-  shoes: "chevrons-up",
-  socks: "grid",
-  accessories: "circle",
-};
 
 function isLight(hex: string): boolean {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -1453,7 +1443,7 @@ export default function AddItemScreen() {
                   },
                 ]}
               >
-                <Feather name={c.icon} size={18} color={category === c.key ? colors.primaryForeground : colors.mutedForeground} />
+                <MaterialCommunityIcons name={c.icon} size={20} color={category === c.key ? colors.primaryForeground : colors.mutedForeground} />
                 <Text style={[styles.categoryLabel, { color: category === c.key ? colors.primaryForeground : colors.foreground }]}>
                   {c.label}
                 </Text>

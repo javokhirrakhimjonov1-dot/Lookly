@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
@@ -397,7 +397,7 @@ async function generateOutfitPreview(
 interface SlotCardProps {
   slotKey: OutfitSlotKey;
   label: string;
-  icon: React.ComponentProps<typeof Feather>["name"];
+  icon: React.ComponentProps<typeof MaterialCommunityIcons>["name"];
   assignedItem: ClothingItem | null;
   onClear: () => void;
   flex?: number;
@@ -443,7 +443,7 @@ function SlotCard({ slotKey: _slotKey, label, icon, assignedItem, onClear, flex 
             />
           ) : (
             <View style={styles.slotNoImage}>
-              <Feather name={icon} size={22} color="#C8B9AE" />
+              <MaterialCommunityIcons name={icon} size={24} color="#C8B9AE" />
             </View>
           )}
           {isLocked && (
@@ -461,7 +461,7 @@ function SlotCard({ slotKey: _slotKey, label, icon, assignedItem, onClear, flex 
         </>
       ) : (
         <View style={styles.slotEmpty}>
-          <Feather name={icon} size={18} color={colors.border} />
+          <MaterialCommunityIcons name={icon} size={22} color={colors.border} />
           <Text style={[styles.slotLabel, { color: colors.mutedForeground }]}>{label}</Text>
         </View>
       )}
@@ -925,7 +925,7 @@ export default function OutfitBuilderScreen() {
             <SlotCard
               slotKey="outerwear"
               label={t("cat_outerwear")}
-              icon="layers"
+              icon="hanger"
               assignedItem={assigned["outerwear"] ?? null}
               onClear={() => clearSlot("outerwear")}
               isLocked={lockedSlots.has("outerwear")}
@@ -933,7 +933,7 @@ export default function OutfitBuilderScreen() {
             <SlotCard
               slotKey="tops"
               label={t("ob_slot_top")}
-              icon="wind"
+              icon="tshirt-crew-outline"
               assignedItem={hasDress ? null : (assigned["tops"] ?? null)}
               onClear={() => clearSlot("tops")}
               isLocked={lockedSlots.has("tops")}
@@ -945,7 +945,7 @@ export default function OutfitBuilderScreen() {
               <SlotCard
                 slotKey="dresses"
                 label={t("ob_slot_dress")}
-                icon="star"
+                icon="human-female"
                 assignedItem={assigned["dresses"] ?? null}
                 onClear={() => clearSlot("dresses")}
                 isLocked={lockedSlots.has("dresses")}
@@ -956,7 +956,7 @@ export default function OutfitBuilderScreen() {
               <SlotCard
                 slotKey="bottoms"
                 label={t("ob_slot_bottom")}
-                icon="minus"
+                icon="human-male"
                 assignedItem={assigned["bottoms"] ?? null}
                 onClear={() => clearSlot("bottoms")}
                 isLocked={lockedSlots.has("bottoms")}
@@ -968,7 +968,7 @@ export default function OutfitBuilderScreen() {
             <SlotCard
               slotKey="shoes"
               label={t("cat_shoes")}
-              icon="chevrons-up"
+              icon="shoe-sneaker"
               assignedItem={assigned["shoes"] ?? null}
               onClear={() => clearSlot("shoes")}
               isLocked={lockedSlots.has("shoes")}
@@ -976,7 +976,7 @@ export default function OutfitBuilderScreen() {
             <SlotCard
               slotKey="socks"
               label={t("cat_socks")}
-              icon="grid"
+              icon="foot-print"
               assignedItem={assigned["socks"] ?? null}
               onClear={() => clearSlot("socks")}
               isLocked={lockedSlots.has("socks")}
@@ -986,7 +986,7 @@ export default function OutfitBuilderScreen() {
             <SlotCard
               slotKey="accessories"
               label={t("ob_slot_accessory")}
-              icon="circle"
+              icon="sunglasses"
               assignedItem={assigned["accessories"] ?? null}
               onClear={() => clearSlot("accessories")}
               isLocked={lockedSlots.has("accessories")}
