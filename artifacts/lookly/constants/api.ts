@@ -5,16 +5,22 @@ function isLocalHost(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1";
 }
 
-function isExpoDevPort(port: string): boolean {
-  return port === "8081" || port === "19006" || port === "19000";
+function isPrivateLanHost(hostname: string): boolean {
+  const parts = hostname.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return false;
+  }
+  return parts[0] === 10
+    || (parts[0] === 172 && parts[1]! >= 16 && parts[1]! <= 31)
+    || (parts[0] === 192 && parts[1] === 168);
 }
 
 /** Local API always runs on 5000 unless the page is already served from there. */
 function needsLocalApiPort(hostname: string, port: string): boolean {
-  if (!isLocalHost(hostname)) return false;
+  if (!isLocalHost(hostname) && !isPrivateLanHost(hostname)) return false;
   // Expo may choose another available local port (for example 8082) when its
-  // usual development port is occupied. Every localhost web port except the
-  // API's own port must still call the API on 5000.
+  // usual development port is occupied. This also applies when an iPhone
+  // opens the app through the computer's private Wi-Fi address.
   return port !== "5000";
 }
 

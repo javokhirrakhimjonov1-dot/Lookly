@@ -28,8 +28,10 @@ app.use(
   }),
 );
 const localOrigins = new Set([
+  "http://localhost:5000",
   "http://localhost:8081",
   "http://localhost:8082",
+  "http://127.0.0.1:5000",
   "http://127.0.0.1:8081",
   "http://127.0.0.1:8082",
 ]);
@@ -121,7 +123,15 @@ function serveStatic(root: string, req: Request, res: Response, next: NextFuncti
       res.setHeader("Content-Type", MIME[ext] || "application/octet-stream");
       res.setHeader("Content-Length", stat.size);
       res.setHeader("Accept-Ranges", "bytes");
-      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      // Hashed JS/CSS/assets are safe to cache forever. The HTML app shell and
+      // Expo metadata must be revalidated so an iPhone reload picks up the
+      // newest bundle after a local restart.
+      res.setHeader(
+        "Cache-Control",
+        ext === ".html" || path.basename(filePath) === "metadata.json"
+          ? "no-store"
+          : "public, max-age=31536000, immutable",
+      );
       const stream = fs.createReadStream(filePath);
       stream.pipe(res);
       stream.on("error", () => { if (!res.headersSent) res.status(500).end(); });
@@ -139,6 +149,7 @@ if (fs.existsSync(webDist)) {
     if (req.path.startsWith("/api")) return next();
     const indexPath = path.join(webDist, "index.html");
     if (fs.existsSync(indexPath)) {
+      res.setHeader("Cache-Control", "no-store");
       res.type("text/html");
       res.sendFile(indexPath);
     } else {

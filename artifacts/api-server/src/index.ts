@@ -2,6 +2,7 @@ import "./load-env";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { initDb } from "./lib/db";
+import { warmupBackgroundRemoval } from "./lib/precache";
 
 const rawPort = process.env["PORT"];
 
@@ -28,6 +29,7 @@ async function startup(): Promise<void> {
     }
 
     logger.info({ port }, "Server listening");
+    void warmupBackgroundRemoval();
   });
 }
 

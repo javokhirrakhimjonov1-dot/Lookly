@@ -4,6 +4,8 @@ import {
   generateImageFromReferences,
   getGeminiImageModel,
 } from "@workspace/integrations-gemini-ai-server";
+import { getOutfitModestyIssues } from "../engine/modestyRules";
+import type { Item as EngineItem, UserProfile } from "../engine/weatherEngine";
 
 const router = Router();
 
@@ -12,6 +14,7 @@ type Item = {
   color: string;
   colorHex: string;
   category: string;
+  visualSignature?: { garmentFamily?: string; silhouette?: string; length?: string; sleeve?: string; neckline?: string; coverage?: string; opacity?: string; toeStyle?: string; heelType?: string; heelHeight?: string; bootShaft?: string };
 };
 
 type ReferenceImage = {
@@ -47,7 +50,7 @@ async function withGenerationTimeout<T>(operation: Promise<T>, timeoutMs = 70_00
  * Flash Image, Google's stable low-latency image model, when access to the
  * requested model itself is rejected. */
 async function generatePreviewWithModelFallback(
-  references: Array<{ imageBase64: string; imageMime: string }>,
+  references: Array<{ imageBase64: string; imageMime: string; label?: string }>,
   prompt: string,
 ) {
   const create = (model: string) => references.length > 0
@@ -74,21 +77,24 @@ function makePreviewPrompt(
   referenceCount: number,
   userGender?: string,
   userAge?: number,
+  stylingPreferences?: Record<string, string>,
 ): string {
   const garments = items.map((item, index) =>
-    `${index + 1}. ${item.name} — ${item.category}, ${item.color} (${item.colorHex})`,
+    `${index + 1}. ${item.name} — ${item.category}, ${item.color} (${item.colorHex}); construction ${JSON.stringify(item.visualSignature ?? {})}`,
   ).join("\n");
   const personInstruction = hasBodyReference
-    ? "The first reference image is the user-provided full-body fitting reference. Keep that person's visible skin tone, body proportions, build, and natural appearance consistent. Do not change their identity or make them into a different person."
-    : "No person reference was supplied. Create one realistic adult editorial fashion model with a natural, relaxed full-body pose. Do not use an illustrated avatar, mannequin, collage, or vector drawing.";
+    ? "REFERENCE 1 is the PERSON IDENTITY AND BODY reference. Treat this as an image-editing task, not as permission to invent a similar model. The output must show this exact same person: preserve their face and facial geometry, eyes, nose, mouth, jawline, skin tone, hair color and hairstyle, apparent age, body proportions, and build. Change only the clothing, pose, lighting, and background needed for the outfit preview. Do not beautify, age, de-age, gender-swap, replace, or synthesize a lookalike. If a garment reference contains another person, ignore that person completely."
+    : "No person reference was supplied. Create one realistic editorial fashion model with a natural, relaxed full-body pose. Match the profile age when provided. Do not use an illustrated avatar, mannequin, collage, or vector drawing.";
   const garmentInstruction = referenceCount > (hasBodyReference ? 1 : 0)
     ? "The remaining reference images are the exact wardrobe items. Use only those garments. Preserve each item’s actual silhouette, cut, color, material, seams, straps, sleeves, hardware, patterns, and visible branding. Do not substitute them with similar products, invent a logo, or add extra garments."
     : "Use the listed garments exactly as described. Do not add items not listed.";
-  const presentationInstruction = userGender === "male"
-    ? "The model must present as an adult man. Do not use a female model, womenswear styling, or feminine presentation."
-    : userGender === "female"
-      ? "The model must present as an adult woman. Do not use a male model, menswear styling, or masculine presentation."
-      : "Use an adult model whose presentation is appropriate to the selected wardrobe and profile.";
+  const presentationInstruction = hasBodyReference
+    ? "The visible person in REFERENCE 1 is the sole authority for identity and presentation. Profile metadata and garment references must never override their appearance."
+    : userGender === "male"
+      ? "The model must present as male."
+      : userGender === "female"
+        ? "The model must present as female."
+        : "Use a model whose presentation is appropriate to the selected wardrobe and profile.";
 
   return [
     "Use case: identity-preserve virtual try-on, high-end editorial fashion photography.",
@@ -96,7 +102,8 @@ function makePreviewPrompt(
     personInstruction,
     presentationInstruction,
     "SAFETY AND MODESTY REQUIREMENT: The model must be fully and modestly clothed in every result. Never show a bare chest, exposed torso, underwear, genital area, buttocks, or see-through clothing. Do not remove, open, unbutton, unzip, shorten, or alter any selected garment. If a selected shirt, jacket, cardigan, or overshirt could expose skin when open, render it fully fastened or layered so the torso stays completely covered.",
-    userAge ? `The model should read as approximately ${userAge} years old, while remaining an adult editorial fashion model.` : "",
+    `User styling preferences: ${JSON.stringify(stylingPreferences ?? {})}. Respect these without changing or inventing garments.`,
+    userAge && !hasBodyReference ? `The model should read as approximately ${userAge} years old.` : "",
     garmentInstruction,
     "Render a premium, photorealistic, full-length fashion editorial photograph — never a 2D avatar, cartoon, flat vector, clothing chart, split-screen, text label, or mood board.",
     "Dress the model in a coherent outfit built from the selected items. Fit and drape every garment naturally around shoulders, chest, waist, hips, legs, and feet. Respect fabric physics and proportions.",
@@ -120,6 +127,7 @@ router.post("/outfit-preview", async (req, res) => {
     itemImages = [],
     userGender,
     userAge,
+    stylingPreferences,
   } = req.body as {
     items: Item[];
     weather?: string;
@@ -130,29 +138,63 @@ router.post("/outfit-preview", async (req, res) => {
     itemImages?: ReferenceImage[];
     userGender?: string;
     userAge?: number;
+    stylingPreferences?: Record<string, string>;
   };
 
   if (!Array.isArray(items) || items.length === 0) {
     res.status(400).json({ error: "At least one item is required" });
     return;
   }
+  if (userAge !== undefined && (!Number.isInteger(userAge) || userAge < 12 || userAge > 50)) {
+    res.status(400).json({ error: "userAge must be a whole number from 12 to 50", code: "INVALID_AGE" });
+    return;
+  }
+  const effectiveStylingPreferences = userGender === "female" ? stylingPreferences : undefined;
+  const profile: UserProfile = { gender:userGender, stylePreferences:["casual"], stylingPreferences:effectiveStylingPreferences as UserProfile["stylingPreferences"] };
+  const engineItems: EngineItem[] = items.map((item, index) => ({
+    id:String(index), name:item.name, category:item.category as EngineItem["category"], color:item.color || "black",
+    seasons:[], weight:"medium", tags:[], garmentFamily:item.visualSignature?.garmentFamily,
+    silhouette:item.visualSignature?.silhouette, length:item.visualSignature?.length, sleeve:item.visualSignature?.sleeve,
+    neckline:item.visualSignature?.neckline, coverage:item.visualSignature?.coverage, opacity:item.visualSignature?.opacity,
+    toeStyle:item.visualSignature?.toeStyle, heelType:item.visualSignature?.heelType, heelHeight:item.visualSignature?.heelHeight,
+    bootShaft:item.visualSignature?.bootShaft,
+  }));
+  const modestyIssues = getOutfitModestyIssues(engineItems, profile);
+  if (modestyIssues.length) {
+    res.status(409).json({
+      error: modestyIssues.includes("HIJAB_REQUIRED")
+        ? "Add or identify a hijab in your wardrobe to complete this look."
+        : "This look does not match the profile's current coverage settings.",
+      code: modestyIssues[0],
+      reasonCodes: modestyIssues,
+    });
+    return;
+  }
 
   const bodyReference = cleanBase64(userBodyPhotoBase64);
   const garmentReferences = Array.isArray(itemImages)
-    ? itemImages.slice(0, 5).flatMap((reference) => {
+    ? itemImages.slice(0, 5).flatMap((reference, index) => {
       const imageBase64 = cleanBase64(reference.imageBase64);
-      return imageBase64 ? [{ imageBase64, imageMime: reference.imageMime || "image/png" }] : [];
+      return imageBase64 ? [{
+        imageBase64,
+        imageMime: reference.imageMime || "image/png",
+        label: reference.label || `GARMENT ${index + 1} — clothing reference only; ignore any person or body visible in this image`,
+      }] : [];
     })
     : [];
   // Gemini image generation is most reliable with a small set of high-value
   // references. A body reference plus two exact garment references avoids
   // the malformed collage-like images caused by overloading the model.
   const references = [
-    ...(bodyReference ? [{ imageBase64: bodyReference, imageMime: userBodyPhotoMime }] : []),
+    ...(bodyReference ? [{
+      imageBase64: bodyReference,
+      imageMime: userBodyPhotoMime,
+      label: "PERSON IDENTITY AND BODY — preserve this exact person; this is not a garment reference",
+    }] : []),
     ...garmentReferences,
   ].slice(0, 3);
   const prompt = makePreviewPrompt(
-    items, weather, temperature, mood, !!bodyReference, references.length, userGender, userAge,
+    items, weather, temperature, mood, !!bodyReference, references.length, userGender, userAge, effectiveStylingPreferences,
   );
 
   try {

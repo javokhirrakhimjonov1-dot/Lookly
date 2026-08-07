@@ -1,7 +1,8 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/components/FeatherIcon";
+import { AiPickIcon } from "@/components/AiPickIcon";
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { SvgXml } from "react-native-svg";
 import {
   ActivityIndicator,
@@ -19,7 +20,7 @@ import { apiAuthHeaders } from "@/lib/apiAuth";
 import { useColors } from "@/hooks/useColors";
 import { useWardrobe, type ClothingItem } from "@/contexts/WardrobeContext";
 import { useWeather } from "@/contexts/WeatherContext";
-import { useUserProfile } from "@/contexts/UserProfileContext";
+import { type StylingPreferences, useUserProfile } from "@/contexts/UserProfileContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
   SQUAD_FRIENDS,
@@ -66,6 +67,7 @@ interface Outfit {
   mood: string;
   weatherNote?: string | null;
   isComplete?: boolean;
+  reasonCodes?: string[];
   items: OutfitItem[];
 }
 
@@ -99,6 +101,7 @@ async function generateTodayPreview(
   items: ClothingItem[], weather: string, temperature: number,
   bodyPhotoBase64: string | null, bodyPhotoMime: string,
   gender: string | null, age: number | null, mood: string,
+  stylingPreferences?: StylingPreferences,
 ): Promise<string> {
   const itemImages = (await Promise.all(items.map((item) => imageUriToReference(item.imageUri))))
     .filter((image): image is ImageReference => !!image);
@@ -110,11 +113,12 @@ async function generateTodayPreview(
       headers: await apiAuthHeaders(),
       signal: controller.signal,
       body: JSON.stringify({
-        items: items.map((item) => ({ name: item.name, color: item.color, colorHex: item.colorHex, category: item.category })),
+        items: items.map((item) => ({ name: item.name, color: item.color, colorHex: item.colorHex, category: item.category, visualSignature: item.visualSignature })),
         weather, temperature, mood,
         userBodyPhotoBase64: bodyPhotoBase64 ?? undefined,
         userBodyPhotoMime: bodyPhotoBase64 ? bodyPhotoMime : undefined,
         userGender: gender ?? undefined, userAge: age ?? undefined, itemImages,
+        stylingPreferences,
       }),
     });
     if (!response.ok) throw new Error(`Preview unavailable (${response.status})`);
@@ -262,7 +266,7 @@ function OutfitCard({
   const { t } = useLanguage();
   const { createPoll } = useSquadVote();
   const moodColor = MOOD_COLORS[outfit.mood] ?? colors.accent;
-  const { bodyPhotoBase64, bodyPhotoMime, gender, age } = useUserProfile();
+  const { bodyPhotoBase64, bodyPhotoMime, gender, age, stylingPreferences } = useUserProfile();
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [genFailed, setGenFailed] = useState(false);
@@ -282,7 +286,7 @@ function OutfitCard({
     if (!canGeneratePreview || isGenerating) return;
     setIsGenerating(true);
     setGenFailed(false);
-    void generateTodayPreview(resolvedItems, weatherDesc, temperature, bodyPhotoBase64, bodyPhotoMime, gender, age, outfit.mood)
+    void generateTodayPreview(resolvedItems, weatherDesc, temperature, bodyPhotoBase64, bodyPhotoMime, gender, age, outfit.mood, stylingPreferences)
       .then(setPreviewImage)
       .catch(() => setGenFailed(true))
       .finally(() => setIsGenerating(false));
@@ -412,9 +416,15 @@ function OutfitCard({
           disabled={isGenerating || (!hasReadyPreview && !canGeneratePreview)}
           style={[styles.buildBtn, { backgroundColor: colors.primary }]}
         >
-          {isGenerating ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Feather name="scissors" size={13} color={colors.primaryForeground} />}
+          {isGenerating ? (
+            <ActivityIndicator size="small" color={colors.primaryForeground} />
+          ) : hasReadyPreview ? (
+            <Feather name="scissors" size={13} color={colors.primaryForeground} />
+          ) : (
+            <AiPickIcon size={17} color={colors.primaryForeground} />
+          )}
           <Text style={[styles.buildBtnText, { color: colors.primaryForeground }]}>
-            {isGenerating ? "Styling…" : hasReadyPreview ? t("build_look") : t("ai_pick_today")}
+            {isGenerating ? t("styling") : hasReadyPreview ? t("build_look") : t("ai_pick_today")}
           </Text>
         </TouchableOpacity>
       </View>
@@ -432,12 +442,14 @@ function OutfitCard({
 export default function OutfitCarousel() {
   const colors = useColors();
   const { t } = useLanguage();
-  const { items } = useWardrobe();
+  const { items, isLoading: wardrobeLoading } = useWardrobe();
   const { temperature, weatherCode, humidity, windSpeed, rainProbability, uvIndex, isLoading: weatherLoading } = useWeather();
-  const { gender, age, styleAesthetics, heatAdaptation, colorPalette } = useUserProfile();
+  const { gender, age, styleAesthetics, heatAdaptation, colorPalette, stylingPreferences } = useUserProfile();
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [loading, setLoading] = useState(false);
+  const [hasRequestedOutfit, setHasRequestedOutfit] = useState(false);
   const nextOptionIndex = useRef(0);
+  const requestId = useRef(0);
 
   const { width: screenW, height: screenH } = useWindowDimensions();
   const cardWidth = screenW - 36;
@@ -445,7 +457,17 @@ export default function OutfitCarousel() {
   const wDesc = weatherDescLabel(temperature, weatherCode);
 
   const fetchOutfits = useCallback(async (showAnother = false) => {
-    if (weatherLoading) return;
+    const currentRequestId = ++requestId.current;
+    if (weatherLoading || wardrobeLoading) {
+      setLoading(false);
+      return;
+    }
+    if (items.length === 0) {
+      setOutfits([]);
+      setLoading(false);
+      return;
+    }
+    setHasRequestedOutfit(true);
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/suggest-outfits`, {
@@ -465,9 +487,12 @@ export default function OutfitCarousel() {
           ...(styleAesthetics.length > 0 ? { styleAesthetics } : {}),
           ...(heatAdaptation ? { heatAdaptation } : {}),
           ...(colorPalette ? { colorPalette } : {}),
+          stylingPreferences,
         }),
       });
+      if (!res.ok) throw new Error(`Outfit suggestions unavailable (${res.status})`);
       const data = (await res.json()) as { outfits: Outfit[] };
+      if (currentRequestId !== requestId.current) return;
       const choices = data.outfits ?? [];
       if (choices.length === 0) {
         setOutfits([]);
@@ -480,9 +505,9 @@ export default function OutfitCarousel() {
         setOutfits([selected]);
       }
     } catch {
-      setOutfits([]);
+      if (currentRequestId === requestId.current) setOutfits([]);
     } finally {
-      setLoading(false);
+      if (currentRequestId === requestId.current) setLoading(false);
     }
   // Re-run when an item is edited, not only when the number of items changes.
   // Profile preferences also affect the request sent to the suggestion service.
@@ -495,16 +520,14 @@ export default function OutfitCarousel() {
     rainProbability,
     uvIndex,
     weatherLoading,
+    wardrobeLoading,
     gender,
     age,
     styleAesthetics,
     heatAdaptation,
     colorPalette,
+    stylingPreferences,
   ]);
-
-  useEffect(() => {
-    if (!weatherLoading) void fetchOutfits();
-  }, [weatherLoading, fetchOutfits]);
 
   const wardrobeMap = new Map(items.map((i) => [i.id, i]));
 
@@ -526,7 +549,7 @@ export default function OutfitCarousel() {
         </TouchableOpacity>
       </View>
 
-      {loading && outfits.length === 0 ? (
+      {(wardrobeLoading || loading) && outfits.length === 0 ? (
         <View
           style={[
             styles.skeleton,
@@ -545,17 +568,41 @@ export default function OutfitCarousel() {
             { backgroundColor: colors.card, borderColor: colors.border, height: cardH },
           ]}
         >
-          <Feather name="layers" size={28} color={colors.border} />
+          {items.length === 0 || hasRequestedOutfit ? (
+            <Feather
+              name={items.length === 0 ? "layers" : "alert-circle"}
+              size={28}
+              color={colors.border}
+            />
+          ) : (
+            <AiPickIcon size={72} color={colors.border} />
+          )}
           <Text style={[styles.skeletonText, { color: colors.mutedForeground }]}>
-            {t("ob_add_clothes_first")}
+            {items.length === 0
+              ? t("ob_add_clothes_first")
+              : hasRequestedOutfit
+                ? t("outfit_suggestion_unavailable")
+                : t("ai_pick_today_desc")}
           </Text>
           <TouchableOpacity
-            onPress={() => router.push("/add-item")}
+            onPress={() => items.length === 0 ? router.push("/add-item") : void fetchOutfits()}
             style={[styles.addBtn, { backgroundColor: colors.primary }]}
           >
-            <Feather name="plus" size={14} color={colors.primaryForeground} />
+            {items.length === 0 || hasRequestedOutfit ? (
+              <Feather
+                name={items.length === 0 ? "plus" : "refresh-cw"}
+                size={14}
+                color={colors.primaryForeground}
+              />
+            ) : (
+              <AiPickIcon size={18} color={colors.primaryForeground} />
+            )}
             <Text style={[styles.addBtnText, { color: colors.primaryForeground }]}>
-              {t("tap_add_first")}
+              {items.length === 0
+                ? t("add_first_item")
+                : hasRequestedOutfit
+                  ? t("try_again")
+                  : t("ai_pick_today")}
             </Text>
           </TouchableOpacity>
         </View>

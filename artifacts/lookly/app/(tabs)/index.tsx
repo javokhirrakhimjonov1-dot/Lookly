@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/components/FeatherIcon";
 import { router } from "expo-router";
 import React from "react";
 import {
@@ -70,7 +70,7 @@ function getInitials(name: string): string {
 
 export default function HomeScreen() {
   const colors = useColors();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const insets = useSafeAreaInsets();
   const { items } = useWardrobe();
   const { looks } = useSocial();
@@ -88,7 +88,8 @@ export default function HomeScreen() {
   }
 
   const topPad = getTopPadding(insets.top);
-  const today = new Date().toLocaleDateString("en-US", {
+  const locale = lang === "ru" ? "ru-RU" : lang === "uz" ? "uz-UZ" : "en-US";
+  const today = new Date().toLocaleDateString(locale, {
     weekday: "long",
     month: "long",
     day: "numeric",

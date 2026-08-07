@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/components/FeatherIcon";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
@@ -6,6 +6,7 @@ import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
+  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -26,6 +27,9 @@ import {
   useWardrobe,
 } from "@/contexts/WardrobeContext";
 import { useWeather } from "@/contexts/WeatherContext";
+import { useUserProfile } from "@/contexts/UserProfileContext";
+import { isAutomaticItemEligible, isHijabItem } from "@/lib/modestyRules";
+import { getGarmentTone } from "@/lib/garmentTone";
 
 // ─── Slot definitions ─────────────────────────────────────────────────────────
 
@@ -43,6 +47,7 @@ const SHUFFLE_SLOTS: {
 ];
 
 const DISLIKED_KEY = "@lookly_disliked_outfits";
+const USE_NATIVE_DRIVER = Platform.OS !== "web";
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 
@@ -204,6 +209,7 @@ export default function ShuffleScreen() {
   const insets = useSafeAreaInsets();
   const { items, markWorn, saveOutfit } = useWardrobe();
   const { temperature } = useWeather();
+  const { stylingPreferences } = useUserProfile();
 
   const topPad = getTopPadding(insets.top);
 
@@ -241,6 +247,8 @@ export default function ShuffleScreen() {
       const allowedWeights = getFabricWeightForTemp(temperature);
       return items.filter((item) => {
         if (item.category !== category) return false;
+        if (!isAutomaticItemEligible(item, stylingPreferences)) return false;
+        if (category === "accessories" && stylingPreferences.hijabPreference === "always" && !isHijabItem(item)) return false;
         if (!workMode && item.isWorkwear) return false;
         if (!item.seasons.includes(season)) return false;
         const fw = item.fabricWeight ?? "medium";
@@ -250,7 +258,7 @@ export default function ShuffleScreen() {
         return true;
       });
     },
-    [items, workMode, temperature]
+    [items, workMode, temperature, stylingPreferences]
   );
 
   // ── Discovery engine core ──────────────────────────────────────────────────
@@ -323,15 +331,19 @@ export default function ShuffleScreen() {
   const showDiscoveryBanner = useCallback(() => {
     setDiscoveryBannerVisible(true);
     Animated.sequence([
-      Animated.timing(bannerOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.timing(bannerOpacity, { toValue: 1, duration: 200, useNativeDriver: USE_NATIVE_DRIVER }),
       Animated.delay(1600),
-      Animated.timing(bannerOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+      Animated.timing(bannerOpacity, { toValue: 0, duration: 300, useNativeDriver: USE_NATIVE_DRIVER }),
     ]).start(() => setDiscoveryBannerVisible(false));
   }, [bannerOpacity]);
 
   // ── Shuffle handler ────────────────────────────────────────────────────────
   const handleShuffle = async () => {
     if (isShuffling) return;
+    if (stylingPreferences.hijabPreference === "always" && !items.some(isHijabItem)) {
+      Alert.alert("Hijab needed", t("hijab_add_item"));
+      return;
+    }
     setIsShuffling(true);
     showDiscoveryBanner();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -340,15 +352,15 @@ export default function ShuffleScreen() {
 
     // Fade out + bounce — run simultaneously so the exit feels snappy
     const fadeOutAnims = unlocked.map((s) =>
-      Animated.timing(fadeValues[s.key]!, { toValue: 0.04, duration: 85, useNativeDriver: true })
+      Animated.timing(fadeValues[s.key]!, { toValue: 0.04, duration: 85, useNativeDriver: USE_NATIVE_DRIVER })
     );
     const spinAnims = unlocked.map((s) => {
       const val = spinValues[s.key]!;
       return Animated.sequence([
-        Animated.timing(val, { toValue: 1, duration: 120, useNativeDriver: true }),
-        Animated.timing(val, { toValue: 0, duration: 120, useNativeDriver: true }),
-        Animated.timing(val, { toValue: 1, duration: 100, useNativeDriver: true }),
-        Animated.timing(val, { toValue: 0, duration: 100, useNativeDriver: true }),
+        Animated.timing(val, { toValue: 1, duration: 120, useNativeDriver: USE_NATIVE_DRIVER }),
+        Animated.timing(val, { toValue: 0, duration: 120, useNativeDriver: USE_NATIVE_DRIVER }),
+        Animated.timing(val, { toValue: 1, duration: 100, useNativeDriver: USE_NATIVE_DRIVER }),
+        Animated.timing(val, { toValue: 0, duration: 100, useNativeDriver: USE_NATIVE_DRIVER }),
       ]);
     });
 
@@ -359,7 +371,7 @@ export default function ShuffleScreen() {
     // New content is in state — fade items back in
     Animated.parallel(
       unlocked.map((s) =>
-        Animated.timing(fadeValues[s.key]!, { toValue: 1, duration: 210, useNativeDriver: true })
+        Animated.timing(fadeValues[s.key]!, { toValue: 1, duration: 210, useNativeDriver: USE_NATIVE_DRIVER })
       )
     ).start();
 
@@ -494,7 +506,7 @@ export default function ShuffleScreen() {
         ) : (
           <>
             <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-              {t("lucky_hint")} — surfaces rarely-worn pieces &amp; bold colour contrasts.
+              {t("lucky_hint")} — {t("shuffle_extra_hint")}
             </Text>
 
             {/* ── Discovery banner ─────────────────────────────────────────── */}
@@ -536,6 +548,7 @@ export default function ShuffleScreen() {
             {/* ── Outfit slots ─────────────────────────────────────────────── */}
             {SHUFFLE_SLOTS.map((slot) => {
               const item = slots[slot.key];
+              const tone = item ? getGarmentTone(item.colorHex, colors.border) : null;
               const isLocked = locked.has(slot.key);
               const pool = buildPool(slot.key);
               const spin = spinValues[slot.key]!;
@@ -550,14 +563,14 @@ export default function ShuffleScreen() {
                   style={[
                     styles.slotRow,
                     {
-                      backgroundColor: colors.card,
-                      borderColor: isLocked ? colors.accent : colors.border,
+                      backgroundColor: tone?.background ?? colors.card,
+                      borderColor: tone?.border ?? colors.border,
                       transform: [{ translateY }],
                       opacity: isLocked ? 1 : fadeValues[slot.key],
                     },
                   ]}
                 >
-                  <View style={[styles.slotIcon, { backgroundColor: colors.card }]}>
+                  <View style={[styles.slotIcon, { backgroundColor: tone?.background ?? colors.card }]}>
                     {item?.imageUri ? (
                       <Image
                         source={{ uri: item.imageUri }}
@@ -771,7 +784,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     borderRadius: 18,
-    borderWidth: 1.5,
+    borderWidth: 1,
     overflow: "hidden",
     height: 80,
   },

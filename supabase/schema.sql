@@ -7,15 +7,22 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text not null default '',
   gender text,
-  age integer check (age is null or age between 13 and 120),
+  age integer,
   style_aesthetics jsonb not null default '[]'::jsonb,
   heat_adaptation text,
   color_palette text,
+  styling_preferences jsonb not null default '{}'::jsonb,
   preferred_currency text not null default 'USD' check (preferred_currency in ('USD', 'UZS', 'RUB')),
   body_photo_path text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Existing projects may still have the range check from an earlier schema.
+alter table public.profiles
+  drop constraint if exists profiles_age_check;
+alter table public.profiles
+  add constraint profiles_age_check check (age is null or age between 12 and 50) not valid;
 
 create table if not exists public.wardrobe_items (
   id uuid primary key default gen_random_uuid(),
@@ -32,8 +39,10 @@ create table if not exists public.wardrobe_items (
   purchase_currency text not null default 'USD' check (purchase_currency in ('USD', 'UZS', 'RUB')),
   times_worn integer not null default 0 check (times_worn >= 0),
   photo_path text,
+  image_processing_version integer not null default 0 check (image_processing_version >= 0),
   tags jsonb not null default '[]'::jsonb,
   brand_logo jsonb,
+  visual_signature jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -48,9 +57,19 @@ alter table public.wardrobe_items
 alter table public.wardrobe_items
   add column if not exists custom_name text;
 
+alter table public.wardrobe_items
+  add column if not exists visual_signature jsonb;
+
+alter table public.wardrobe_items
+  add column if not exists image_processing_version integer not null default 0
+  check (image_processing_version >= 0);
+
 alter table public.profiles
   add column if not exists preferred_currency text not null default 'USD'
   check (preferred_currency in ('USD', 'UZS', 'RUB'));
+
+alter table public.profiles
+  add column if not exists styling_preferences jsonb not null default '{}'::jsonb;
 
 -- Existing pilot databases retain their original category constraint, so widen
 -- it safely before allowing socks to be saved.

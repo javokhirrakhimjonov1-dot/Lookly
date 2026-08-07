@@ -1,4 +1,5 @@
-import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Feather } from "@/components/FeatherIcon";
+import { ClothingCategoryIcon } from "@/components/ClothingCategoryIcon";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import * as ImageManipulator from "expo-image-manipulator";
@@ -37,26 +38,27 @@ import {
   type BrandLogo,
   type ClothingCategory,
   type ClothingItem,
+  type ClothingVisualSignature,
   type Currency,
   type FabricWeight,
   type Season,
   useWardrobe,
 } from "@/contexts/WardrobeContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
-
-const CATEGORIES: {
-  key: ClothingCategory;
-  label: string;
-  icon: React.ComponentProps<typeof MaterialCommunityIcons>["name"];
-}[] = [
-  { key: "tops", label: "Tops", icon: "tshirt-crew-outline" },
-  { key: "bottoms", label: "Bottoms", icon: "human-male" },
-  { key: "dresses", label: "Dresses", icon: "human-female" },
-  { key: "outerwear", label: "Outerwear", icon: "hanger" },
-  { key: "shoes", label: "Shoes", icon: "shoe-sneaker" },
-  { key: "socks", label: "Socks", icon: "foot-print" },
-  { key: "accessories", label: "Accessories", icon: "sunglasses" },
-];
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getProfileCategoryOptions } from "@/lib/profileCategories";
+import { getGarmentTone } from "@/lib/garmentTone";
+import {
+  groupDetectionsByPhoto,
+  type PhotoDetectionReview,
+} from "@/lib/photoDetectionReview";
+import {
+  defaultDuplicateSelection,
+  isHighConfidenceMetadataDuplicate,
+  isNearIdenticalDescriptionDuplicate,
+  shortlistDuplicateCandidates,
+  type DuplicateComparable,
+} from "@/lib/duplicateDetection";
 
 const SEASONS: Season[] = ["spring", "summer", "fall", "winter"];
 
@@ -118,8 +120,9 @@ const API_BASE = getApiBase();
 // are never silently skipped.
 const MAX_SCAN_PHOTOS = 15;
 
-interface DetectedItem {
+export interface DetectedItem {
   name: string;
+  localizedNames?: Partial<Record<"en" | "ru" | "uz", string>>;
   category: ClothingCategory;
   colorName: string;
   colorHex: string;
@@ -129,14 +132,25 @@ interface DetectedItem {
   tags: string[];
   locationHint: string;
   brandLogo?: BrandLogo | null;
+  visualSignature?: ClothingVisualSignature;
   _photoUri?: string;
   _photoBase64?: string;
   _photoMime?: string;
   _photoIndex?: number;
   _photoTotal?: number;
   _extractedUri?: string;
+  _imageProcessingVersion?: number;
   _isDuplicate?: boolean;
-  _duplicateOf?: { name: string; color: string; category: string; fabricWeight: string };
+  _duplicateOf?: {
+    id: string;
+    name: string;
+    color: string;
+    category: string;
+    fabricWeight: string;
+    imageUri?: string;
+    confidence: number;
+    source: "wardrobe" | "batch";
+  };
 }
 
 type ManualPhoto = {
@@ -180,18 +194,128 @@ function mergeDetectedShoePairs(items: DetectedItem[]): DetectedItem[] {
 }
 
 async function scanClothingItems(base64: string, mimeType: string): Promise<DetectedItem[]> {
-  const res = await fetch(`${API_BASE}/identify-clothing`, {
-    method: "POST",
-    headers: await apiAuthHeaders(),
-    body: JSON.stringify({ image: base64, mimeType }),
-  });
-  if (!res.ok) {
-    let msg = `API error ${res.status}`;
-    try { const body = await res.json(); if (body.error) msg = body.error; } catch {}
-    throw new Error(msg);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60_000);
+  try {
+    const res = await fetch(`${API_BASE}/identify-clothing`, {
+      method: "POST",
+      headers: await apiAuthHeaders(),
+      body: JSON.stringify({ image: base64, mimeType }),
+      signal: controller.signal,
+    });
+    const data = await res.json().catch(() => ({})) as { items?: unknown; error?: string };
+    if (!res.ok) {
+      throw new Error(data.error || `Photo identification failed (${res.status}).`);
+    }
+    if (!Array.isArray(data.items)) {
+      throw new Error("Photo identification returned an invalid response. Please try again.");
+    }
+    return data.items as DetectedItem[];
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Photo identification took too long. Please try again.");
+    }
+    if (error instanceof TypeError || (error instanceof Error && /load failed|failed to fetch|network request failed/i.test(error.message))) {
+      throw new Error("Lookly could not reach the photo analysis server. Refresh this page, confirm your phone is on the same Wi-Fi, and try again.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-  const data = await res.json() as { items: DetectedItem[] };
-  return data.items ?? [];
+}
+
+type DuplicateSource = DuplicateComparable & {
+  id: string;
+  imageUri?: string;
+  imageBase64?: string;
+  imageMime?: string;
+  source: "wardrobe" | "batch";
+};
+
+function detectedComparable(item: DetectedItem): DuplicateComparable {
+  return {
+    name: item.name,
+    category: item.category,
+    color: item.colorName,
+    colorHex: item.colorHex,
+    fabricWeight: item.fabricWeight,
+    tags: item.tags,
+    visualSignature: item.visualSignature,
+  };
+}
+
+function wardrobeDuplicateSource(item: ClothingItem): DuplicateSource {
+  return {
+    id: item.id,
+    name: item.name,
+    category: item.category,
+    color: item.color,
+    colorHex: item.colorHex,
+    fabricWeight: item.fabricWeight,
+    tags: item.tags,
+    visualSignature: item.visualSignature,
+    imageUri: item.imageUri,
+    source: "wardrobe",
+  };
+}
+
+function batchDuplicateSource(item: DetectedItem, index: number): DuplicateSource {
+  return {
+    id: `batch-${index}`,
+    name: item.name,
+    category: item.category,
+    color: item.colorName,
+    colorHex: item.colorHex,
+    fabricWeight: item.fabricWeight,
+    tags: item.tags,
+    visualSignature: item.visualSignature,
+    imageUri: item._photoUri,
+    imageBase64: item._photoBase64,
+    imageMime: item._photoMime,
+    source: "batch",
+  };
+}
+
+async function imageUriToBase64(uri: string): Promise<{ imageBase64: string; mimeType: string } | null> {
+  if (uri.startsWith("data:")) {
+    const match = uri.match(/^data:([^;,]+)[;,]/i);
+    const imageBase64 = uri.split(",")[1] ?? "";
+    return imageBase64 ? { imageBase64, mimeType: match?.[1] ?? "image/jpeg" } : null;
+  }
+  try {
+    const response = await fetch(uri, { signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    let binary = "";
+    for (let index = 0; index < bytes.length; index += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+    }
+    return {
+      imageBase64: globalThis.btoa(binary),
+      mimeType: response.headers.get("content-type")?.split(";")[0] ?? "image/jpeg",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function duplicateDetails(source: DuplicateSource, confidence: number): NonNullable<DetectedItem["_duplicateOf"]> {
+  return {
+    id: source.id,
+    name: source.name,
+    color: source.color,
+    category: source.category,
+    fabricWeight: source.fabricWeight ?? "medium",
+    imageUri: source.imageUri,
+    confidence,
+    source: source.source,
+  };
+}
+
+interface CleanProductImage {
+  uri: string;
+  imageProcessingVersion: number;
+  backgroundRemoved: boolean;
 }
 
 async function removeBg(
@@ -204,9 +328,10 @@ async function removeBg(
   photoBase64?: string,
   photoMimeType?: string,
   locationHint?: string,
-): Promise<string | null> {
+  tags?: string[],
+): Promise<CleanProductImage | null> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 90_000);
+  const timeout = setTimeout(() => controller.abort(), 180_000);
   try {
     const res = await fetch(`${API_BASE}/remove-bg`, {
       method: "POST",
@@ -222,12 +347,15 @@ async function removeBg(
         photoBase64,
         mimeType: photoMimeType,
         locationHint,
+        tags,
       }),
     });
     const data = await res.json().catch(() => ({})) as {
       image?: string;
       url?: string;
       studioGenerated?: boolean;
+      backgroundRemoved?: boolean;
+      imageProcessingVersion?: number;
       error?: string;
     };
     if (!res.ok) {
@@ -238,12 +366,20 @@ async function removeBg(
     if (!data.studioGenerated) {
       throw new Error(data.error || "Gemini did not return a clean product image.");
     }
+    let uri: string | null = null;
     if (data.url) {
       // Uploaded images are served from /uploads, outside the /api router.
-      return `${API_BASE.replace(/\/api$/, "")}${data.url}`;
+      uri = `${API_BASE.replace(/\/api$/, "")}${data.url}`;
     }
-    if (data.image) return `data:image/png;base64,${data.image}`;
-    return null;
+    if (!uri && data.image) uri = `data:image/png;base64,${data.image}`;
+    return uri ? {
+      uri,
+      // A confirmed studio result is already a safe isolated catalog asset,
+      // even when the final transparent-background pass falls back to the
+      // studio's clean off-white square.
+      imageProcessingVersion: Math.max(data.imageProcessingVersion ?? 0, 1),
+      backgroundRemoved: data.backgroundRemoved === true,
+    } : null;
   } catch (error: unknown) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error("Premium product image took too long. Please try again.");
@@ -322,11 +458,82 @@ async function webFilesToAssets(files: File[]): Promise<ImagePicker.ImagePickerA
       }));
 }
 
+async function compressWebFileForUpload(file: File): Promise<{ uri: string; base64: string; mimeType: string }> {
+  const decodeTimeout = () => new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("Image decode timed out")), 12_000)
+  );
+  let source: CanvasImageSource;
+  let width: number;
+  let height: number;
+  let cleanup = () => {};
+
+  try {
+    if (typeof createImageBitmap !== "function") throw new Error("ImageBitmap is unavailable");
+    const bitmap = await Promise.race([createImageBitmap(file), decodeTimeout()]);
+    source = bitmap;
+    width = bitmap.width;
+    height = bitmap.height;
+    cleanup = () => bitmap.close();
+  } catch {
+    // iPhone Safari can expose createImageBitmap but still reject photos from
+    // the camera roll. Its normal <img> decoder handles many of those JPEG/
+    // HEIC variants, so use it before falling back to the full-size original.
+    const objectUrl = URL.createObjectURL(file);
+    const imageElement = document.createElement("img");
+    cleanup = () => URL.revokeObjectURL(objectUrl);
+    try {
+      await Promise.race([
+        new Promise<void>((resolve, reject) => {
+          imageElement.onload = () => resolve();
+          imageElement.onerror = () => reject(new Error("Browser could not decode this photo"));
+          imageElement.src = objectUrl;
+        }),
+        decodeTimeout(),
+      ]);
+      source = imageElement;
+      width = imageElement.naturalWidth;
+      height = imageElement.naturalHeight;
+    } catch (error) {
+      cleanup();
+      throw error;
+    }
+  }
+
+  try {
+    const maxDimension = 1280;
+    const scale = Math.min(1, maxDimension / Math.max(width, height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Image canvas is unavailable");
+    context.drawImage(source, 0, 0, canvas.width, canvas.height);
+    const uri = canvas.toDataURL("image/jpeg", 0.72);
+    const base64 = uri.split(",")[1] ?? "";
+    if (!base64) throw new Error("Browser returned an empty photo");
+    return { uri, base64, mimeType: "image/jpeg" };
+  } finally {
+    cleanup();
+  }
+}
+
 async function compressAssetForUpload(asset: ImagePicker.ImagePickerAsset): Promise<{ uri: string; base64: string; mimeType: string }> {
-  // Mobile browsers already provide the selected file as base64. Running the
-  // Expo canvas compressor first can hang after Safari/Chrome returns from the
-  // gallery, leaving the user on an apparently abandoned picker screen.
+  // Browser photo libraries can return full-resolution files whose base64 form
+  // exceeds the API body limit. Resize browser-readable images before sending
+  // them to identification, with a short timeout for Safari/HEIC.
   if (Platform.OS === "web" && asset.base64) {
+    const file = asset.file;
+    if (file && typeof document !== "undefined") {
+      try {
+        return await compressWebFileForUpload(file);
+      } catch {
+        // HEIC decoding varies by browser. A reasonably sized original can
+        // still be accepted by Gemini, so retain the safe fallback below.
+      }
+    }
+    if (asset.base64.length > 18_000_000) {
+      throw new Error("This photo is too large to analyze. Please choose a smaller image or a JPEG screenshot.");
+    }
     return { uri: asset.uri, base64: asset.base64, mimeType: asset.mimeType || "image/jpeg" };
   }
   try {
@@ -354,23 +561,26 @@ interface ItemPickerProps {
   visible: boolean;
   items: DetectedItem[];
   imageUri: string;
+  hasNextPhoto: boolean;
   onSelectOne: (item: DetectedItem) => void;
   onAddAll: (items: DetectedItem[]) => void;
   onDismiss: () => void;
 }
 
-function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss }: ItemPickerProps) {
+function ItemPicker({ visible, items, imageUri, hasNextPhoto, onSelectOne, onAddAll, onDismiss }: ItemPickerProps) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const [selected, setSelected] = useState<Set<number>>(() => new Set(items.map((_, i) => i)));
+  const [selected, setSelected] = useState<Set<number>>(() => defaultDuplicateSelection(items));
 
   // The sheet stays mounted between scans. Reset every new batch so an old
   // selection never hides items from the next multi-photo upload.
   useEffect(() => {
-    if (visible) setSelected(new Set(items.map((_, index) => index)));
+    if (visible) setSelected(defaultDuplicateSelection(items));
   }, [items, visible]);
 
   const photoCount = Math.max(1, ...items.map((item) => item._photoTotal ?? 1));
+  const photoNumber = Math.min(photoCount, (items[0]?._photoIndex ?? 0) + 1);
+  const newItemCount = items.filter((item) => !item._isDuplicate).length;
 
   const toggleSelect = (idx: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -405,12 +615,12 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
               </Text>
               {photoCount > 1 ? (
                 <Text style={[styles.pickerSubtitle, { color: colors.mutedForeground }]}>
-                  Results from {photoCount} selected photos
+                  Photo {photoNumber} of {photoCount}
                 </Text>
               ) : null}
               <Text style={[styles.pickerSubtitle, { color: colors.mutedForeground }]}>
                 {items.filter((i) => i._isDuplicate).length > 0
-                  ? `${items.filter((i) => i._isDuplicate).length} already in wardrobe · deselected`
+                  ? `${items.filter((i) => i._isDuplicate).length} possible duplicate${items.filter((i) => i._isDuplicate).length === 1 ? "" : "s"} · deselected`
                   : "Select which ones to add to your wardrobe"}
               </Text>
             </View>
@@ -430,16 +640,17 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
                 AI found these clothing items in your photo. Tap to select or deselect.
               </Text>
               <TouchableOpacity
+                disabled={selected.size === 0 && newItemCount === 0}
                 onPress={() =>
                   setSelected(
-                    selected.size === items.length
+                    selected.size > 0
                       ? new Set()
-                      : new Set(items.map((_, i) => i))
+                      : defaultDuplicateSelection(items)
                   )
                 }
               >
                 <Text style={[styles.pickerToggleAll, { color: colors.accent }]}>
-                  {selected.size === items.length ? "Deselect all" : "Select all"}
+                  {selected.size > 0 ? "Deselect all" : newItemCount > 0 ? "Select all new items" : "No new items to select"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -449,6 +660,7 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
             {items.map((item, idx) => {
               const isSelected = selected.has(idx);
               const color = resolveColor(item.colorName, item.colorHex);
+              const tone = getGarmentTone(color.hex, colors.border);
               return (
                 <TouchableOpacity
                   key={idx}
@@ -456,12 +668,13 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
                   style={[
                     styles.pickerItem,
                     {
-                      backgroundColor: isSelected ? colors.card : colors.background,
-                      borderColor: isSelected ? colors.accent : colors.border,
+                      backgroundColor: tone.background,
+                      borderColor: tone.border,
+                      opacity: isSelected ? 1 : 0.72,
                     },
                   ]}
                 >
-                  <View style={[styles.pickerItemColor, { backgroundColor: colors.secondary }]}>
+                  <View style={[styles.pickerItemColor, { backgroundColor: tone.background }]}>
                     <Image
                       source={{ uri: item._extractedUri ?? item._photoUri ?? imageUri }}
                       style={styles.pickerItemImage}
@@ -496,14 +709,29 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
                     </View>
                     {item._isDuplicate && item._duplicateOf ? (
                       <View style={[styles.dupeBadge, { backgroundColor: "#FEF9EC", borderColor: "#FDE68A" }]}>
-                        <Feather name="alert-circle" size={11} color="#D97706" />
+                        {item._duplicateOf.imageUri ? (
+                          <Image source={{ uri: item._duplicateOf.imageUri }} style={[styles.dupeImage, { backgroundColor: tone.background, borderColor: tone.border }]} contentFit="contain" />
+                        ) : (
+                          <Feather name="alert-circle" size={15} color="#D97706" />
+                        )}
                         <View style={{ flex: 1 }}>
                           <Text style={[styles.dupeBadgeTitle, { color: "#92400E" }]}>
-                            Already in your wardrobe
+                            Possible duplicate
                           </Text>
                           <Text style={[styles.dupeBadgeDesc, { color: "#78350F" }]} numberOfLines={2}>
-                            {item._duplicateOf.name} · {item._duplicateOf.color} {item._duplicateOf.category} · {item._duplicateOf.fabricWeight} fabric
+                            Looks like {item._duplicateOf.name} already {item._duplicateOf.source === "wardrobe" ? "exists in your wardrobe" : "appears in this batch"}.
                           </Text>
+                          <TouchableOpacity
+                            onPress={(event) => {
+                              event.stopPropagation();
+                              if (!isSelected) toggleSelect(idx);
+                            }}
+                            disabled={isSelected}
+                          >
+                            <Text style={[styles.dupeAction, { color: isSelected ? "#78716C" : "#B45309" }]}>
+                              {isSelected ? "Will be added as a different item" : "Add anyway — this is a different item"}
+                            </Text>
+                          </TouchableOpacity>
                         </View>
                       </View>
                     ) : null}
@@ -514,7 +742,7 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
                     ) : null}
                     <View style={styles.pickerItemTags}>
                       {item.tags.slice(0, 3).map((t) => (
-                        <View key={t} style={[styles.pickerTag, { backgroundColor: colors.secondary }]}>
+                        <View key={t} style={[styles.pickerTag, { backgroundColor: tone.stronger }]}>
                           <Text style={[styles.pickerTagText, { color: colors.mutedForeground }]}>{t}</Text>
                         </View>
                       ))}
@@ -572,7 +800,9 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
               >
                 {selectedItems.length === 0
                   ? "Select items"
-                  : `Add ${selectedItems.length} item${selectedItems.length > 1 ? "s" : ""} to wardrobe`}
+                  : hasNextPhoto
+                    ? `Add ${selectedItems.length} item${selectedItems.length > 1 ? "s" : ""} & review next photo`
+                    : `Add ${selectedItems.length} item${selectedItems.length > 1 ? "s" : ""} to wardrobe`}
               </Text>
             </TouchableOpacity>
           </View>
@@ -585,10 +815,13 @@ function ItemPicker({ visible, items, imageUri, onSelectOne, onAddAll, onDismiss
 export default function AddItemScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { addItem, addBulkItems } = useWardrobe();
-  const { preferredCurrency } = useUserProfile();
+  const { addItem, addBulkItems, items: wardrobeItems } = useWardrobe();
+  const { preferredCurrency, gender } = useUserProfile();
+  const { t, lang } = useLanguage();
+  const visibleCategories = getProfileCategoryOptions(gender, lang, t);
 
   const [name, setName] = useState("");
+  const [localizedNames, setLocalizedNames] = useState<DetectedItem["localizedNames"]>();
   const [category, setCategory] = useState<ClothingCategory | null>(null);
   const [selectedColor, setSelectedColor] = useState<{ name: string; hex: string } | null>(null);
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -603,6 +836,7 @@ export default function AddItemScreen() {
   const [isSaving, setIsSaving] = useState(false);
 
   const [brandLogo, setBrandLogo] = useState<BrandLogo | null>(null);
+  const [visualSignature, setVisualSignature] = useState<ClothingVisualSignature | undefined>();
   const [scannedImage, setScannedImage] = useState<string | null>(null);
   const [extractedItemUri, setExtractedItemUri] = useState<string | null>(null);
   const [compressedPhotoUri, setCompressedPhotoUri] = useState<string | null>(null);
@@ -614,11 +848,14 @@ export default function AddItemScreen() {
   const [isRemovingBg, setIsRemovingBg] = useState(false);
   const [saveProgress, setSaveProgress] = useState("Saving to wardrobe...");
   const [imageExtractionError, setImageExtractionError] = useState<string | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [scanDone, setScanDone] = useState(false);
   const [scanPhotoIndex, setScanPhotoIndex] = useState(0);
   const [scanPhotoTotal, setScanPhotoTotal] = useState(0);
 
   const [detectedItems, setDetectedItems] = useState<DetectedItem[]>([]);
+  const [detectedPhotoQueue, setDetectedPhotoQueue] = useState<PhotoDetectionReview<DetectedItem>[]>([]);
+  const [reviewingDetectedItem, setReviewingDetectedItem] = useState<DetectedItem | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const scanRequestRef = useRef(0);
 
@@ -626,6 +863,8 @@ export default function AddItemScreen() {
     scanRequestRef.current += 1;
     setShowPicker(false);
     setDetectedItems([]);
+    setDetectedPhotoQueue([]);
+    setReviewingDetectedItem(null);
     setManualPhotoQueue([]);
     setScannedImage(null);
     setExtractedItemUri(null);
@@ -633,6 +872,7 @@ export default function AddItemScreen() {
     setScanPhotoBase64(null);
     setItemLocationHint("");
     setImageExtractionError(null);
+    setScanError(null);
     setIsScanning(false);
     setIsRemovingBg(false);
     setScanDone(false);
@@ -646,11 +886,16 @@ export default function AddItemScreen() {
     setTags([]);
     setFootwearType(null);
     setBrandLogo(null);
+    setVisualSignature(undefined);
     setPurchasePrice("");
   };
 
-  const createCleanProductImage = async (item: DetectedItem): Promise<string | undefined> => {
-    if (item._extractedUri) return item._extractedUri;
+  const createCleanProductImage = async (item: DetectedItem): Promise<CleanProductImage> => {
+    if (item._extractedUri) return {
+      uri: item._extractedUri,
+      imageProcessingVersion: item._imageProcessingVersion ?? 0,
+      backgroundRemoved: (item._imageProcessingVersion ?? 0) >= 1,
+    };
     // Never quietly store the original room/selfie photo as a wardrobe product.
     // Every detected item must retain its compressed source so the server can
     // produce one isolated catalog image for that specific item.
@@ -660,12 +905,117 @@ export default function AddItemScreen() {
     const color = resolveColor(item.colorName, item.colorHex);
     const cleanUri = await removeBg(
       item.name, item.category, color.name, color.hex, item.material,
-      item.brandLogo, item._photoBase64, item._photoMime, item.locationHint,
+      item.brandLogo, item._photoBase64, item._photoMime, item.locationHint, item.tags,
     );
     if (!cleanUri) {
       throw new Error("The clean product image was not returned. Please try again.");
     }
     return cleanUri;
+  };
+
+  const createProductImageWithRetry = async (item: DetectedItem): Promise<CleanProductImage> => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        return await createCleanProductImage(item);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    const detail = lastError instanceof Error ? lastError.message : "Premium extraction failed.";
+    throw new Error(`${detail} The original photo was not added; please retry.`);
+  };
+
+  const markPossibleDuplicate = async (
+    item: DetectedItem,
+    earlierBatchItems: DetectedItem[] = [],
+    allowVisualComparison = true,
+  ): Promise<DetectedItem> => {
+    const sources = [
+      ...wardrobeItems.map(wardrobeDuplicateSource),
+      ...earlierBatchItems.map(batchDuplicateSource),
+    ];
+    const shortlist = shortlistDuplicateCandidates(detectedComparable(item), sources, 3);
+    if (shortlist.length === 0) return item;
+
+    // Generated catalog art can vary slightly even for the same source item.
+    // Do not let that override an effectively identical descriptive identity.
+    const metadataMatch = shortlist.find((candidate) =>
+      isHighConfidenceMetadataDuplicate(candidate)
+      || isNearIdenticalDescriptionDuplicate(detectedComparable(item), candidate)
+    );
+    if (metadataMatch) {
+      return {
+        ...item,
+        _isDuplicate: true,
+        _duplicateOf: duplicateDetails(metadataMatch.item, Math.max(metadataMatch.score, 0.92)),
+      };
+    }
+
+    // Visual comparison is helpful, but it is a second AI request and must
+    // never hold the recognized fields hostage. Scan flows first run the
+    // local metadata check, render the form, and may enrich the duplicate
+    // warning in the background afterward.
+    if (!allowVisualComparison) return item;
+
+    const visualCandidates = (await Promise.all(shortlist.map(async ({ item: candidate }) => {
+      const image = candidate.imageBase64
+        ? { imageBase64: candidate.imageBase64, mimeType: candidate.imageMime ?? "image/jpeg" }
+        : candidate.imageUri
+          ? await imageUriToBase64(candidate.imageUri)
+          : null;
+      return image ? { candidate, ...image } : null;
+    }))).filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null);
+
+    if (item._photoBase64 && visualCandidates.length > 0) {
+      try {
+        const response = await fetch(`${API_BASE}/compare-clothing`, {
+          method: "POST",
+          headers: await apiAuthHeaders(),
+          body: JSON.stringify({
+            imageBase64: item._photoBase64,
+            mimeType: item._photoMime ?? "image/jpeg",
+            itemName: item.name,
+            locationHint: item.locationHint,
+            visualSignature: item.visualSignature,
+            candidates: visualCandidates.map(({ candidate, imageBase64, mimeType }) => ({
+              id: candidate.id,
+              name: candidate.name,
+              imageBase64,
+              mimeType,
+              visualSignature: candidate.visualSignature,
+            })),
+          }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (response.ok) {
+          const result = await response.json() as {
+            candidateId?: string | null;
+            confidence?: number;
+            sameItem?: boolean;
+            contradictions?: string[];
+          };
+          const matched = result.sameItem && (result.confidence ?? 0) >= 0.85 && !(result.contradictions?.length)
+            ? visualCandidates.find(({ candidate }) => candidate.id === result.candidateId)?.candidate
+            : undefined;
+          if (matched) {
+            return {
+              ...item,
+              _isDuplicate: true,
+              _duplicateOf: duplicateDetails(matched, result.confidence ?? 0.85),
+            };
+          }
+          // A successful visual comparison that says the pieces differ takes
+          // precedence over metadata similarity and prevents a false warning.
+          return item;
+        }
+      } catch {
+        // Fall through to the deliberately stricter offline metadata rule.
+      }
+    }
+
+    return item;
   };
 
   const scanScale = useSharedValue(1);
@@ -727,6 +1077,7 @@ export default function AddItemScreen() {
   const applyDetectedItem = (item: DetectedItem) => {
     const color = resolveColor(item.colorName, item.colorHex);
     setName(item.name);
+    setLocalizedNames(item.localizedNames);
     setCategory(item.category);
     setSelectedColor(color);
     setSeasons(item.seasons.filter((s): s is Season => ["spring", "summer", "fall", "winter"].includes(s)));
@@ -734,17 +1085,21 @@ export default function AddItemScreen() {
     setFabricWeight(item.fabricWeight ?? "medium");
     setTags(item.tags);
     setFootwearType(
-      item.tags.some((tag) => tag.toLowerCase() === "open-toe")
+      item.visualSignature?.toeStyle === "open" || item.tags.some((tag) => tag.toLowerCase() === "open-toe")
         ? "open-toe"
-        : item.tags.some((tag) => tag.toLowerCase() === "closed-toe")
+        : item.visualSignature?.toeStyle === "closed" || item.tags.some((tag) => tag.toLowerCase() === "closed-toe")
           ? "closed-toe"
           : null
     );
     setBrandLogo(item.brandLogo ?? null);
+    setVisualSignature(item.visualSignature);
     setItemLocationHint(item.locationHint ?? "");
     if (item._photoBase64) setScanPhotoBase64(item._photoBase64);
     if (item._photoMime) setScanPhotoMime(item._photoMime);
-    if (item._photoUri) setScannedImage(item._extractedUri ?? item._photoUri);
+    if (item._photoUri) {
+      setCompressedPhotoUri(item._photoUri);
+      setScannedImage(item._extractedUri ?? item._photoUri);
+    }
     setExtractedItemUri(item._extractedUri ?? null);
     setScanDone(true);
     scanCardOpacity.value = withTiming(1, { duration: 400 });
@@ -759,6 +1114,8 @@ export default function AddItemScreen() {
     setScanPhotoMime(photo.mimeType);
     setItemLocationHint("");
     setDetectedItems([]);
+    setDetectedPhotoQueue([]);
+    setReviewingDetectedItem(null);
     setName("");
     setCategory(null);
     setSelectedColor(null);
@@ -767,13 +1124,29 @@ export default function AddItemScreen() {
     setPurchasePrice("");
     setTags([]);
     setBrandLogo(null);
+    setVisualSignature(undefined);
     setScanDone(true);
     setIsScanning(false);
   };
 
   const handlePickerSelectOne = (item: DetectedItem) => {
     setShowPicker(false);
+    setReviewingDetectedItem(item);
     applyDetectedItem(item);
+  };
+
+  const continueToNextDetectedPhoto = () => {
+    const [nextPhoto, ...remainingPhotos] = detectedPhotoQueue;
+    if (!nextPhoto) return false;
+
+    setDetectedPhotoQueue(remainingPhotos);
+    setDetectedItems(nextPhoto.items);
+    setReviewingDetectedItem(null);
+    setScannedImage(nextPhoto.imageUri);
+    setCompressedPhotoUri(nextPhoto.imageUri);
+    setImageExtractionError(null);
+    setShowPicker(true);
+    return true;
   };
 
   const handlePickerAddAll = async (items: DetectedItem[]) => {
@@ -788,10 +1161,11 @@ export default function AddItemScreen() {
       const preparedItems: Array<Omit<ClothingItem, "id" | "createdAt" | "timesWorn">> = [];
       for (const [index, item] of items.entries()) {
         setSaveProgress(`Preparing clean product image ${index + 1} of ${items.length}...`);
-        const imageUri = await createCleanProductImage(item);
+        const cleanImage = await createProductImageWithRetry(item);
         const color = resolveColor(item.colorName, item.colorHex);
         preparedItems.push({
           name: item.name,
+          localizedNames: item.localizedNames,
           category: item.category,
           color: color.name,
           colorHex: color.hex,
@@ -801,27 +1175,31 @@ export default function AddItemScreen() {
           fabricWeight: item.fabricWeight ?? "medium",
           isWorkwear: false,
           tags: item.tags.length > 0 ? item.tags : [item.category],
-          imageUri,
+          imageUri: cleanImage.uri,
+          imageProcessingVersion: cleanImage.imageProcessingVersion,
           brandLogo: item.brandLogo ?? undefined,
+          visualSignature: item.visualSignature,
         });
       }
       setSaveProgress("Saving clean items to your wardrobe...");
-      await addBulkItems(preparedItems);
+      const savedItems = await addBulkItems(preparedItems);
+      if (savedItems.length !== preparedItems.length) {
+        setShowPicker(true);
+        return;
+      }
+      if (continueToNextDetectedPhoto()) return;
       // Clear the completed scan before leaving. This also prevents a stale
       // picker from being restored if navigation is briefly delayed on mobile.
       setDetectedItems([]);
+      setDetectedPhotoQueue([]);
       setScanDone(false);
       leaveAddItem();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Please try again.";
-      // Do not send the person back into selection automatically. Nothing was
-      // saved, so they can clearly see the error and choose to scan again.
-      setDetectedItems([]);
-      setScanDone(false);
       setImageExtractionError(message);
       Alert.alert(
-        "Clean product image unavailable",
-        `${message}\n\nNo items were saved. Tap Scan with AI to try again.`
+        "Items could not be saved",
+        `${message}\n\nNothing was added. Your selections are still available to retry.`
       );
     } finally {
       setIsSaving(false);
@@ -832,6 +1210,7 @@ export default function AddItemScreen() {
   const handlePickerDismiss = () => {
     setShowPicker(false);
     if (detectedItems.length === 1 && detectedItems[0]) {
+      setReviewingDetectedItem(detectedItems[0]);
       applyDetectedItem(detectedItems[0]);
     }
   };
@@ -843,6 +1222,8 @@ export default function AddItemScreen() {
   const runScan = async (base64: string, mimeType: string, localUri?: string) => {
     const scanRequest = ++scanRequestRef.current;
     const photoRef = localUri ?? `data:${mimeType};base64,${base64}`;
+    setDetectedPhotoQueue([]);
+    setReviewingDetectedItem(null);
     setScannedImage(photoRef);
     setExtractedItemUri(null);
     setCompressedPhotoUri(localUri ?? null);
@@ -851,6 +1232,7 @@ export default function AddItemScreen() {
     setIsScanning(true);
     setIsRemovingBg(false);
     setImageExtractionError(null);
+    setScanError(null);
     setScanDone(false);
     scanScale.value = withSpring(0.97, { damping: 12 }, () => {
       scanScale.value = withSpring(1);
@@ -862,28 +1244,54 @@ export default function AddItemScreen() {
       if (scanRequest !== scanRequestRef.current) return;
 
       if (items.length === 0) {
+        setScanError("No fully visible clothing item was detected. Try a clearer photo, or enter the details manually.");
         // AI unavailable — keep photo, let user fill in manually
         setScanDone(true);
         return;
       }
 
-      const taggedItems = items.map((item) => ({
-        ...item,
-        _photoUri: photoRef,
-        _photoBase64: base64,
-        _photoMime: mimeType,
-      }));
+      const taggedItems: DetectedItem[] = [];
+      for (const item of items) {
+        const tagged = {
+          ...item,
+          _photoUri: photoRef,
+          _photoBase64: base64,
+          _photoMime: mimeType,
+          _photoIndex: 0,
+          _photoTotal: 1,
+        };
+        taggedItems.push(await markPossibleDuplicate(tagged, taggedItems, false));
+      }
+      if (scanRequest !== scanRequestRef.current) return;
       setDetectedItems(taggedItems);
       setIsScanning(false);
       setScanDone(true);
 
       // ── Phase 2 (NON-BLOCKING): show form/picker immediately, BG removal in background ──
       if (taggedItems.length === 1) {
+        setReviewingDetectedItem(taggedItems[0]!);
         applyDetectedItem(taggedItems[0]!);
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setShowPicker(true);
       }
+
+      // Duplicate comparison is deliberately non-blocking. Identification
+      // has already populated the form/picker; a slower comparison may only
+      // add a warning and cannot leave the scan spinner running.
+      void Promise.all(taggedItems.map((item, index) =>
+        item._isDuplicate
+          ? Promise.resolve(item)
+          : markPossibleDuplicate(item, taggedItems.slice(0, index), true)
+      )).then((reviewedItems) => {
+        if (scanRequest !== scanRequestRef.current) return;
+        setDetectedItems(reviewedItems);
+        if (reviewedItems.length === 1 && reviewedItems[0]) {
+          setReviewingDetectedItem(reviewedItems[0]);
+        }
+      }).catch(() => {
+        // Autofill is already complete; duplicate review is best-effort.
+      });
 
       // Fire BG removal — UI is already unblocked, image swaps silently when ready
       // Background work is deferred until the customer saves an item.
@@ -916,6 +1324,7 @@ export default function AddItemScreen() {
 
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "The photo could not be analyzed.";
+      setScanError(message);
       Alert.alert("Could not scan photo", message);
       // AI unavailable — keep the photo, let user fill in details manually
       setScanDone(true);
@@ -963,13 +1372,22 @@ export default function AddItemScreen() {
 
     if (assets.length === 1) {
       const asset = assets[0]!;
-      const compressed = await compressAssetForUpload(asset);
-      await runScan(compressed.base64, compressed.mimeType, compressed.uri);
+      try {
+        const compressed = await compressAssetForUpload(asset);
+        await runScan(compressed.base64, compressed.mimeType, compressed.uri);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "This photo could not be analyzed.";
+        setScanError(message);
+        Alert.alert("Could not scan photo", message);
+      }
       return;
     }
 
     setIsScanning(true);
+    setDetectedPhotoQueue([]);
+    setReviewingDetectedItem(null);
     setScanDone(false);
+    setScanError(null);
     setScanPhotoTotal(assets.length);
     setScanPhotoIndex(1);
     const firstAsset = assets[0]!;
@@ -997,7 +1415,7 @@ export default function AddItemScreen() {
           // Do not discard items merely because they look similar to something
           // in another selected photo. The user must be able to see and decide
           // on every item found across the complete upload batch.
-          allItems.push({
+          const taggedItem: DetectedItem = {
             ...item,
             // Use the processed URI that was actually sent to AI. iPhone
             // picker URIs can expire after another selected photo is opened.
@@ -1006,7 +1424,8 @@ export default function AddItemScreen() {
             _photoMime: compressed.mimeType,
             _photoIndex: idx,
             _photoTotal: assets.length,
-          });
+          };
+          allItems.push(await markPossibleDuplicate(taggedItem, allItems, false));
         }
       } catch {
         failedPhotos += 1;
@@ -1017,6 +1436,7 @@ export default function AddItemScreen() {
     setScanPhotoTotal(0);
 
     if (allItems.length === 0) {
+      setScanError("AI identification is unavailable. You can still enter this photo's details manually.");
       // AI unavailable — keep last photo visible, let user fill manually
       const [firstPhoto, ...remainingPhotos] = manualPhotos;
       if (firstPhoto) {
@@ -1031,7 +1451,12 @@ export default function AddItemScreen() {
       return;
     }
 
-    setDetectedItems(allItems);
+    const [firstReview, ...remainingReviews] = groupDetectionsByPhoto(allItems, firstAsset.uri);
+    if (!firstReview) return;
+    setDetectedItems(firstReview.items);
+    setDetectedPhotoQueue(remainingReviews);
+    setScannedImage(firstReview.imageUri);
+    setCompressedPhotoUri(firstReview.imageUri);
     setScanDone(true);
 
     if (failedPhotos > 0) {
@@ -1137,26 +1562,39 @@ export default function AddItemScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       const price = priceNumber(purchasePrice);
       let imageUri = extractedItemUri ?? compressedPhotoUri ?? scannedImage ?? undefined;
-      if (!extractedItemUri && scanPhotoBase64) {
+      let imageProcessingVersion = 0;
+      if (!extractedItemUri && (compressedPhotoUri || scannedImage)) {
+        if (!scanPhotoBase64) {
+          throw new Error("The source photo is unavailable for clean product extraction. Please scan it again.");
+        }
         setSaveProgress("Creating your clean product image...");
-        imageUri = await createCleanProductImage({
+        const cleanImage = await createProductImageWithRetry({
           name: name.trim(), category, colorName: selectedColor.name,
           colorHex: selectedColor.hex, material, fabricWeight, seasons,
           tags: tagsForSave(), brandLogo, locationHint: itemLocationHint,
           _photoBase64: scanPhotoBase64, _photoMime: scanPhotoMime,
           _photoUri: compressedPhotoUri ?? scannedImage ?? undefined,
         });
+        imageUri = cleanImage.uri;
+        imageProcessingVersion = cleanImage.imageProcessingVersion;
       }
       setSaveProgress("Saving to wardrobe...");
-      await addItem({
-        name: name.trim(), category, color: selectedColor.name, colorHex: selectedColor.hex,
+      const savedItem = await addItem({
+        name: name.trim(), localizedNames, category, color: selectedColor.name, colorHex: selectedColor.hex,
         seasons, fabricWeight, isWorkwear,
         purchasePrice: !isNaN(price) && price > 0 ? price : undefined,
         purchaseCurrency: !isNaN(price) && price > 0 ? purchaseCurrency : undefined,
         tags: tagsForSave(),
         imageUri,
+        imageProcessingVersion,
         brandLogo: brandLogo ?? undefined,
+        visualSignature,
       });
+      if (!savedItem) return;
+      if (reviewingDetectedItem) {
+        setReviewingDetectedItem(null);
+        if (continueToNextDetectedPhoto()) return;
+      }
       const [nextPhoto, ...remainingPhotos] = manualPhotoQueue;
       if (nextPhoto) {
         setManualPhotoQueue(remainingPhotos);
@@ -1193,6 +1631,7 @@ export default function AddItemScreen() {
           visible={showPicker}
           items={detectedItems}
           imageUri={scannedImage}
+          hasNextPhoto={detectedPhotoQueue.length > 0}
           onSelectOne={handlePickerSelectOne}
           onAddAll={handlePickerAddAll}
           onDismiss={handlePickerDismiss}
@@ -1212,7 +1651,7 @@ export default function AddItemScreen() {
         <TouchableOpacity onPress={leaveAddItem} accessibilityRole="button" accessibilityLabel="Back to wardrobe" hitSlop={12}>
           <Feather name="arrow-left" size={24} color={colors.foreground} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Add Item</Text>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>{t("add_item")}</Text>
         <TouchableOpacity
           onPress={handleSave}
           disabled={!canSave || isSaving}
@@ -1240,7 +1679,7 @@ export default function AddItemScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={[styles.scanSection, { borderColor: colors.border, backgroundColor: colors.card }]}>
-          <Text style={[styles.scanTitle, { color: colors.foreground }]}>Scan with AI</Text>
+          <Text style={[styles.scanTitle, { color: colors.foreground }]}>{t("scan_with_ai")}</Text>
           <Text style={[styles.scanSubtitle, { color: colors.mutedForeground }]}>
             Point at one item or a full outfit flat-lay — we'll detect every piece automatically
           </Text>
@@ -1277,7 +1716,7 @@ export default function AddItemScreen() {
                       </View>
                     </>
                   ) : (
-                    <Text style={[styles.scanOverlayText, { color: colors.primaryForeground }]}>Detecting items…</Text>
+                    <Text style={[styles.scanOverlayText, { color: colors.primaryForeground }]}>{t("detecting_items")}</Text>
                   )}
                 </View>
               )}
@@ -1290,13 +1729,13 @@ export default function AddItemScreen() {
                   <Animated.View style={[styles.isolatingOrb, { borderColor: colors.accent }, scanPulseStyle]}>
                     <Feather name="scissors" size={13} color={colors.primaryForeground} />
                   </Animated.View>
-                  <Text style={[styles.isolatingText, { color: colors.primaryForeground }]}>Isolating garment…</Text>
+                  <Text style={[styles.isolatingText, { color: colors.primaryForeground }]}>{t("isolating_garment")}</Text>
                 </View>
               )}
               {scanDone && !isScanning && name ? (
                 <View style={[styles.scanDoneBadge, { backgroundColor: colors.accent }]}>
                   <Feather name="check" size={12} color={colors.card} />
-                  <Text style={[styles.scanDoneText, { color: colors.card }]}>Filled automatically</Text>
+                  <Text style={[styles.scanDoneText, { color: colors.card }]}>{t("filled_automatically")}</Text>
                 </View>
               ) : null}
               {detectedItems.length > 1 && !isScanning && (
@@ -1311,11 +1750,45 @@ export default function AddItemScreen() {
             </View>
           )}
 
+          {reviewingDetectedItem?._isDuplicate && reviewingDetectedItem._duplicateOf ? (
+            <View
+              accessibilityRole="alert"
+              style={[styles.singleDupeWarning, { backgroundColor: "#FEF9EC", borderColor: "#FDE68A" }]}
+            >
+              {reviewingDetectedItem._duplicateOf.imageUri ? (
+                <Image
+                  source={{ uri: reviewingDetectedItem._duplicateOf.imageUri }}
+                  style={[styles.singleDupeImage, { borderColor: "#FDE68A" }]}
+                  contentFit="contain"
+                />
+              ) : (
+                <View style={styles.singleDupeIcon}>
+                  <Feather name="alert-circle" size={20} color="#D97706" />
+                </View>
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.dupeBadgeTitle, { color: "#92400E", fontSize: 13 }]}>Possible duplicate</Text>
+                <Text style={[styles.dupeBadgeDesc, { color: "#78350F", fontSize: 12 }]}>
+                  Looks like {reviewingDetectedItem._duplicateOf.name} already {reviewingDetectedItem._duplicateOf.source === "wardrobe" ? "exists in your wardrobe" : "appears in this photo batch"}. Save only if this is a different item.
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
           {imageExtractionError && !isRemovingBg && (
             <View style={[styles.imageGenerationError, { backgroundColor: "#FDF0EE", borderColor: "#E78A6B" }]}>
               <Feather name="alert-circle" size={15} color="#B42318" />
               <Text style={[styles.imageGenerationErrorText, { color: "#B42318" }]}>
                 Product image was not created: {imageExtractionError}
+              </Text>
+            </View>
+          )}
+
+          {scanError && !isScanning && (
+            <View style={[styles.imageGenerationError, { backgroundColor: "#FDF0EE", borderColor: "#E78A6B" }]}>
+              <Feather name="alert-circle" size={15} color="#B42318" />
+              <Text style={[styles.imageGenerationErrorText, { color: "#B42318" }]}>
+                Autofill could not finish: {scanError}
               </Text>
             </View>
           )}
@@ -1341,7 +1814,7 @@ export default function AddItemScreen() {
                 style={[styles.scanBtn, { backgroundColor: colors.primary, opacity: isScanning ? 0.6 : 1 }]}
               >
                 <Feather name="camera" size={16} color={colors.primaryForeground} />
-                <Text style={[styles.scanBtnText, { color: colors.primaryForeground }]}>Take photo</Text>
+                <Text style={[styles.scanBtnText, { color: colors.primaryForeground }]}>{t("take_photo")}</Text>
               </TouchableOpacity>
             )}
             {Platform.OS === "web" ? (
@@ -1367,7 +1840,7 @@ export default function AddItemScreen() {
                 style={[styles.scanBtn, { backgroundColor: colors.secondary, borderColor: colors.border, borderWidth: 1, opacity: isScanning ? 0.6 : 1 }]}
               >
                 {isScanning ? <ActivityIndicator size="small" color={colors.accent} /> : <Feather name="upload" size={16} color={colors.accent} />}
-                <Text style={[styles.scanBtnText, { color: colors.accent }]}>Upload photo</Text>
+                <Text style={[styles.scanBtnText, { color: colors.accent }]}>{t("upload_photo")}</Text>
               </TouchableOpacity>
             )}
           </Animated.View>
@@ -1379,7 +1852,7 @@ export default function AddItemScreen() {
               accessibilityLabel="Cancel uploaded photo"
             >
               <Feather name="x" size={15} color={colors.mutedForeground} />
-              <Text style={[styles.cancelUploadText, { color: colors.mutedForeground }]}>Cancel upload</Text>
+              <Text style={[styles.cancelUploadText, { color: colors.mutedForeground }]}>{t("cancel_upload")}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -1397,7 +1870,7 @@ export default function AddItemScreen() {
                 <Feather name="feather" size={14} color={colors.accent} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.materialLabel, { color: colors.mutedForeground }]}>FABRIC / MATERIAL</Text>
+                <Text style={[styles.materialLabel, { color: colors.mutedForeground }]}>{t("fabric_material")}</Text>
                 <Text style={[styles.materialValue, { color: colors.foreground }]}>{material}</Text>
               </View>
             </View>
@@ -1416,8 +1889,8 @@ export default function AddItemScreen() {
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Item name</Text>
-          <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>AI suggests a name. Edit it to any personal name you prefer.</Text>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t("item_name")}</Text>
+          <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>{t("item_name_hint")}</Text>
           <TextInput
             value={name}
             onChangeText={setName}
@@ -1428,9 +1901,9 @@ export default function AddItemScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Category</Text>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t("category")}</Text>
           <View style={styles.categoryGrid}>
-            {CATEGORIES.map((c) => (
+            {visibleCategories.map((c) => (
               <Pressable
                 key={c.key}
                 onPress={() => setCategory(c.key)}
@@ -1443,7 +1916,12 @@ export default function AddItemScreen() {
                   },
                 ]}
               >
-                <MaterialCommunityIcons name={c.icon} size={20} color={category === c.key ? colors.primaryForeground : colors.mutedForeground} />
+                <ClothingCategoryIcon
+                  category={c.key}
+                  gender={gender}
+                  size={22}
+                  color={category === c.key ? colors.primaryForeground : colors.mutedForeground}
+                />
                 <Text style={[styles.categoryLabel, { color: category === c.key ? colors.primaryForeground : colors.foreground }]}>
                   {c.label}
                 </Text>
@@ -1454,8 +1932,8 @@ export default function AddItemScreen() {
 
         {category === "shoes" && (
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Footwear type</Text>
-            <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>Prevents sandals from being suggested for rain or cool weather</Text>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t("footwear_type")}</Text>
+            <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>{t("footwear_hint")}</Text>
             <View style={styles.fabricRow}>
               {([
                 { key: "open-toe", label: "Open-toe", hint: "sandals, slides" },
@@ -1463,7 +1941,21 @@ export default function AddItemScreen() {
               ] as const).map((type) => (
                 <Pressable
                   key={type.key}
-                  onPress={() => setFootwearType(type.key)}
+                  onPress={() => {
+                    setFootwearType(type.key);
+                    setVisualSignature((current) => ({
+                      itemType: current?.itemType ?? "shoes",
+                      shape: current?.shape ?? "regular",
+                      pattern: current?.pattern ?? "solid",
+                      materialFamily: current?.materialFamily ?? "unknown",
+                      closures: current?.closures ?? [],
+                      sleeve: current?.sleeve ?? "not-applicable",
+                      collar: current?.collar ?? "not-applicable",
+                      features: current?.features ?? [],
+                      ...current,
+                      toeStyle: type.key === "open-toe" ? "open" : "closed",
+                    }));
+                  }}
                   style={({ pressed }) => [
                     styles.fabricBtn,
                     {
@@ -1481,8 +1973,27 @@ export default function AddItemScreen() {
           </View>
         )}
 
+        {category ? (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Garment details</Text>
+            <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>Correct these optional details when the AI needs help. They improve proportions, coverage, and weather matching.</Text>
+            <TextInput value={visualSignature?.garmentFamily ?? visualSignature?.itemType ?? ""} onChangeText={(value) => setVisualSignature((current) => ({ itemType: current?.itemType ?? value, shape: current?.shape ?? "regular", pattern: current?.pattern ?? "solid", materialFamily: current?.materialFamily ?? "unknown", closures: current?.closures ?? [], sleeve: current?.sleeve ?? "not-applicable", collar: current?.collar ?? "not-applicable", features: current?.features ?? [], ...current, garmentFamily: value.toLowerCase() }))} placeholder="Subtype: skirt, blouse, jumpsuit, boots…" placeholderTextColor={colors.mutedForeground} style={[styles.input, { borderColor: colors.border, backgroundColor: colors.card, color: colors.foreground }]} />
+            <View style={styles.fabricRow}>
+              <TextInput value={visualSignature?.silhouette ?? ""} onChangeText={(value) => setVisualSignature((current) => ({ itemType: current?.itemType ?? category, shape: current?.shape ?? value, pattern: current?.pattern ?? "solid", materialFamily: current?.materialFamily ?? "unknown", closures: current?.closures ?? [], sleeve: current?.sleeve ?? "not-applicable", collar: current?.collar ?? "not-applicable", features: current?.features ?? [], ...current, silhouette: value.toLowerCase() }))} placeholder="Silhouette: A-line, fitted…" placeholderTextColor={colors.mutedForeground} style={[styles.input, { flex: 1, borderColor: colors.border, backgroundColor: colors.card, color: colors.foreground }]} />
+              <TextInput value={visualSignature?.length ?? ""} onChangeText={(value) => setVisualSignature((current) => ({ itemType: current?.itemType ?? category, shape: current?.shape ?? "regular", pattern: current?.pattern ?? "solid", materialFamily: current?.materialFamily ?? "unknown", closures: current?.closures ?? [], sleeve: current?.sleeve ?? "not-applicable", collar: current?.collar ?? "not-applicable", features: current?.features ?? [], ...current, length: value.toLowerCase() }))} placeholder="Length: midi, ankle…" placeholderTextColor={colors.mutedForeground} style={[styles.input, { flex: 1, borderColor: colors.border, backgroundColor: colors.card, color: colors.foreground }]} />
+            </View>
+            <TextInput value={visualSignature?.coverage ?? ""} onChangeText={(value) => setVisualSignature((current) => ({ itemType: current?.itemType ?? category, shape: current?.shape ?? "regular", pattern: current?.pattern ?? "solid", materialFamily: current?.materialFamily ?? "unknown", closures: current?.closures ?? [], sleeve: current?.sleeve ?? "not-applicable", collar: current?.collar ?? "not-applicable", features: current?.features ?? [], ...current, coverage: value.toLowerCase() }))} placeholder="Coverage: standard, modest, maximum" placeholderTextColor={colors.mutedForeground} style={[styles.input, { borderColor: colors.border, backgroundColor: colors.card, color: colors.foreground }]} />
+            <View style={styles.fabricRow}>
+              <TextInput value={visualSignature?.sleeve ?? ""} onChangeText={(value) => setVisualSignature((current) => ({ itemType: current?.itemType ?? category, shape: current?.shape ?? "regular", pattern: current?.pattern ?? "solid", materialFamily: current?.materialFamily ?? "unknown", closures: current?.closures ?? [], collar: current?.collar ?? "not-applicable", features: current?.features ?? [], ...current, sleeve: value.toLowerCase() }))} placeholder="Sleeve: long, short…" placeholderTextColor={colors.mutedForeground} style={[styles.input, { flex: 1, borderColor: colors.border, backgroundColor: colors.card, color: colors.foreground }]} />
+              <TextInput value={visualSignature?.neckline ?? ""} onChangeText={(value) => setVisualSignature((current) => ({ itemType: current?.itemType ?? category, shape: current?.shape ?? "regular", pattern: current?.pattern ?? "solid", materialFamily: current?.materialFamily ?? "unknown", closures: current?.closures ?? [], sleeve: current?.sleeve ?? "not-applicable", collar: current?.collar ?? "not-applicable", features: current?.features ?? [], ...current, neckline: value.toLowerCase() }))} placeholder="Neckline: high, crew…" placeholderTextColor={colors.mutedForeground} style={[styles.input, { flex: 1, borderColor: colors.border, backgroundColor: colors.card, color: colors.foreground }]} />
+            </View>
+            <TextInput value={visualSignature?.opacity ?? ""} onChangeText={(value) => setVisualSignature((current) => ({ itemType: current?.itemType ?? category, shape: current?.shape ?? "regular", pattern: current?.pattern ?? "solid", materialFamily: current?.materialFamily ?? "unknown", closures: current?.closures ?? [], sleeve: current?.sleeve ?? "not-applicable", collar: current?.collar ?? "not-applicable", features: current?.features ?? [], ...current, opacity: value.toLowerCase() }))} placeholder="Opacity: opaque, semi-sheer, sheer" placeholderTextColor={colors.mutedForeground} style={[styles.input, { borderColor: colors.border, backgroundColor: colors.card, color: colors.foreground }]} />
+            {category === "shoes" ? <View style={styles.fabricRow}><TextInput value={visualSignature?.heelType ?? ""} onChangeText={(value) => setVisualSignature((current) => ({ itemType: current?.itemType ?? "shoes", shape: current?.shape ?? "regular", pattern: current?.pattern ?? "solid", materialFamily: current?.materialFamily ?? "unknown", closures: current?.closures ?? [], sleeve: "not-applicable", collar: "not-applicable", features: current?.features ?? [], ...current, heelType: value.toLowerCase() }))} placeholder="Heel: flat, block…" placeholderTextColor={colors.mutedForeground} style={[styles.input, { flex: 1, borderColor: colors.border, backgroundColor: colors.card, color: colors.foreground }]} /><TextInput value={visualSignature?.bootShaft ?? ""} onChangeText={(value) => setVisualSignature((current) => ({ itemType: current?.itemType ?? "shoes", shape: current?.shape ?? "regular", pattern: current?.pattern ?? "solid", materialFamily: current?.materialFamily ?? "unknown", closures: current?.closures ?? [], sleeve: "not-applicable", collar: "not-applicable", features: current?.features ?? [], ...current, bootShaft: value.toLowerCase() }))} placeholder="Boot shaft" placeholderTextColor={colors.mutedForeground} style={[styles.input, { flex: 1, borderColor: colors.border, backgroundColor: colors.card, color: colors.foreground }]} /></View> : null}
+          </View>
+        ) : null}
+
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Color</Text>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t("color")}</Text>
           <View style={styles.colorGrid}>
             {COLOR_SWATCHES.map((c) => (
               <TouchableOpacity key={c.hex} onPress={() => setSelectedColor(c)} style={styles.colorItem}>
@@ -1501,7 +2012,7 @@ export default function AddItemScreen() {
                   )}
                 </View>
                 <Text style={[styles.colorLabel, { color: selectedColor?.hex === c.hex ? colors.foreground : colors.mutedForeground }]}>
-                  {c.name}
+                  {t(`color_${c.name.toLowerCase()}`)}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -1511,7 +2022,7 @@ export default function AddItemScreen() {
                   <Feather name="check" size={14} color={isLight(selectedColor.hex) ? "#1C1512" : "#FFFFFF"} />
                 </View>
                 <Text style={[styles.colorLabel, { color: colors.foreground }]} numberOfLines={1}>
-                  {selectedColor.name}
+                  {t(`color_${selectedColor.name.toLowerCase()}`)}
                 </Text>
               </View>
             )}
@@ -1519,7 +2030,7 @@ export default function AddItemScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Seasons</Text>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t("seasons")}</Text>
           <View style={styles.seasonsRow}>
             {SEASONS.map((s) => (
               <Pressable
@@ -1535,7 +2046,7 @@ export default function AddItemScreen() {
                 ]}
               >
                 <Text style={[styles.seasonLabel, { color: seasons.includes(s) ? colors.primaryForeground : colors.foreground }]}>
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                  {t(`season_${s}`)}
                 </Text>
               </Pressable>
             ))}
@@ -1543,7 +2054,7 @@ export default function AddItemScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Fabric weight</Text>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t("fabric_weight")}</Text>
           <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>
             Used to match items to weather temperature
           </Text>
@@ -1574,7 +2085,7 @@ export default function AddItemScreen() {
 
         <View style={[styles.section, styles.toggleSection]}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Workwear / Uniform</Text>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t("workwear_uniform")}</Text>
             <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>
               Excluded from casual shuffle mode
             </Text>
@@ -1905,7 +2416,7 @@ const styles = StyleSheet.create({
   },
   pickerItemColor: {
     width: 76,
-    height: 88,
+    height: 76,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -1930,6 +2441,11 @@ const styles = StyleSheet.create({
   dupeBadge: { flexDirection: "row", alignItems: "flex-start", gap: 6, padding: 8, borderRadius: 8, borderWidth: 1 },
   dupeBadgeTitle: { fontSize: 11, fontWeight: "700", marginBottom: 1 },
   dupeBadgeDesc: { fontSize: 11, fontWeight: "400", lineHeight: 15 },
+  dupeImage: { width: 38, height: 38, borderRadius: 7, borderWidth: 1 },
+  dupeAction: { fontSize: 11, fontWeight: "700", lineHeight: 16, marginTop: 4 },
+  singleDupeWarning: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderRadius: 12, borderWidth: 1 },
+  singleDupeImage: { width: 54, height: 54, borderRadius: 9, borderWidth: 1, backgroundColor: "#FFFFFF" },
+  singleDupeIcon: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
   pickerCheckbox: {
     width: 24,
     height: 24,

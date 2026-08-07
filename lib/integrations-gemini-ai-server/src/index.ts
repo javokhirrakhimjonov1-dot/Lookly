@@ -1,4 +1,4 @@
-export { geminiChat, geminiChatWithImage } from "./chat";
+export { geminiChat, geminiChatWithImage, geminiChatWithImages } from "./chat";
 export {
   getGeminiApiKey,
   getGeminiImageModel,

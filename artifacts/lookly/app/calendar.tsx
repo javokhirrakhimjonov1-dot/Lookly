@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/components/FeatherIcon";
 import { Image } from "expo-image";
 import { SvgXml } from "react-native-svg";
 import { router, useLocalSearchParams } from "expo-router";
@@ -26,8 +26,10 @@ function isSvgPreview(value: string): boolean {
 function previewSource(value: string): string {
   return value.startsWith("data:") ? value : `data:image/png;base64,${value}`;
 }
-import { useWardrobe, type ClothingCategory, type ClothingItem } from "@/contexts/WardrobeContext";
+import { getItemDisplayName, useWardrobe, type ClothingItem, type OutfitItemKey, type OutfitItems } from "@/contexts/WardrobeContext";
 import { useWeather } from "@/contexts/WeatherContext";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { translateGeneratedClothingName } from "@/lib/localization";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
@@ -39,14 +41,16 @@ function isoDate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function parsePassedItems(raw: string | undefined, wardrobe: ClothingItem[]): Partial<Record<ClothingCategory, ClothingItem>> {
+function parsePassedItems(raw: string | undefined, wardrobe: ClothingItem[]): OutfitItems {
   if (!raw) return {};
   try {
     const ids = JSON.parse(decodeURIComponent(raw)) as string[];
-    const result: Partial<Record<ClothingCategory, ClothingItem>> = {};
+    const result: OutfitItems = {};
     for (const id of ids) {
       const item = wardrobe.find((i) => i.id === id);
-      if (item) result[item.category] = item;
+      if (!item) continue;
+      const key: OutfitItemKey = item.category === "accessories" ? `accessories:${item.id}` : item.category;
+      result[key] = item;
     }
     return result;
   } catch { return {}; }
@@ -58,6 +62,9 @@ export default function CalendarScreen() {
   const { logs, logOutfit, removeLog, getLogForDate, getLogsForMonth } = useCalendar();
   const { items: wardrobe } = useWardrobe();
   const { temperature, condition } = useWeather();
+  const { lang, t } = useLanguage();
+  const locale = lang === "ru" ? "ru-RU" : lang === "uz" ? "uz-UZ" : "en-US";
+  const localizedItemName = (item: ClothingItem) => item.customName ? getItemDisplayName(item, lang) : translateGeneratedClothingName(getItemDisplayName(item, lang), lang);
 
   const params = useLocalSearchParams<{ itemIds?: string; previewImage?: string }>();
 
@@ -136,8 +143,8 @@ export default function CalendarScreen() {
           <Feather name="arrow-left" size={22} color={colors.foreground} />
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={[styles.headerLabel, { color: colors.mutedForeground }]}>OUTFIT CALENDAR</Text>
-          <Text style={[styles.headerTitle, { color: colors.foreground }]}>What I Wore</Text>
+          <Text style={[styles.headerLabel, { color: colors.mutedForeground }]}>{t("outfit_calendar_label")}</Text>
+          <Text style={[styles.headerTitle, { color: colors.foreground }]}>{t("what_i_wore")}</Text>
         </View>
         {hasPending && (
           <TouchableOpacity
@@ -145,7 +152,7 @@ export default function CalendarScreen() {
             style={[styles.logBtn, { backgroundColor: colors.accent }]}
           >
             <Feather name="plus" size={14} color={colors.primaryForeground} />
-            <Text style={[styles.logBtnText, { color: colors.primaryForeground }]}>Log today</Text>
+            <Text style={[styles.logBtnText, { color: colors.primaryForeground }]}>{t("log_today")}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -164,7 +171,7 @@ export default function CalendarScreen() {
             <Feather name="chevron-left" size={20} color={colors.foreground} />
           </TouchableOpacity>
           <Text style={[styles.monthLabel, { color: colors.foreground }]}>
-            {MONTHS[month]} {year}
+            {new Date(year, month, 1).toLocaleDateString(locale, { month: "long", year: "numeric" })}
           </Text>
           <TouchableOpacity onPress={handleNextMonth} style={styles.navArrow}>
             <Feather name="chevron-right" size={20} color={colors.foreground} />
@@ -173,8 +180,8 @@ export default function CalendarScreen() {
 
         {/* Day names */}
         <View style={styles.dayNames}>
-          {DAYS.map((d) => (
-            <Text key={d} style={[styles.dayName, { color: colors.mutedForeground }]}>{d}</Text>
+          {DAYS.map((d, index) => (
+            <Text key={d} style={[styles.dayName, { color: colors.mutedForeground }]}>{new Date(2026, 7, 2 + index).toLocaleDateString(locale, { weekday: "short" })}</Text>
           ))}
         </View>
 
@@ -220,7 +227,7 @@ export default function CalendarScreen() {
         <View style={[styles.dayDetail, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.dayDetailHeader}>
             <Text style={[styles.dayDetailTitle, { color: colors.foreground }]}>
-              {new Date(selectedDate + "T00:00:00").toLocaleDateString("en-US", {
+              {new Date(selectedDate + "T00:00:00").toLocaleDateString(locale, {
                 weekday: "long", month: "long", day: "numeric",
               })}
             </Text>
@@ -234,7 +241,7 @@ export default function CalendarScreen() {
                 style={[styles.addLogBtn, { backgroundColor: colors.secondary }]}
               >
                 <Feather name="plus" size={14} color={colors.accent} />
-                <Text style={[styles.addLogText, { color: colors.accent }]}>Log outfit</Text>
+                <Text style={[styles.addLogText, { color: colors.accent }]}>{t("log_outfit")}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -258,10 +265,10 @@ export default function CalendarScreen() {
                   >
                     <View style={[styles.logItemSwatch, { backgroundColor: (item as ClothingItem).colorHex }]} />
                     <Text style={[styles.logItemName, { color: colors.foreground }]} numberOfLines={1}>
-                      {(item as ClothingItem).name}
+                      {localizedItemName(item as ClothingItem)}
                     </Text>
                     <Text style={[styles.logItemCat, { color: colors.mutedForeground }]}>
-                      {(item as ClothingItem).category}
+                      {t(`cat_${(item as ClothingItem).category}`)}
                     </Text>
                   </View>
                 ))}
@@ -279,7 +286,7 @@ export default function CalendarScreen() {
             <View style={styles.emptyDay}>
               <Feather name="calendar" size={28} color={colors.border} />
               <Text style={[styles.emptyDayText, { color: colors.mutedForeground }]}>
-                No outfit logged for this day
+                {t("no_outfit_logged")}
               </Text>
             </View>
           )}
@@ -288,7 +295,7 @@ export default function CalendarScreen() {
         {/* Recent logs streak */}
         {logs.length > 0 && (
           <View style={styles.streakSection}>
-            <Text style={[styles.streakLabel, { color: colors.mutedForeground }]}>RECENT LOGS</Text>
+            <Text style={[styles.streakLabel, { color: colors.mutedForeground }]}>{t("recent_logs")}</Text>
             {logs.slice(0, 5).map((log) => (
               <View key={log.id} style={[styles.streakRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={[styles.streakDate, { backgroundColor: colors.secondary }]}>
@@ -296,12 +303,12 @@ export default function CalendarScreen() {
                     {new Date(log.date + "T00:00:00").getDate()}
                   </Text>
                   <Text style={[styles.streakDateMon, { color: colors.mutedForeground }]}>
-                    {MONTHS[new Date(log.date + "T00:00:00").getMonth()]!.slice(0, 3)}
+                    {new Date(log.date + "T00:00:00").toLocaleDateString(locale, { month: "short" })}
                   </Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.streakItems, { color: colors.foreground }]} numberOfLines={1}>
-                    {Object.values(log.items).filter(Boolean).map((i) => (i as ClothingItem).name).join(" · ") || "No items"}
+                    {Object.values(log.items).filter(Boolean).map((i) => localizedItemName(i as ClothingItem)).join(" · ") || t("no_items")}
                   </Text>
                   {log.note ? (
                     <Text style={[styles.streakNote, { color: colors.mutedForeground }]} numberOfLines={1}>{log.note}</Text>
@@ -332,20 +339,20 @@ export default function CalendarScreen() {
             <TouchableOpacity onPress={() => setShowLogModal(false)}>
               <Feather name="x" size={22} color={colors.foreground} />
             </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Log Outfit</Text>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>{t("log_outfit")}</Text>
             <TouchableOpacity
               onPress={handleLogSave}
               style={[styles.saveBtn, { backgroundColor: colors.primary }]}
             >
-              <Text style={[styles.saveBtnText, { color: colors.primaryForeground }]}>Save</Text>
+              <Text style={[styles.saveBtnText, { color: colors.primaryForeground }]}>{t("save")}</Text>
             </TouchableOpacity>
           </View>
 
           <ScrollView contentContainerStyle={styles.modalContent}>
             <Text style={[styles.modalDateLabel, { color: colors.mutedForeground }]}>
-              Logging outfit for{" "}
+              {t("logging_outfit_for")}{" "}
               <Text style={{ color: colors.foreground, fontWeight: "700" }}>
-                {new Date(selectedDate + "T00:00:00").toLocaleDateString("en-US", {
+                {new Date(selectedDate + "T00:00:00").toLocaleDateString(locale, {
                   weekday: "long", month: "long", day: "numeric",
                 })}
               </Text>
@@ -360,10 +367,10 @@ export default function CalendarScreen() {
                   >
                     <View style={[styles.logItemSwatch, { backgroundColor: (item as ClothingItem).colorHex }]} />
                     <Text style={[styles.logItemName, { color: colors.foreground }]} numberOfLines={1}>
-                      {(item as ClothingItem).name}
+                      {localizedItemName(item as ClothingItem)}
                     </Text>
                     <Text style={[styles.logItemCat, { color: colors.mutedForeground }]}>
-                      {(item as ClothingItem).category}
+                      {t(`cat_${(item as ClothingItem).category}`)}
                     </Text>
                   </View>
                 ))}
@@ -372,18 +379,18 @@ export default function CalendarScreen() {
               <View style={[styles.noItemsHint, { backgroundColor: colors.secondary }]}>
                 <Feather name="info" size={14} color={colors.mutedForeground} />
                 <Text style={[styles.noItemsText, { color: colors.mutedForeground }]}>
-                  No outfit items selected. Log a blank note or go back to the outfit builder.
+                  {t("no_outfit_selected")}
                 </Text>
               </View>
             )}
 
             <View style={styles.noteField}>
-              <Text style={[styles.noteLabel, { color: colors.mutedForeground }]}>ADD A NOTE (OPTIONAL)</Text>
+              <Text style={[styles.noteLabel, { color: colors.mutedForeground }]}>{t("add_note_optional")}</Text>
               <TextInput
                 style={[styles.noteInput, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
                 value={logNote}
                 onChangeText={setLogNote}
-                placeholder="e.g. wore this to a meeting at Afsona…"
+                placeholder={t("note_placeholder")}
                 placeholderTextColor={colors.mutedForeground}
                 multiline
                 numberOfLines={3}

@@ -1,6 +1,16 @@
 import type { Session, User } from "@supabase/supabase-js";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import type { Gender } from "@/contexts/UserProfileContext";
+import { isSupportedAge } from "@/lib/profileRules";
+import type { HijabPreference } from "@/lib/modestyRules";
+
+type SignUpProfile = {
+  fullName: string;
+  gender: Gender;
+  age: number;
+  hijabPreference: HijabPreference;
+};
 
 type AuthContextValue = {
   session: Session | null;
@@ -8,10 +18,11 @@ type AuthContextValue = {
   isLoading: boolean;
   isConfigured: boolean;
   signIn: (email: string, password: string) => Promise<string | null>;
-  signUp: (email: string, password: string) => Promise<{ error: string | null; needsEmailConfirmation: boolean }>;
+  signUp: (email: string, password: string, profile: SignUpProfile) => Promise<{ error: string | null; needsEmailConfirmation: boolean }>;
   requestPasswordReset: (email: string) => Promise<string | null>;
+  updateEmail: (email: string) => Promise<{ error: string | null; needsConfirmation: boolean }>;
   updatePassword: (password: string) => Promise<string | null>;
-  signOut: () => Promise<void>;
+  signOut: () => Promise<string | null>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -45,14 +56,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return error?.message ?? null;
   };
 
-  const signUp = async (email: string, password: string) => {
+  const signUp = async (email: string, password: string, profile: SignUpProfile) => {
     if (!supabase) return { error: "Supabase is not configured yet.", needsEmailConfirmation: false };
-    const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
+    if (!isSupportedAge(profile.age)) return { error: "Age must be from 12 to 50.", needsEmailConfirmation: false };
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        data: {
+          full_name: profile.fullName.trim(),
+          gender: profile.gender,
+          age: profile.age,
+          hijab_preference: profile.gender === "female" ? profile.hijabPreference : null,
+          onboarding_complete: true,
+        },
+      },
+    });
     return { error: error?.message ?? null, needsEmailConfirmation: !data.session };
   };
 
-  const signOut = async () => {
-    if (supabase) await supabase.auth.signOut();
+  const signOut = async (): Promise<string | null> => {
+    if (!supabase) return "Supabase is not configured yet.";
+    const { error } = await supabase.auth.signOut();
+    return error?.message ?? null;
   };
 
   const requestPasswordReset = async (email: string): Promise<string | null> => {
@@ -70,6 +96,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return error?.message ?? null;
   };
 
+  const updateEmail = async (email: string): Promise<{ error: string | null; needsConfirmation: boolean }> => {
+    if (!supabase) return { error: "Supabase is not configured yet.", needsConfirmation: false };
+    const normalizedEmail = email.trim().toLowerCase();
+    const { data, error } = await supabase.auth.updateUser({ email: normalizedEmail });
+    return {
+      error: error?.message ?? null,
+      needsConfirmation: !error && data.user?.email?.toLowerCase() !== normalizedEmail,
+    };
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -80,6 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signIn,
         signUp,
         requestPasswordReset,
+        updateEmail,
         updatePassword,
         signOut,
       }}

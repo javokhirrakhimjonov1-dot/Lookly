@@ -33,11 +33,27 @@ export async function initDb(): Promise<void> {
       purchasePrice REAL,
       timesWorn INTEGER NOT NULL DEFAULT 0,
       imageUri TEXT,
+      imageProcessingVersion INTEGER NOT NULL DEFAULT 0,
       tags TEXT NOT NULL DEFAULT '[]',
       brandLogo TEXT,
+      visualSignature TEXT,
       createdAt TEXT NOT NULL
     )
   `);
+
+  const wardrobeColumns = new Set<string>();
+  const wardrobeColumnStatement = db.prepare("PRAGMA table_info(wardrobe_items)");
+  while (wardrobeColumnStatement.step()) {
+    const row = wardrobeColumnStatement.getAsObject() as { name?: unknown };
+    if (row.name) wardrobeColumns.add(String(row.name));
+  }
+  wardrobeColumnStatement.free();
+  if (!wardrobeColumns.has("visualSignature")) {
+    db.run("ALTER TABLE wardrobe_items ADD COLUMN visualSignature TEXT");
+  }
+  if (!wardrobeColumns.has("imageProcessingVersion")) {
+    db.run("ALTER TABLE wardrobe_items ADD COLUMN imageProcessingVersion INTEGER NOT NULL DEFAULT 0");
+  }
 
   db.run(`
     CREATE TABLE IF NOT EXISTS saved_outfits (
@@ -79,8 +95,10 @@ export interface DbClothingItem {
   purchasePrice: number | null;
   timesWorn: number;
   imageUri: string | null;
+  imageProcessingVersion: number;
   tags: string[];
   brandLogo: string | null;
+  visualSignature: string | null;
   createdAt: string;
 }
 
@@ -97,8 +115,10 @@ function rowToItem(row: Record<string, unknown>): DbClothingItem {
     purchasePrice: row.purchasePrice as number | null,
     timesWorn: row.timesWorn as number,
     imageUri: row.imageUri as string | null,
+    imageProcessingVersion: Number(row.imageProcessingVersion ?? 0),
     tags: JSON.parse(row.tags as string),
     brandLogo: row.brandLogo as string | null,
+    visualSignature: row.visualSignature as string | null,
     createdAt: row.createdAt as string,
   };
 }
@@ -130,8 +150,8 @@ export function upsertItem(item: DbClothingItem): void {
   db.run(
     `INSERT OR REPLACE INTO wardrobe_items
      (id, name, category, color, colorHex, seasons, fabricWeight, isWorkwear,
-      purchasePrice, timesWorn, imageUri, tags, brandLogo, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      purchasePrice, timesWorn, imageUri, imageProcessingVersion, tags, brandLogo, visualSignature, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       item.id,
       item.name,
@@ -144,8 +164,10 @@ export function upsertItem(item: DbClothingItem): void {
       item.purchasePrice ?? null,
       item.timesWorn,
       item.imageUri ?? null,
+      item.imageProcessingVersion ?? 0,
       JSON.stringify(item.tags),
       item.brandLogo ?? null,
+      item.visualSignature ?? null,
       item.createdAt,
     ],
   );

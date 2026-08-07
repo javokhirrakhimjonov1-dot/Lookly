@@ -21,6 +21,16 @@ type FeatureWaitlistContextValue = {
 
 const FeatureWaitlistContext = createContext<FeatureWaitlistContextValue | null>(null);
 
+function isFutureIssuedJwtError(error: { message?: string } | null): boolean {
+  return /jwt.*issued at future|issued at future/i.test(error?.message ?? "");
+}
+
+async function refreshFutureIssuedSession(error: { message?: string } | null): Promise<boolean> {
+  if (!supabase || !isFutureIssuedJwtError(error)) return false;
+  const { error: refreshError } = await supabase.auth.refreshSession();
+  return !refreshError;
+}
+
 export function FeatureWaitlistProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [joinedFeatures, setJoinedFeatures] = useState<Set<UpcomingFeature>>(new Set());
@@ -29,50 +39,59 @@ export function FeatureWaitlistProvider({ children }: { children: React.ReactNod
 
   useEffect(() => {
     let active = true;
-    if (!user || !supabase) {
+    const client = supabase;
+    if (!user || !client) {
       setJoinedFeatures(new Set());
       setIsLoading(false);
       return () => { active = false; };
     }
 
     setIsLoading(true);
-    void supabase
-      .from("feature_waitlist")
-      .select("feature_key")
-      .eq("user_id", user.id)
-      .then(({ data, error }) => {
-        if (!active) return;
-        if (error) {
-          console.warn("Could not load feature waitlist", error.message);
-          setJoinedFeatures(new Set());
-        } else {
-          const valid = new Set(
-            (data ?? [])
-              .map((entry) => entry.feature_key)
-              .filter((feature): feature is UpcomingFeature =>
-                UPCOMING_FEATURES.includes(feature as UpcomingFeature),
-              ),
-          );
-          setJoinedFeatures(valid);
-        }
-        setIsLoading(false);
-      });
+    void (async () => {
+      const load = () => client
+        .from("feature_waitlist")
+        .select("feature_key")
+        .eq("user_id", user.id);
+
+      let result = await load();
+      if (await refreshFutureIssuedSession(result.error)) result = await load();
+      if (!active) return;
+
+      if (result.error) {
+        console.warn("Could not load feature waitlist", result.error.message);
+        setJoinedFeatures(new Set());
+      } else {
+        const valid = new Set(
+          (result.data ?? [])
+            .map((entry) => entry.feature_key)
+            .filter((feature): feature is UpcomingFeature =>
+              UPCOMING_FEATURES.includes(feature as UpcomingFeature),
+            ),
+        );
+        setJoinedFeatures(valid);
+      }
+      setIsLoading(false);
+    })();
 
     return () => { active = false; };
   }, [user?.id]);
 
   const toggleWaitlist = useCallback(async (feature: UpcomingFeature): Promise<string | null> => {
-    if (!user || !supabase) return "Please sign in before joining the waitlist.";
+    const client = supabase;
+    if (!user || !client) return "Please sign in before joining the waitlist.";
     if (updatingFeature) return null;
 
     const isJoined = joinedFeatures.has(feature);
     setUpdatingFeature(feature);
     try {
-      const { error } = isJoined
-        ? await supabase.from("feature_waitlist").delete().eq("user_id", user.id).eq("feature_key", feature)
-        : await supabase.from("feature_waitlist").insert({ user_id: user.id, feature_key: feature });
+      const mutate = () => isJoined
+        ? client.from("feature_waitlist").delete().eq("user_id", user.id).eq("feature_key", feature)
+        : client.from("feature_waitlist").insert({ user_id: user.id, feature_key: feature });
 
-      if (error) return "The waitlist is not ready yet. Please try again shortly.";
+      let result = await mutate();
+      if (await refreshFutureIssuedSession(result.error)) result = await mutate();
+
+      if (result.error) return "The waitlist is not ready yet. Please try again shortly.";
 
       setJoinedFeatures((current) => {
         const next = new Set(current);

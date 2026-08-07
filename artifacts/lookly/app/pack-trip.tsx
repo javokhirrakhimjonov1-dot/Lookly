@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/components/FeatherIcon";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
@@ -18,6 +18,33 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getTopPadding, getBottomPadding } from "@/constants/layout";
 import { useColors } from "@/hooks/useColors";
 import { useWardrobe, type ClothingItem } from "@/contexts/WardrobeContext";
+import { useUserProfile, type Gender, type StylingPreferences } from "@/contexts/UserProfileContext";
+import { useLanguage, type Language } from "@/contexts/LanguageContext";
+import { packTripCountWord, packTripLocale, packTripProductName, packTripText } from "@/lib/packTripI18n";
+import {
+  filterClimateSafeProducts,
+  filterProfileShopProducts,
+  formatGeoLabel,
+  formatGeoRegion,
+  getTripClimate,
+  getTier,
+  isClearlyClosedToeFootwear,
+  isOpenToeFootwear,
+  isWardrobeClimateCompatible,
+  rankWardrobeForTrip,
+  tierForKind,
+  type ShopKind,
+  type TempTier,
+} from "@/lib/packTripClimate";
+import { packingSeparateTargets } from "@/lib/outfitComposition";
+import { isAutomaticItemEligible, isHijabItem } from "@/lib/modestyRules";
+import { getGarmentTone } from "@/lib/garmentTone";
+import {
+  getShopSuggestionType,
+  isVerifiedModestShopType,
+  shopSuggestionTypeLabel,
+  type ShopSuggestionType,
+} from "@/lib/shopSuggestionPreferences";
 
 // ─────────────────────────────────────────────
 // Types
@@ -37,24 +64,14 @@ interface GeoSuggestion {
   longitude: number;
 }
 
-type TempTier = "freezing" | "cold" | "cool" | "mild" | "warm" | "hot";
+const TIER_NAME_KEY: Record<TempTier, Parameters<typeof packTripText>[1]> = {
+  freezing: "tierFreezing", cold: "tierCold", cool: "tierCool",
+  mild: "tierMild", warm: "tierWarm", hot: "tierHot",
+};
 
-function getTier(temp: number): TempTier {
-  if (temp <= 0) return "freezing";
-  if (temp <= 10) return "cold";
-  if (temp <= 17) return "cool";
-  if (temp <= 24) return "mild";
-  if (temp <= 30) return "warm";
-  return "hot";
-}
-
-const TIER_LABEL: Record<TempTier, string> = {
-  freezing: "Below 0°C — heavy winter gear",
-  cold: "0–10°C — warm outerwear needed",
-  cool: "10–17°C — light jacket days",
-  mild: "17–24°C — comfortable layering",
-  warm: "24–30°C — light fabrics",
-  hot: "Above 30°C — summer essentials only",
+const TIER_DESC_KEY: Record<TempTier, Parameters<typeof packTripText>[1]> = {
+  freezing: "tierFreezingDesc", cold: "tierColdDesc", cool: "tierCoolDesc",
+  mild: "tierMildDesc", warm: "tierWarmDesc", hot: "tierHotDesc",
 };
 
 interface PackingCategory {
@@ -66,97 +83,135 @@ interface PackingCategory {
   hasRain: boolean;
   fromWardrobe: ClothingItem[];
   needToBuy: ShopProduct[];
+  missingCount?: number;
 }
 
 // ─────────────────────────────────────────────
 // Buy-item image mapping
 // ─────────────────────────────────────────────
-type ShopKind = "tops" | "bottoms" | "outerwear" | "shoes" | "accessories";
-
 interface ShopProduct {
   id: string;
   kind: ShopKind;
   name: string;
-  store: "TerraPro" | "Just2010";
+  store: "Just2010" | "TerraPro";
   imageUrl: string;
   productUrl: string;
   priceUz: number;
+  supportedTiers: readonly TempTier[];
+  rainSafe?: boolean;
   weatherReason?: string;
+  audience: "female" | "male" | "all";
 }
 
 const SHOP_PRODUCTS: ShopProduct[] = [
-  { id: "just-tee", kind: "tops", name: "Essential cotton tee", store: "Just2010", priceUz: 99900, productUrl: "https://just2010.uz/catalog/futbolki/489435/", imageUrl: "https://just2010.uz/upload/iblock/eee/buorh58k93lo4xp6js1jggze2gglpwec.jpg" },
-  { id: "just-overshirt", kind: "outerwear", name: "Lightweight overshirt", store: "Just2010", priceUz: 109900, productUrl: "https://just2010.uz/catalog/rubashki/489427/", imageUrl: "https://just2010.uz/upload/iblock/95d/mu4juweaixfrrqcomfugv14gvmqdai7l.jpg" },
-  { id: "just-trousers", kind: "bottoms", name: "Classic trousers", store: "Just2010", priceUz: 199900, productUrl: "https://just2010.uz/catalog/bryuki_1/483373/", imageUrl: "https://just2010.uz/upload/iblock/88f/jv85t9zle49ocxtfkc4aqce2m6vqtdso.jpg" },
-  { id: "just-jeans", kind: "bottoms", name: "Straight-fit jeans", store: "Just2010", priceUz: 189900, productUrl: "https://just2010.uz/catalog/dzhinsy/489426/", imageUrl: "https://just2010.uz/upload/iblock/e39/uetul3n9nbgxc5057bbs3ly70c6o5896.jpg" },
-  { id: "just-chinos", kind: "bottoms", name: "Lightweight chinos", store: "Just2010", priceUz: 199900, productUrl: "https://just2010.uz/catalog/chinosy/489431/", imageUrl: "https://just2010.uz/upload/iblock/346/x3q1i44qotpcmq2mg0as3ysaknnpijyc.jpg" },
+  { id: "just-women-jumper-473338", audience: "female", kind: "tops", name: "Women's knit jumper", store: "Just2010", priceUz: 99900, supportedTiers: ["freezing", "cold", "cool", "mild"], productUrl: "https://just2010.uz/uz/catalog/svitera_i_kardigany_/473338/", imageUrl: "https://just2010.uz/upload/iblock/f8b/gv8a8z1it0wo1y5j4i5tlj5lxsihw1sj.webp" },
+  { id: "just-women-jumper-473326", audience: "female", kind: "tops", name: "Women's warm jumper", store: "Just2010", priceUz: 139900, supportedTiers: ["freezing", "cold", "cool", "mild"], productUrl: "https://just2010.uz/uz/catalog/svitera_i_kardigany_/473326/", imageUrl: "https://just2010.uz/upload/iblock/56c/y7gjso8ilt9so3d1y18ke5ixd89c40x6.webp" },
+  { id: "just-women-blouse-striped", audience: "female", kind: "tops", name: "Striped tie-front blouse", store: "Just2010", priceUz: 129900, supportedTiers: ["mild", "warm", "hot"], productUrl: "https://just2010.uz/uz/catalog/bluzki_i_rubashki/489852/", imageUrl: "https://just2010.uz/upload/iblock/c42/udk8767lfs5i63va8apt4jc1dzti27cr.jpg" },
+  { id: "just-women-blouse-cotton", audience: "female", kind: "tops", name: "Women's cotton blouse", store: "Just2010", priceUz: 159900, supportedTiers: ["mild", "warm", "hot"], productUrl: "https://just2010.uz/uz/catalog/bluzki_i_rubashki/489851/", imageUrl: "https://just2010.uz/upload/iblock/64c/vaqnbkiistknfqahhdwfuety4kmwvq9s.jpg" },
+  { id: "just-women-blouse-light", audience: "female", kind: "tops", name: "Lightweight women's blouse", store: "Just2010", priceUz: 129900, supportedTiers: ["mild", "warm", "hot"], productUrl: "https://just2010.uz/uz/catalog/bluzki_i_rubashki/489849/", imageUrl: "https://just2010.uz/upload/iblock/87c/osxzhy01hlhgu7hciqug71gkclcdw12f.jpg" },
+  { id: "just-women-cotton-tee", audience: "female", kind: "tops", name: "Women's cotton T-shirt", store: "Just2010", priceUz: 89900, supportedTiers: ["mild", "warm", "hot"], productUrl: "https://just2010.uz/uz/catalog/futbolki_1/489860/", imageUrl: "https://just2010.uz/upload/iblock/f5e/ox14uvbsu4izuhlzzokglrxzd9iqjovz.jpg" },
+  { id: "just-women-shorts", audience: "female", kind: "bottoms", name: "Women's lightweight shorts", store: "Just2010", priceUz: 139900, supportedTiers: ["warm", "hot"], productUrl: "https://just2010.uz/uz/catalog/shorty_1/489865/", imageUrl: "https://just2010.uz/upload/iblock/ce8/snvv9xqedfxgje43hy2cgwal6khy22su.jpg" },
+  { id: "just-women-skirt", audience: "female", kind: "bottoms", name: "Women's summer skirt", store: "Just2010", priceUz: 109900, supportedTiers: ["mild", "warm", "hot"], productUrl: "https://just2010.uz/uz/catalog/yubki/489855/", imageUrl: "https://just2010.uz/upload/iblock/9e8/g72oymqraxqcudwnh9xlbhkapdj32gx7.jpg" },
+  { id: "just-women-trousers", audience: "female", kind: "bottoms", name: "Women's relaxed trousers", store: "Just2010", priceUz: 159900, supportedTiers: ["freezing", "cold", "cool", "mild", "warm"], productUrl: "https://just2010.uz/uz/catalog/bryuki_/489861/", imageUrl: "https://just2010.uz/upload/iblock/7e0/2da5lvcvtd1f8jd1gvn4xkfgl7t9syw0.jpg" },
+  { id: "just-women-trousers-489853", audience: "female", kind: "bottoms", name: "Women's straight trousers", store: "Just2010", priceUz: 289900, supportedTiers: ["freezing", "cold", "cool", "mild"], productUrl: "https://just2010.uz/uz/catalog/bryuki_/489853/", imageUrl: "https://just2010.uz/upload/iblock/7ad/sborn8jwz1cp3chtiwmcck463kjzn1wm.jpg" },
+  { id: "just-women-trousers-489848", audience: "female", kind: "bottoms", name: "Women's full-length trousers", store: "Just2010", priceUz: 289900, supportedTiers: ["freezing", "cold", "cool", "mild"], productUrl: "https://just2010.uz/uz/catalog/bryuki_/489848/", imageUrl: "https://just2010.uz/upload/iblock/374/ibox0dwgjmmhmsr5m65sjxaxdo3e5sks.jpg" },
+  { id: "terra-women-hoodie", audience: "female", kind: "tops", name: "Women's warm hoodie", store: "TerraPro", priceUz: 59990, supportedTiers: ["freezing", "cold", "cool", "mild"], productUrl: "https://terrapro.uz/woman/shares/zhenskoe-khudi/202840/?oid=207029", imageUrl: "https://terrapro.uz/upload/resize_cache/iblock/c93/600_900_1/ctul5qlqxlz8m0wn6n9n8tc8bu09ecj7.jpg" },
+  { id: "terra-women-long-sleeve", audience: "female", kind: "tops", name: "Women's long-sleeve top", store: "TerraPro", priceUz: 179990, supportedTiers: ["cold", "cool", "mild"], productUrl: "https://terrapro.uz/woman/catalog/zhenskiy-longsliv/341639/?oid=343048", imageUrl: "https://terrapro.uz/upload/resize_cache/iblock/fad/435_544_1/ijy7fh1w352qcyq5ftox4s1c3ftyrt5i.jpg" },
+  { id: "terra-women-tee", audience: "female", kind: "tops", name: "Women's cotton T-shirt", store: "TerraPro", priceUz: 229990, supportedTiers: ["mild", "warm", "hot"], productUrl: "https://terrapro.uz/woman/catalog/zhenskaya-futbolka/341540/?oid=343020", imageUrl: "https://terrapro.uz/upload/resize_cache/iblock/749/435_544_1/32vyocjg6kz1awfvfm5bv8g0yuetz2wi.jpg" },
+  { id: "terra-women-joggers", audience: "female", kind: "bottoms", name: "Women's cotton joggers", store: "TerraPro", priceUz: 99990, supportedTiers: ["cool", "mild", "warm"], productUrl: "https://terrapro.uz/woman/shares/zhenskie-dzhoggery/148070/?oid=149815", imageUrl: "https://terrapro.uz/upload/resize_cache/iblock/456/3vlh5zz7n9p0vbdtdrk1m2pu6295d5eq/600_900_1/optimized_SS24WES-21123-1%206.jpg" },
+  { id: "just-tee", audience: "male", kind: "tops", name: "Essential cotton tee", store: "Just2010", priceUz: 99900, supportedTiers: ["mild", "warm", "hot"], productUrl: "https://just2010.uz/catalog/futbolki/489435/", imageUrl: "https://just2010.uz/upload/iblock/eee/buorh58k93lo4xp6js1jggze2gglpwec.jpg" },
+  { id: "just-overshirt", audience: "male", kind: "outerwear", name: "Lightweight overshirt", store: "Just2010", priceUz: 109900, supportedTiers: ["cool", "mild", "warm"], productUrl: "https://just2010.uz/catalog/rubashki/489427/", imageUrl: "https://just2010.uz/upload/iblock/95d/mu4juweaixfrrqcomfugv14gvmqdai7l.jpg" },
+  { id: "just-trousers", audience: "male", kind: "bottoms", name: "Classic trousers", store: "Just2010", priceUz: 199900, supportedTiers: ["cold", "cool", "mild", "warm"], productUrl: "https://just2010.uz/catalog/bryuki_1/483373/", imageUrl: "https://just2010.uz/upload/iblock/88f/jv85t9zle49ocxtfkc4aqce2m6vqtdso.jpg" },
+  { id: "just-jeans", audience: "male", kind: "bottoms", name: "Straight-fit jeans", store: "Just2010", priceUz: 189900, supportedTiers: ["cold", "cool", "mild", "warm"], productUrl: "https://just2010.uz/catalog/dzhinsy/489426/", imageUrl: "https://just2010.uz/upload/iblock/e39/uetul3n9nbgxc5057bbs3ly70c6o5896.jpg" },
+  { id: "just-chinos", audience: "male", kind: "bottoms", name: "Lightweight chinos", store: "Just2010", priceUz: 199900, supportedTiers: ["cool", "mild", "warm"], productUrl: "https://just2010.uz/catalog/chinosy/489431/", imageUrl: "https://just2010.uz/upload/iblock/346/x3q1i44qotpcmq2mg0as3ysaknnpijyc.jpg" },
   // The supplier image is an open sandal. Its name must match the actual product
   // so we never promise closed-toe rain protection for an open-toe shoe.
-  { id: "just-shoes", kind: "shoes", name: "Everyday open-toe sandals", store: "Just2010", priceUz: 239900, productUrl: "https://just2010.uz/catalog/obuv/489440/", imageUrl: "https://just2010.uz/upload/iblock/ba8/pwgayysbwib6m4bl4b4gsf04go7usmev.jpg" },
-  { id: "just-belt", kind: "accessories", name: "Leather belt", store: "Just2010", priceUz: 109900, productUrl: "https://just2010.uz/catalog/sumki_i_aksessuary/484185/", imageUrl: "https://just2010.uz/upload/iblock/480/fm6bu21y4wx5bk7fm5bhuz8b3rpu9nmb.jpg" },
-  { id: "terra-tee-black", kind: "tops", name: "TerraPro cotton T-shirt", store: "TerraPro", priceUz: 149990, productUrl: "https://terrapro.uz/catalog/futbolka_1/149031/", imageUrl: "https://terrapro.uz/upload/iblock/251/tt1cosm0942zjyr3gsf1wkotk40ruvgi/optimized_SS24CR2-25-20246%201.jpg" },
-  { id: "terra-tee-light", kind: "tops", name: "TerraPro short-sleeve tee", store: "TerraPro", priceUz: 199990, productUrl: "https://terrapro.uz/catalog/futbolka_1/210168/", imageUrl: "https://terrapro.uz/upload/iblock/3e0/8hkcebjf32unt917j3mv4buup9reg68o.jpg" },
-  { id: "terra-tee-classic", kind: "tops", name: "TerraPro premium T-shirt", store: "TerraPro", priceUz: 199990, productUrl: "https://terrapro.uz/catalog/futbolka_1/147980/", imageUrl: "https://terrapro.uz/upload/iblock/f35/jju0l8thz0qdi5jnqak7gcpkkup8cc5m/optimized_SS24CL2-25-19784%20%201.jpg" },
+  { id: "just-shoes", audience: "male", kind: "shoes", name: "Everyday open-toe sandals", store: "Just2010", priceUz: 239900, supportedTiers: ["warm", "hot"], productUrl: "https://just2010.uz/catalog/obuv/489440/", imageUrl: "https://just2010.uz/upload/iblock/ba8/pwgayysbwib6m4bl4b4gsf04go7usmev.jpg" },
+  { id: "just-belt", audience: "male", kind: "accessories", name: "Leather belt", store: "Just2010", priceUz: 109900, supportedTiers: ["mild", "warm", "hot"], productUrl: "https://just2010.uz/catalog/sumki_i_aksessuary/484185/", imageUrl: "https://just2010.uz/upload/iblock/480/fm6bu21y4wx5bk7fm5bhuz8b3rpu9nmb.jpg" },
+  { id: "terra-tee-black", audience: "male", kind: "tops", name: "TerraPro cotton T-shirt", store: "TerraPro", priceUz: 149990, supportedTiers: ["mild", "warm", "hot"], productUrl: "https://terrapro.uz/catalog/futbolka_1/149031/", imageUrl: "https://terrapro.uz/upload/iblock/251/tt1cosm0942zjyr3gsf1wkotk40ruvgi/optimized_SS24CR2-25-20246%201.jpg" },
+  { id: "terra-tee-light", audience: "male", kind: "tops", name: "TerraPro short-sleeve T-shirt", store: "TerraPro", priceUz: 199990, supportedTiers: ["warm", "hot"], productUrl: "https://terrapro.uz/catalog/futbolka_1/210168/", imageUrl: "https://terrapro.uz/upload/iblock/3e0/8hkcebjf32unt917j3mv4buup9reg68o.jpg" },
+  { id: "terra-tee-classic", audience: "male", kind: "tops", name: "TerraPro premium T-shirt", store: "TerraPro", priceUz: 199990, supportedTiers: ["mild", "warm", "hot"], productUrl: "https://terrapro.uz/catalog/futbolka_1/147980/", imageUrl: "https://terrapro.uz/upload/iblock/f35/jju0l8thz0qdi5jnqak7gcpkkup8cc5m/optimized_SS24CL2-25-19784%20%201.jpg" },
 ];
 
 /** Explain the practical weather benefit without guessing unverified product specs. */
-function shopWeatherReason(item: ShopProduct, tier: TempTier, hasRain: boolean): string {
+function shopWeatherReason(item: ShopProduct, tier: TempTier, hasRain: boolean, lang: Language): string {
   const productName = item.name.toLowerCase();
   const openToe = /sandal|slide|open-toe|flip.?flop/.test(productName);
 
   if (hasRain) {
     if (item.kind === "shoes") {
       return openToe
-        ? "Best saved for the dry parts of the trip; open toes are not ideal on wet streets."
-        : "Closed-toe coverage is a safer choice for wet streets.";
+        ? packTripText(lang, "shopRainOpenToe")
+        : packTripText(lang, "shopRainClosedShoe");
     }
-    if (item.kind === "outerwear") return "An extra layer helps when rain and cooler air arrive.";
-    if (item.kind === "bottoms") return "Full-length coverage is more practical for wet, changeable days.";
-    if (productName.includes("cotton")) return "A breathable base layer that can be paired with a light rain shell.";
-    if (productName.includes("short-sleeve")) return "A light option for dry breaks between showers; add a shell if needed.";
-    return "A flexible top for layering when conditions change.";
+    if (item.kind === "outerwear") return packTripText(lang, "shopRainOuterwear");
+    if (item.kind === "bottoms") return packTripText(lang, "shopRainBottoms");
+    if (productName.includes("cotton")) return packTripText(lang, "shopRainCotton");
+    if (productName.includes("short-sleeve")) return packTripText(lang, "shopRainShortSleeve");
+    return packTripText(lang, "shopRainGeneric");
   }
 
   if (tier === "hot" || tier === "warm") {
     if (productName.includes("linen") || productName.includes("lightweight")) {
-      return "Its light feel helps air circulate in warm weather.";
+      return packTripText(lang, "shopWarmLight");
     }
     if (item.kind === "tops") {
-      if (productName.includes("essential")) return "A simple breathable base for sunny, warm days.";
-      if (productName.includes("premium")) return "A relaxed warm-weather option with room for airflow.";
-      return "Short sleeves help keep this option comfortable in the heat.";
+      if (productName.includes("essential")) return packTripText(lang, "shopWarmEssential");
+      if (productName.includes("premium")) return packTripText(lang, "shopWarmPremium");
+      return packTripText(lang, "shopWarmTop");
     }
-    if (item.kind === "shoes") return openToe ? "Open-toe airflow makes this a better pick for dry, warm days." : "A walking-friendly option for warm days and cooler evenings.";
-    if (item.kind === "bottoms") return productName.includes("jean") ? "Denim works best for cooler evenings after a warm day." : "A lighter full-length option for warm days and cooler evenings.";
-    return "A practical finishing piece for warm-weather outfits.";
+    if (item.kind === "shoes") return packTripText(lang, openToe ? "shopWarmOpenToe" : "shopWarmShoe");
+    if (item.kind === "bottoms") return packTripText(lang, productName.includes("jean") ? "shopWarmJeans" : "shopWarmBottoms");
+    return packTripText(lang, "shopWarmGeneric");
   }
 
   if (tier === "freezing" || tier === "cold") {
-    if (item.kind === "outerwear") return "An extra layer helps retain warmth in cold air.";
-    if (item.kind === "bottoms") return "Full-length coverage gives more comfort when temperatures drop.";
-    if (item.kind === "shoes") return "Closed-toe coverage is more comfortable in cold conditions.";
-    return "A useful piece for building a warmer outfit.";
+    if (item.kind === "outerwear") return packTripText(lang, "shopColdOuterwear");
+    if (item.kind === "bottoms") return packTripText(lang, "shopColdBottoms");
+    if (item.kind === "shoes") return packTripText(lang, "shopColdShoes");
+    return packTripText(lang, "shopColdGeneric");
   }
 
   if (tier === "cool") {
-    if (item.kind === "outerwear") return "Easy to layer on cool mornings and take off later.";
-    if (item.kind === "bottoms") return "Full-length coverage works well through a cool day.";
-    return "A versatile choice for mild, layered weather.";
+    if (item.kind === "outerwear") return packTripText(lang, "shopCoolOuterwear");
+    if (item.kind === "bottoms") return packTripText(lang, "shopCoolBottoms");
+    return packTripText(lang, "flexibleWeather");
   }
 
-  return "A flexible choice for comfortable daytime-to-evening weather.";
+  return packTripText(lang, "comfortableWeather");
 }
 
-function shopSuggestions(kind: ShopKind, count: number, tier: TempTier, hasRain: boolean): ShopProduct[] {
-  const weatherNeedsProtectedFootwear = kind === "shoes" && (hasRain || tier === "freezing" || tier === "cold" || tier === "cool");
-  return SHOP_PRODUCTS
-    .filter((item) => item.kind === kind)
-    // Do not offer sandals as a substitute for a shoe the forecast needs to
-    // protect. It is better to show no shop footwear than to make a dishonest
-    // recommendation while we have no verified closed-toe catalog item.
-    .filter((item) => !weatherNeedsProtectedFootwear || !/sandal|slide|open-toe|flip.?flop/i.test(item.name))
+function shopSuggestions(
+  kind: ShopKind,
+  count: number,
+  tier: TempTier,
+  hasRain: boolean,
+  lang: Language,
+  gender: Gender | null,
+  preferences: StylingPreferences,
+): ShopProduct[] {
+  const excluded = new Set(preferences.excludedShopTypes);
+  const profileMatches = filterProfileShopProducts(SHOP_PRODUCTS, gender).filter((item) => {
+    const type = getShopSuggestionType(item.name);
+    if (excluded.has(type)) return false;
+    return preferences.hijabPreference !== "always" || isVerifiedModestShopType(type, item.kind);
+  });
+  const matches = filterClimateSafeProducts(profileMatches, kind, tier, hasRain);
+  const byStore = {
+    Just2010: matches.filter((item) => item.store === "Just2010"),
+    TerraPro: matches.filter((item) => item.store === "TerraPro"),
+  };
+  const balanced: ShopProduct[] = [];
+  for (let index = 0; balanced.length < matches.length; index += 1) {
+    for (const store of ["Just2010", "TerraPro"] as const) {
+      const item = byStore[store][index];
+      if (item) balanced.push(item);
+    }
+  }
+
+  return balanced
     .slice(0, Math.max(0, count))
-    .map((item) => ({ ...item, weatherReason: shopWeatherReason(item, tier, hasRain) }));
+    .map((item) => ({ ...item, weatherReason: shopWeatherReason(item, tier, hasRain, lang) }));
 }
 
 /** Only add accessories that solve a real weather need. This prevents a
@@ -171,145 +226,37 @@ function isWeatherRelevantAccessory(item: ClothingItem, tier: TempTier, hasRain:
   return includesAny(["sunglass", "sun hat", "sunhat", "cap", "visor", "uv"]);
 }
 
-function wardrobeWeatherReason(item: ClothingItem, tier: TempTier, hasRain: boolean): string {
+function wardrobeWeatherReason(item: ClothingItem, tier: TempTier, hasRain: boolean, lang: Language): string {
   const text = `${item.name} ${item.tags.join(" ")}`.toLowerCase();
   const openToe = isOpenToeFootwear(item);
   if (hasRain) {
     if (item.category === "shoes") return openToe
-      ? "Best kept for dry periods; open toes are not ideal on wet streets."
-      : "Closed-toe coverage is safer for wet streets.";
-    if (text.includes("waterproof") || text.includes("water-resistant")) return "Its weather-resistant finish suits the rain forecast.";
-    if (item.category === "outerwear") return "A useful outer layer when showers and cooler air arrive.";
-    if (item.category === "bottoms") return "Full-length coverage is more practical for a wet, changeable day.";
-    if (text.includes("cotton") || text.includes("short sleeve")) return "A breathable base layer that works under a light rain shell.";
-    return "A flexible layer to pair with a rain-ready outer layer when needed.";
+      ? packTripText(lang, "wardrobeRainOpenToe")
+      : packTripText(lang, "wardrobeRainClosedShoe");
+    if (text.includes("waterproof") || text.includes("water-resistant")) return packTripText(lang, "wardrobeRainResistant");
+    if (item.category === "outerwear") return packTripText(lang, "wardrobeRainOuterwear");
+    if (item.category === "bottoms") return packTripText(lang, "wardrobeRainBottoms");
+    if (text.includes("cotton") || text.includes("short sleeve")) return packTripText(lang, "wardrobeRainBase");
+    return packTripText(lang, "wardrobeRainGeneric");
   }
   if (tier === "hot" || tier === "warm") {
-    if (item.fabricWeight === "light" || ["linen", "cotton", "mesh", "breathable", "short"].some((word) => text.includes(word))) return "Its lighter construction is more comfortable in warm weather.";
-    if (item.category === "shoes") return openToe ? "Open-toe airflow helps keep feet cooler on dry, warm days." : "A walking-friendly option for warm days and cooler evenings.";
-    if (item.category === "bottoms") return "A practical lower layer for a warm day that may cool off later.";
-    return "Chosen to keep the outfit comfortable as temperatures stay warm.";
+    if (item.fabricWeight === "light" || ["linen", "cotton", "mesh", "breathable", "short"].some((word) => text.includes(word))) return packTripText(lang, "wardrobeWarmLight");
+    if (item.category === "shoes") return packTripText(lang, openToe ? "wardrobeWarmOpenToe" : "wardrobeWarmShoe");
+    if (item.category === "bottoms") return packTripText(lang, "wardrobeWarmBottoms");
+    return packTripText(lang, "wardrobeWarmGeneric");
   }
   if (tier === "freezing" || tier === "cold") {
-    if (item.fabricWeight === "heavy") return "Its heavier fabric helps retain warmth in colder air.";
-    if (item.category === "shoes") return "Closed-toe coverage is more comfortable when temperatures drop.";
-    return "A useful layer for keeping warm through the trip.";
+    if (item.fabricWeight === "heavy") return packTripText(lang, "wardrobeColdHeavy");
+    if (item.category === "shoes") return packTripText(lang, "wardrobeColdShoes");
+    return packTripText(lang, "wardrobeColdGeneric");
   }
   if (tier === "cool") {
-    if (item.category === "shoes") return "Closed-toe footwear is more comfortable through cool mornings and evenings.";
-    if (item.category === "bottoms") return "Full-length coverage is comfortable as the day stays cool.";
-    if (item.category === "outerwear") return "Easy to add for a cool morning and take off later.";
-    return "Easy to layer for cool mornings and milder afternoons.";
+    if (item.category === "shoes") return packTripText(lang, "wardrobeCoolShoes");
+    if (item.category === "bottoms") return packTripText(lang, "wardrobeCoolBottoms");
+    if (item.category === "outerwear") return packTripText(lang, "wardrobeCoolOuterwear");
+    return packTripText(lang, "wardrobeCoolGeneric");
   }
-  return "A flexible choice for comfortable daytime-to-evening weather.";
-}
-
-/** Treat unclear footwear as unsuitable for rainy or cool-weather packing. */
-function isOpenToeFootwear(item: ClothingItem): boolean {
-  const text = `${item.name} ${item.tags.join(" ")}`.toLowerCase();
-  return ["sandal", "slide", "flip flop", "flip-flop", "slipper", "open toe", "open-toe"].some(
-    (word) => text.includes(word)
-  );
-}
-
-function isClearlyClosedToeFootwear(item: ClothingItem): boolean {
-  const text = `${item.name} ${item.tags.join(" ")}`.toLowerCase();
-  return ["closed-toe", "sneaker", "trainer", "boot", "loafer", "oxford", "derby", "moccasin"].some(
-    (word) => text.includes(word)
-  );
-}
-
-/** Put the user's most weather-suitable clothes first. Store products only fill
- * a genuine shortage after this ranking has been applied. */
-function rankWardrobeForTrip(items: ClothingItem[], tier: TempTier, hasRain: boolean): ClothingItem[] {
-  const preferredWeight: Record<TempTier, Record<ClothingItem["fabricWeight"], number>> = {
-    freezing: { light: -5, medium: 1, heavy: 6 },
-    cold: { light: -4, medium: 2, heavy: 5 },
-    cool: { light: -1, medium: 4, heavy: 3 },
-    mild: { light: 2, medium: 4, heavy: 1 },
-    warm: { light: 5, medium: 2, heavy: -2 },
-    hot: { light: 6, medium: 1, heavy: -4 },
-  };
-  const weatherWords = hasRain
-    ? ["waterproof", "water-resistant", "rain", "quick-dry", "hood", "rubber"]
-    : tier === "hot" || tier === "warm"
-      ? ["linen", "cotton", "breathable", "light", "short", "mesh"]
-      : tier === "cold" || tier === "freezing"
-        ? ["wool", "thermal", "knit", "coat", "puffer", "fleece"]
-        : ["layer", "overshirt", "jacket", "cardigan", "denim"];
-
-  return [...items].sort((a, b) => {
-    const score = (item: ClothingItem) => {
-      const text = (item.name + " " + item.tags.join(" ")).toLowerCase();
-      return preferredWeight[tier][item.fabricWeight]
-        + weatherWords.reduce((total, word) => total + (text.includes(word) ? 3 : 0), 0)
-        - Math.min(item.timesWorn, 3) * 0.15;
-    };
-    return score(b) - score(a) || a.name.localeCompare(b.name);
-  });
-}
-
-/** Keep the "consider packing" rail useful: every missing slot should suggest a
- * different, weather-appropriate item rather than repeating the same label. */
-function chooseSuggestions(options: string[], count: number): string[] {
-  return options.slice(0, Math.max(0, count));
-}
-
-function packingOptions(kind: "tops" | "bottoms" | "outerwear" | "shoes" | "accessories", tier: TempTier, hasRain: boolean): string[] {
-  const rainy = hasRain ? {
-    tops: ["Quick-dry long-sleeve top", "Light merino layer", "Breathable overshirt", "Moisture-wicking tee"],
-    bottoms: ["Water-resistant trousers", "Quick-dry chinos", "Dark straight-leg jeans", "Technical midi skirt"],
-    outerwear: ["Packable waterproof shell", "Hooded rain jacket", "Water-resistant trench", "Light rain poncho"],
-    shoes: ["Waterproof sneakers", "Leather ankle boots", "Rubber-soled loafers", "Quick-dry walking shoes"],
-    accessories: ["Compact umbrella", "Water-resistant crossbody bag", "Cap with visor", "Spare quick-dry socks"],
-  } as const : null;
-  if (rainy) return [...rainy[kind]];
-
-  const options: Record<TempTier, Record<typeof kind, string[]>> = {
-    freezing: {
-      tops: ["Thermal base layer", "Merino wool turtleneck", "Heavy knit sweater", "Fleece half-zip", "Long-sleeve heat-tech top"],
-      bottoms: ["Lined trousers", "Thermal leggings", "Heavy denim jeans", "Wool-blend trousers"],
-      outerwear: ["Insulated puffer coat", "Wool overcoat", "Down parka", "Weatherproof winter jacket"],
-      shoes: ["Insulated boots", "Waterproof leather boots", "Rubber-soled winter shoes"],
-      accessories: ["Wool scarf", "Warm beanie", "Leather gloves", "Thick wool socks"],
-    },
-    cold: {
-      tops: ["Fine-knit jumper", "Long-sleeve cotton shirt", "Merino crewneck", "Fleece pullover", "Layering turtleneck"],
-      bottoms: ["Straight-leg jeans", "Wool-blend trousers", "Corduroy trousers", "Midi skirt with tights"],
-      outerwear: ["Wool coat", "Quilted jacket", "Puffer vest", "Structured trench coat"],
-      shoes: ["Ankle boots", "Leather sneakers", "Chunky loafers", "Closed-toe flats"],
-      accessories: ["Light scarf", "Beanie", "Crossbody bag", "Warm socks"],
-    },
-    cool: {
-      tops: ["Oxford shirt", "Light knit polo", "Long-sleeve tee", "Fine cardigan", "Cotton overshirt"],
-      bottoms: ["Relaxed trousers", "Dark jeans", "Midi skirt", "Tailored chinos"],
-      outerwear: ["Denim jacket", "Light blazer", "Bomber jacket", "Cotton trench"],
-      shoes: ["Clean sneakers", "Loafers", "Ankle boots", "Ballet flats"],
-      accessories: ["Light scarf", "Leather belt", "Crossbody bag", "Sunglasses"],
-    },
-    mild: {
-      tops: ["Crisp cotton shirt", "Lightweight knit polo", "Fitted tee", "Fine cardigan", "Linen-blend blouse", "Breathable overshirt"],
-      bottoms: ["Tailored chinos", "Wide-leg trousers", "Dark straight jeans", "Midi skirt", "Light denim"],
-      outerwear: ["Unstructured blazer", "Light denim jacket", "Cotton overshirt"],
-      shoes: ["Leather sneakers", "Loafers", "Slingback flats", "Low-profile trainers"],
-      accessories: ["Sunglasses", "Leather belt", "Small shoulder bag", "Light scarf"],
-    },
-    warm: {
-      tops: ["Linen button-up shirt", "Cotton crew-neck tee", "Breathable polo", "Sleeveless blouse", "Lightweight camp-collar shirt", "Ribbed tank layer"],
-      bottoms: ["Linen trousers", "Cotton chinos", "Flowy midi skirt", "Lightweight shorts", "Wide-leg cotton trousers"],
-      outerwear: ["Light linen overshirt", "Packable windbreaker"],
-      shoes: ["Canvas sneakers", "Leather sandals", "Loafers", "Open-back mules"],
-      accessories: ["Sunglasses", "Sun cap", "Light tote bag", "Breathable socks"],
-    },
-    hot: {
-      tops: ["Linen camp-collar shirt", "Lightweight cotton tee", "Sleeveless linen top", "Breathable polo", "Loose-fit short-sleeve shirt", "Cotton tank"],
-      bottoms: ["Linen shorts", "Flowy skirt", "Lightweight chinos", "Cotton shorts", "Relaxed linen trousers"],
-      outerwear: ["UV-protective overshirt", "Ultra-light wind layer"],
-      shoes: ["Leather sandals", "Breathable sneakers", "Open-toe flats", "Canvas slip-ons"],
-      accessories: ["Wide-brim hat", "UV sunglasses", "Refillable water bottle", "Lightweight tote"],
-    },
-  };
-  return options[tier][kind];
+  return packTripText(lang, "comfortableWeather");
 }
 
 // ─────────────────────────────────────────────
@@ -319,14 +266,15 @@ function generatePackingList(
   days: number,
   forecasts: DailyForecast[],
   wardrobe: ClothingItem[],
-  hasRain: boolean
+  hasRain: boolean,
+  lang: Language,
+  gender: Gender | null,
+  stylingPreferences: ReturnType<typeof useUserProfile>["stylingPreferences"],
 ): PackingCategory[] {
-  const avgHigh = forecasts.reduce((s, d) => s + d.tempMax, 0) / forecasts.length;
-  const avgLow = forecasts.reduce((s, d) => s + d.tempMin, 0) / forecasts.length;
-  const needsOuterwear = avgLow <= 17;
-  const needsHeavy = avgLow <= 10;
+  const { avgHigh, avgLow, coldestLow, summaryTier: tripTier, safetyTier } = getTripClimate(forecasts);
+  const needsOuterwear = coldestLow <= 17;
+  const needsHeavy = coldestLow <= 10;
   const isHot = avgHigh > 28;
-  const tripTier = getTier((avgHigh + avgLow) / 2);
 
   const weightOk = (item: ClothingItem) => {
     if (isHot && item.fabricWeight === "heavy") return false;
@@ -339,80 +287,120 @@ function generatePackingList(
   const shoesNeeded = Math.min(3, Math.max(1, Math.ceil(days / 3)));
   const outerNeeded = needsOuterwear ? Math.min(2, Math.ceil(days / 4)) : 0;
 
-  const tops = rankWardrobeForTrip(wardrobe.filter((i) => i.category === "tops" && weightOk(i)), tripTier, hasRain);
-  const bottoms = rankWardrobeForTrip(wardrobe.filter((i) => i.category === "bottoms" && weightOk(i)), tripTier, hasRain);
-  const dresses = rankWardrobeForTrip(wardrobe.filter((i) => i.category === "dresses" && weightOk(i)), tripTier, hasRain);
-  const outer = rankWardrobeForTrip(wardrobe.filter((i) => i.category === "outerwear"), tripTier, hasRain);
+  const eligible = (item: ClothingItem) => isAutomaticItemEligible(item, stylingPreferences);
+  const tops = rankWardrobeForTrip(wardrobe.filter((i) => i.category === "tops" && eligible(i) && weightOk(i) && isWardrobeClimateCompatible(i, tripTier)), tripTier, hasRain);
+  const bottoms = rankWardrobeForTrip(wardrobe.filter((i) => i.category === "bottoms" && eligible(i) && weightOk(i) && isWardrobeClimateCompatible(i, tripTier)), tripTier, hasRain);
+  const dresses = rankWardrobeForTrip(wardrobe.filter((i) => i.category === "dresses" && eligible(i) && weightOk(i) && isWardrobeClimateCompatible(i, tripTier)), tripTier, hasRain);
+  const outer = rankWardrobeForTrip(
+    wardrobe.filter((i) => i.category === "outerwear" && eligible(i) && isWardrobeClimateCompatible(i, safetyTier)),
+    safetyTier,
+    hasRain,
+  );
   const allShoes = wardrobe.filter((i) => i.category === "shoes");
   // Wet pavements and cool days need closed footwear. Unknown footwear is not
   // suggested until its type is confirmed in the item form.
-  const needsClosedToeShoes = hasRain || avgLow < 22;
-  const shoeCandidates = needsClosedToeShoes
+  const needsClosedToeShoes = hasRain || coldestLow < 22;
+  const shoeCandidates = (needsClosedToeShoes
     ? allShoes.filter((item) => !isOpenToeFootwear(item) && isClearlyClosedToeFootwear(item))
-    : allShoes;
-  const shoes = rankWardrobeForTrip(shoeCandidates, tripTier, hasRain);
+    : allShoes).filter((item) => isWardrobeClimateCompatible(item, safetyTier));
+  const shoes = rankWardrobeForTrip(shoeCandidates, safetyTier, hasRain);
+  const hijabs = wardrobe.filter(isHijabItem);
   const access = rankWardrobeForTrip(
-    wardrobe.filter((i) => i.category === "accessories" && isWeatherRelevantAccessory(i, tripTier, hasRain)),
+    wardrobe.filter((i) => i.category === "accessories" && !isHijabItem(i) && isWeatherRelevantAccessory(i, tripTier, hasRain)),
     tripTier,
     hasRain,
   );
 
   const result: PackingCategory[] = [];
 
-  result.push({
-    category: "Tops",
-    icon: "wind",
-    needed: topsNeeded,
-    weatherTier: tripTier,
-    hasRain,
-    reason: `${topsNeeded} tops for ${days} days at ${Math.round(avgHigh)}°C avg`,
-    fromWardrobe: tops.slice(0, topsNeeded),
-    needToBuy: shopSuggestions("tops", topsNeeded - tops.length, tripTier, hasRain),
-  });
+  const fillMissing = (kind: ShopKind, needed: number, owned: number) => {
+    const recommendationTier = tierForKind(kind, tripTier, safetyTier);
+    const missingBeforeShop = Math.max(0, needed - owned);
+    const needToBuy = shopSuggestions(
+      kind,
+      missingBeforeShop,
+      recommendationTier,
+      hasRain,
+      lang,
+      gender,
+      stylingPreferences,
+    );
+    return {
+      needToBuy,
+      missingCount: Math.max(0, missingBeforeShop - needToBuy.length) || undefined,
+    };
+  };
+
+  // A one-piece covers both the top and bottom for one outfit day. Count it
+  // once and reduce both separates targets instead of requiring a redundant top.
+  const targets = packingSeparateTargets(topsNeeded, bottomsNeeded, dresses.length);
+  const dressMatches = dresses.slice(0, targets.dressesUsed);
+  const effectiveTopsNeeded = targets.topsNeeded;
+  const effectiveBottomsNeeded = targets.bottomsNeeded;
+  const topMatches = tops.slice(0, effectiveTopsNeeded);
+  const topGaps = fillMissing("tops", effectiveTopsNeeded, topMatches.length);
 
   result.push({
-    category: "Bottoms",
+    category: "cat_tops",
+    icon: "wind",
+    needed: effectiveTopsNeeded,
+    weatherTier: tripTier,
+    hasRain,
+    reason: packTripText(lang, "topsReason", { needed: effectiveTopsNeeded, days, dayWord: packTripCountWord(lang, days, "day"), temp: Math.round(avgHigh) }),
+    fromWardrobe: topMatches,
+    ...topGaps,
+  });
+
+  const separatesBottoms = bottoms.slice(0, effectiveBottomsNeeded);
+  const bottomMatches = [...dressMatches, ...separatesBottoms];
+  const bottomGaps = fillMissing("bottoms", effectiveBottomsNeeded, separatesBottoms.length);
+  result.push({
+    category: "cat_bottoms",
     icon: "minus",
     needed: bottomsNeeded,
     weatherTier: tripTier,
     hasRain,
-    reason: `${bottomsNeeded} bottoms for the trip`,
-    fromWardrobe: [...bottoms, ...dresses].slice(0, bottomsNeeded),
-    needToBuy: shopSuggestions("bottoms", bottomsNeeded - bottoms.length - dresses.length, tripTier, hasRain),
+    reason: packTripText(lang, "bottomsReason", { needed: bottomsNeeded }),
+    fromWardrobe: bottomMatches,
+    ...bottomGaps,
   });
 
   if (needsOuterwear && outerNeeded > 0) {
+    const outerMatches = outer.slice(0, outerNeeded);
+    const outerGaps = fillMissing("outerwear", outerNeeded, outerMatches.length);
     result.push({
-      category: "Outerwear",
+      category: "cat_outerwear",
       icon: "layers",
       needed: outerNeeded,
       weatherTier: tripTier,
       hasRain,
-      reason: needsHeavy ? "Heavy coat required — lows below 10°C" : "Light jacket for cool evenings",
-      fromWardrobe: outer.slice(0, outerNeeded),
-      needToBuy: shopSuggestions("outerwear", outerNeeded - outer.length, tripTier, hasRain),
+      reason: packTripText(lang, needsHeavy ? "heavyCoatReason" : "lightJacketReason"),
+      fromWardrobe: outerMatches,
+      ...outerGaps,
     });
   }
 
+  const shoeMatches = shoes.slice(0, shoesNeeded);
+  const shoeGaps = fillMissing("shoes", shoesNeeded, shoeMatches.length);
   result.push({
-    category: "Shoes",
+    category: "cat_shoes",
     icon: "chevrons-up",
     needed: shoesNeeded,
     weatherTier: tripTier,
     hasRain,
-    reason: `${shoesNeeded} pairs — ${isHot ? "sandals / sneakers for heat" : "closed-toe for cooler temps"}`,
-    fromWardrobe: shoes.slice(0, shoesNeeded),
-    needToBuy: shopSuggestions("shoes", shoesNeeded - shoes.length, tripTier, hasRain),
+    reason: packTripText(lang, isHot ? "shoesReasonHot" : "shoesReasonCool", { needed: shoesNeeded }),
+    fromWardrobe: shoeMatches,
+    ...shoeGaps,
   });
 
   if (hasRain) {
     result.push({
-      category: "Rain Gear",
+      category: "rainGear",
       icon: "cloud-rain",
       needed: 1,
       weatherTier: tripTier,
       hasRain,
-      reason: "Precipitation forecast — pack a rain layer",
+      reason: packTripText(lang, "rainReason"),
       fromWardrobe: outer.filter((i) =>
         i.tags?.includes("waterproof") || i.name.toLowerCase().includes("rain")
       ).slice(0, 1),
@@ -420,16 +408,32 @@ function generatePackingList(
     });
   }
 
+  if (stylingPreferences.hijabPreference === "always") {
+    const hijabsNeeded = Math.min(3, Math.max(1, Math.ceil(days / 3)));
+    const hijabMatches = hijabs.slice(0, hijabsNeeded);
+    result.push({
+      category: "cat_accessories",
+      icon: "circle",
+      needed: hijabsNeeded,
+      weatherTier: tripTier,
+      hasRain,
+      reason: lang === "ru" ? "Хиджаб обязателен для каждого образа; количество рассчитано с учётом повторного использования." : lang === "uz" ? "Har bir obraz uchun hijob kerak; miqdor qayta kiyishni hisobga oladi." : "A hijab is required for every look; this quantity allows practical re-wear.",
+      fromWardrobe: hijabMatches,
+      needToBuy: [],
+      missingCount: Math.max(0, hijabsNeeded - hijabMatches.length),
+    });
+  }
+
   if (access.length > 0) {
     result.push({
-      category: "Weather accessories",
+      category: "weatherAccessories",
       icon: "circle",
       needed: Math.min(access.length, 3),
       reason: hasRain
-        ? "Only rain-ready accessories are included for this forecast"
+        ? packTripText(lang, "rainAccessoriesReason")
         : tripTier === "warm" || tripTier === "hot"
-          ? "Only sun-protection accessories are included for warm weather"
-          : "Only accessories that help with this temperature are included",
+          ? packTripText(lang, "sunAccessoriesReason")
+          : packTripText(lang, "tempAccessoriesReason"),
       weatherTier: tripTier,
       hasRain,
       fromWardrobe: access.slice(0, 3),
@@ -443,8 +447,6 @@ function generatePackingList(
 // ─────────────────────────────────────────────
 // Calendar helpers
 // ─────────────────────────────────────────────
-const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
-
 function startOfDay(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
@@ -465,9 +467,9 @@ function buildCalendarWeeks(year: number, month: number): (Date | null)[][] {
   return weeks;
 }
 
-function formatDate(d: Date | null): string {
+function formatDate(d: Date | null, lang: Language): string {
   if (!d) return "";
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return d.toLocaleDateString(packTripLocale(lang), { day: "numeric", month: "short", year: "numeric" });
 }
 
 function dayDiff(a: Date, b: Date): number {
@@ -482,9 +484,10 @@ interface DateRangePickerProps {
   end: Date | null;
   onChange: (start: Date | null, end: Date | null) => void;
   colors: ReturnType<typeof useColors>;
+  lang: Language;
 }
 
-function DateRangePicker({ start, end, onChange, colors }: DateRangePickerProps) {
+function DateRangePicker({ start, end, onChange, colors, lang }: DateRangePickerProps) {
   const today = startOfDay(new Date());
   const [open, setOpen] = useState(false);
   const [calMonth, setCalMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
@@ -522,7 +525,11 @@ function DateRangePicker({ start, end, onChange, colors }: DateRangePickerProps)
     return { isStart, isEnd, inRange, isPast, isToday: sameDay(d, today) };
   };
 
-  const monthLabel = calMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const locale = packTripLocale(lang);
+  const monthLabel = calMonth.toLocaleDateString(locale, { month: "long", year: "numeric" });
+  const weekdays = Array.from({ length: 7 }, (_, index) =>
+    new Date(2024, 0, 1 + index).toLocaleDateString(locale, { weekday: "short" }),
+  );
 
   return (
     <View>
@@ -534,9 +541,9 @@ function DateRangePicker({ start, end, onChange, colors }: DateRangePickerProps)
         >
           <Feather name="calendar" size={14} color={start ? colors.accent : colors.mutedForeground} />
           <View style={{ flex: 1 }}>
-            <Text style={[drStyles.dateBtnLabel, { color: colors.mutedForeground }]}>DEPARTURE</Text>
+            <Text style={[drStyles.dateBtnLabel, { color: colors.mutedForeground }]}>{packTripText(lang, "departure")}</Text>
             <Text style={[drStyles.dateBtnValue, { color: start ? colors.foreground : colors.mutedForeground }]}>
-              {start ? formatDate(start) : "Select date"}
+              {start ? formatDate(start, lang) : packTripText(lang, "selectDate")}
             </Text>
           </View>
         </TouchableOpacity>
@@ -551,20 +558,20 @@ function DateRangePicker({ start, end, onChange, colors }: DateRangePickerProps)
         >
           <Feather name="calendar" size={14} color={end ? colors.accent : colors.mutedForeground} />
           <View style={{ flex: 1 }}>
-            <Text style={[drStyles.dateBtnLabel, { color: colors.mutedForeground }]}>RETURN</Text>
+            <Text style={[drStyles.dateBtnLabel, { color: colors.mutedForeground }]}>{packTripText(lang, "returnDate")}</Text>
             <Text style={[drStyles.dateBtnValue, { color: end ? colors.foreground : colors.mutedForeground }]}>
-              {end ? formatDate(end) : "Select date"}
+              {end ? formatDate(end, lang) : packTripText(lang, "selectDate")}
             </Text>
           </View>
         </TouchableOpacity>
       </View>
 
       {start && !end && (
-        <Text style={[drStyles.hint, { color: colors.accent }]}>Now tap your return date</Text>
+        <Text style={[drStyles.hint, { color: colors.accent }]}>{packTripText(lang, "tapReturn")}</Text>
       )}
       {start && end && (
         <Text style={[drStyles.hint, { color: colors.mutedForeground }]}>
-          {dayDiff(start, end)} nights · tap a date to change
+          {packTripText(lang, "nightsChange", { count: dayDiff(start, end), nights: packTripCountWord(lang, dayDiff(start, end), "night") })}
         </Text>
       )}
 
@@ -583,7 +590,7 @@ function DateRangePicker({ start, end, onChange, colors }: DateRangePickerProps)
 
           {/* Weekday headers */}
           <View style={drStyles.weekRow}>
-            {WEEKDAYS.map((w) => (
+            {weekdays.map((w) => (
               <Text key={w} style={[drStyles.weekday, { color: colors.mutedForeground }]}>{w}</Text>
             ))}
           </View>
@@ -622,7 +629,7 @@ function DateRangePicker({ start, end, onChange, colors }: DateRangePickerProps)
 
           {start && end && (
             <TouchableOpacity onPress={() => { setOpen(false); }} style={[drStyles.doneBtn, { backgroundColor: colors.primary }]}>
-              <Text style={[drStyles.doneBtnText, { color: colors.primaryForeground }]}>Done</Text>
+              <Text style={[drStyles.doneBtnText, { color: colors.primaryForeground }]}>{packTripText(lang, "done")}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -691,17 +698,19 @@ function PackItemCard({
   weatherReason: string;
 }) {
   const colors = useColors();
-  const categoryLabel = item.category.charAt(0).toUpperCase() + item.category.slice(1);
+  const tone = getGarmentTone(item.colorHex, colors.border);
+  const { t } = useLanguage();
+  const categoryLabel = t(`cat_${item.category}`);
   return (
     <Pressable
       onPress={onToggle}
       style={({ pressed }) => [
         pkStyles.card,
-        { backgroundColor: colors.card, borderColor: colors.border, shadowColor: colors.foreground, opacity: pressed ? 0.88 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] },
+        { backgroundColor: tone.background, borderColor: tone.border, shadowColor: colors.foreground, opacity: pressed ? 0.88 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] },
       ]}
     >
       {/* Image zone */}
-      <View style={pkStyles.imageZone}>
+      <View style={[pkStyles.imageZone, { backgroundColor: tone.background }]}>
         {item.imageUri ? (
           <Image
             source={{ uri: item.imageUri }}
@@ -710,7 +719,7 @@ function PackItemCard({
             transition={250}
           />
         ) : (
-          <View style={pkStyles.noImage}>
+          <View style={[pkStyles.noImage, { backgroundColor: tone.stronger }]}>
             <Feather name="shopping-bag" size={24} color="#C8B9AE" />
           </View>
         )}
@@ -748,8 +757,7 @@ const pkStyles = StyleSheet.create({
     elevation: 3,
   },
   imageZone: {
-    aspectRatio: 3 / 4,
-    backgroundColor: "#FFFFFF",
+    aspectRatio: 1,
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
@@ -760,7 +768,6 @@ const pkStyles = StyleSheet.create({
     height: "100%",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F8F5F2",
   },
   checkBadge: {
     position: "absolute",
@@ -807,6 +814,8 @@ export default function PackTripScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { items: wardrobe } = useWardrobe();
+  const { gender, stylingPreferences, setStylingPreferences } = useUserProfile();
+  const { t, lang } = useLanguage();
   const topPad = getTopPadding(insets.top);
 
   // Destination input + suggestions
@@ -827,6 +836,7 @@ export default function PackTripScreen() {
   const [forecasts, setForecasts] = useState<DailyForecast[] | null>(null);
   const [packingList, setPackingList] = useState<PackingCategory[] | null>(null);
   const [resolvedCity, setResolvedCity] = useState("");
+  const [usesClimateEstimate, setUsesClimateEstimate] = useState(false);
 
   // ── Autocomplete ──
   useEffect(() => {
@@ -835,18 +845,18 @@ export default function PackTripScreen() {
     suggestTimer.current = setTimeout(async () => {
       try {
         const res = await fetch(
-          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=6&language=en&format=json`
+          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=6&language=${lang}&format=json`
         );
         const data = await res.json() as { results?: GeoSuggestion[] };
         setSuggestions(data.results ?? []);
       } catch { setSuggestions([]); }
     }, 380);
     return () => { if (suggestTimer.current) clearTimeout(suggestTimer.current); };
-  }, [city, selectedGeo]);
+  }, [city, selectedGeo, lang]);
 
   const selectSuggestion = (s: GeoSuggestion) => {
     setSelectedGeo(s);
-    setCity(`${s.name}, ${s.admin1 ? s.admin1 + ", " : ""}${s.country}`);
+    setCity(formatGeoLabel(s));
     setSuggestions([]);
   };
 
@@ -858,34 +868,38 @@ export default function PackTripScreen() {
 
   // ── Generate ──
   const handleGenerate = async () => {
-    if (!city.trim()) { setError("Enter a destination city"); return; }
-    if (!startDate || !endDate) { setError("Select your travel dates"); return; }
-    if (tripDays === null || tripDays < 1) { setError("Return date must be after departure"); return; }
+    if (!city.trim()) { setError(packTripText(lang, "enterCity")); return; }
+    if (!startDate || !endDate) { setError(packTripText(lang, "selectDates")); return; }
+    if (tripDays === null || tripDays < 1) { setError(packTripText(lang, "invalidDates")); return; }
 
     setError(null);
     setIsLoading(true);
     setForecasts(null);
     setPackingList(null);
+    setUsesClimateEstimate(false);
 
     try {
       let geo = selectedGeo;
       if (!geo) {
         const geoRes = await fetch(
-          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city.trim())}&count=1&language=en&format=json`
+          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city.trim())}&count=1&language=${lang}&format=json`
         );
         const geoData = await geoRes.json() as { results?: GeoSuggestion[] };
-        if (!geoData.results?.length) { setError(`Could not find "${city.trim()}". Try a different spelling.`); return; }
+        if (!geoData.results?.length) { setError(packTripText(lang, "cityNotFound", { city: city.trim() })); return; }
         geo = geoData.results[0]!;
       }
 
-      setResolvedCity(`${geo.name}${geo.admin1 ? ", " + geo.admin1 : ""}, ${geo.country}`);
+      setResolvedCity(formatGeoLabel(geo));
 
       // Format dates for API
       const fmt = (d: Date) => d.toISOString().split("T")[0];
       const today = startOfDay(new Date());
       const apiStart = startDate < today ? today : startDate;
       const apiEnd = new Date(apiStart.getTime() + Math.min(tripDays, 16) * 86400000);
-      const isFutureForecast = dayDiff(today, startDate) > 16;
+      // A trip that ends outside the live forecast window must use climate
+      // averages, even when its departure date is still inside that window.
+      const isFutureForecast = dayDiff(today, endDate) > 16;
+      setUsesClimateEstimate(isFutureForecast);
 
       let parsed: DailyForecast[] = [];
 
@@ -944,9 +958,9 @@ export default function PackTripScreen() {
       const rainThreshold = parsed.length <= 2 ? 1 : Math.max(2, Math.ceil(parsed.length * 0.35));
       const hasRain = rainyDays >= rainThreshold;
       setForecasts(parsed);
-      setPackingList(generatePackingList(tripDays, parsed, wardrobe, hasRain));
+      setPackingList(generatePackingList(tripDays, parsed, wardrobe, hasRain, lang, gender, stylingPreferences));
     } catch {
-      setError("Could not fetch weather. Check your connection.");
+      setError(packTripText(lang, "weatherError"));
     } finally {
       setIsLoading(false);
     }
@@ -976,6 +990,40 @@ export default function PackTripScreen() {
     });
   };
 
+  const rebuildPackingList = (preferences: StylingPreferences) => {
+    if (!forecasts || !tripDays) return;
+    const rainyDays = forecasts.filter((day) => day.precipitation > 1).length;
+    const rainThreshold = forecasts.length <= 2 ? 1 : Math.max(2, Math.ceil(forecasts.length * 0.35));
+    setPackingList(generatePackingList(
+      tripDays,
+      forecasts,
+      wardrobe,
+      rainyDays >= rainThreshold,
+      lang,
+      gender,
+      preferences,
+    ));
+  };
+
+  const excludeShopType = async (type: ShopSuggestionType) => {
+    if (stylingPreferences.excludedShopTypes.includes(type)) return;
+    const next = {
+      ...stylingPreferences,
+      excludedShopTypes: [...stylingPreferences.excludedShopTypes, type],
+    };
+    await setStylingPreferences(next);
+    rebuildPackingList(next);
+  };
+
+  const restoreShopType = async (type: ShopSuggestionType) => {
+    const next = {
+      ...stylingPreferences,
+      excludedShopTypes: stylingPreferences.excludedShopTypes.filter((value) => value !== type),
+    };
+    await setStylingPreferences(next);
+    rebuildPackingList(next);
+  };
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 16, borderBottomColor: colors.border }]}>
@@ -983,8 +1031,8 @@ export default function PackTripScreen() {
           <Feather name="arrow-left" size={22} color={colors.foreground} />
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={[styles.headerLabel, { color: colors.mutedForeground }]}>PACKING UTILITY</Text>
-          <Text style={[styles.headerTitle, { color: colors.foreground }]}>Pack for Trip</Text>
+          <Text style={[styles.headerLabel, { color: colors.mutedForeground }]}>{packTripText(lang, "packingUtility")}</Text>
+          <Text style={[styles.headerTitle, { color: colors.foreground }]}>{t("pack_trip")}</Text>
         </View>
       </View>
 
@@ -996,21 +1044,21 @@ export default function PackTripScreen() {
       >
         {/* ── Input card ── */}
         <View style={[styles.inputCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.inputTitle, { color: colors.foreground }]}>Where are you going?</Text>
+          <Text style={[styles.inputTitle, { color: colors.foreground }]}>{packTripText(lang, "whereGoing")}</Text>
           <Text style={[styles.inputSub, { color: colors.mutedForeground }]}>
-            Pick your destination and travel dates — we'll match your wardrobe to the real forecast.
+            {packTripText(lang, "intro")}
           </Text>
 
           {/* Destination with autocomplete */}
           <View style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>DESTINATION</Text>
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>{packTripText(lang, "destination")}</Text>
             <View style={[styles.inputRow, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
               <Feather name="map-pin" size={16} color={colors.mutedForeground} />
               <TextInput
                 style={[styles.textInput, { color: colors.foreground }]}
                 value={city}
                 onChangeText={handleCityChange}
-                placeholder="e.g. Dubai, Istanbul, Paris…"
+                placeholder={packTripText(lang, "destinationPlaceholder")}
                 placeholderTextColor={colors.mutedForeground}
                 returnKeyType="search"
                 autoCorrect={false}
@@ -1038,7 +1086,7 @@ export default function PackTripScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.suggCityText, { color: colors.foreground }]}>{s.name}</Text>
                       <Text style={[styles.suggSubText, { color: colors.mutedForeground }]}>
-                        {[s.admin1, s.country].filter(Boolean).join(", ")}
+                        {formatGeoRegion(s)}
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -1049,12 +1097,13 @@ export default function PackTripScreen() {
 
           {/* Date range picker */}
           <View style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>TRAVEL DATES</Text>
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>{packTripText(lang, "travelDates")}</Text>
             <DateRangePicker
               start={startDate}
               end={endDate}
               onChange={(s, e) => { setStartDate(s); setEndDate(e); }}
               colors={colors}
+              lang={lang}
             />
           </View>
 
@@ -1079,10 +1128,10 @@ export default function PackTripScreen() {
             }
             <Text style={[styles.generateBtnText, { color: colors.primaryForeground }]}>
               {isLoading
-                ? "Checking forecast…"
+                ? packTripText(lang, "checkingForecast")
                 : tripDays
-                  ? `Pack for ${tripDays} night${tripDays !== 1 ? "s" : ""}`
-                  : "Generate packing list"}
+                  ? packTripText(lang, "packForNights", { count: tripDays, nights: packTripCountWord(lang, tripDays, "night") })
+                  : packTripText(lang, "generateList")}
             </Text>
           </TouchableOpacity>
         </View>
@@ -1090,26 +1139,34 @@ export default function PackTripScreen() {
         {/* ── Forecast summary ── */}
         {forecasts && dominantTier && (
           <View style={[styles.forecastCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            {usesClimateEstimate && (
+              <View style={[styles.forecastNotice, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+                <Feather name="info" size={16} color={colors.accent} />
+                <Text style={[styles.forecastNoticeText, { color: colors.foreground }]}>
+                  {packTripText(lang, "forecastLimitNotice")}
+                </Text>
+              </View>
+            )}
             <View style={styles.forecastHeader}>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.forecastCity, { color: colors.foreground }]}>{resolvedCity}</Text>
                 <Text style={[styles.forecastRange, { color: colors.mutedForeground }]}>
-                  {avgLow}° – {avgHigh}°C avg · {forecasts.length} day forecast
-                  {tripDays ? ` · ${tripDays} nights` : ""}
+                  {avgLow}° – {avgHigh}°C {packTripText(lang, "average")} · {forecasts.length} {packTripCountWord(lang, forecasts.length, "day")} {packTripText(lang, usesClimateEstimate ? "seasonalEstimate" : "forecast")}
+                  {tripDays ? ` · ${tripDays} ${packTripCountWord(lang, tripDays, "night")}` : ""}
                 </Text>
               </View>
               <View style={[styles.tierBadge, { backgroundColor: colors.accent + "22" }]}>
                 <Text style={[styles.tierText, { color: colors.accent }]}>
-                  {dominantTier.charAt(0).toUpperCase() + dominantTier.slice(1)}
+                  {packTripText(lang, TIER_NAME_KEY[dominantTier])}
                 </Text>
               </View>
             </View>
-            <Text style={[styles.tierDesc, { color: colors.mutedForeground }]}>{TIER_LABEL[dominantTier]}</Text>
+            <Text style={[styles.tierDesc, { color: colors.mutedForeground }]}>{packTripText(lang, TIER_DESC_KEY[dominantTier])}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.forecastStrip}>
               {forecasts.slice(0, 7).map((d) => (
                 <View key={d.date} style={[styles.forecastDay, { backgroundColor: colors.secondary }]}>
                   <Text style={[styles.forecastDayName, { color: colors.mutedForeground }]}>
-                    {new Date(d.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short" })}
+                    {new Date(d.date + "T00:00:00").toLocaleDateString(packTripLocale(lang), { weekday: "short" })}
                   </Text>
                   <Text style={[styles.forecastHigh, { color: colors.foreground }]}>{Math.round(d.tempMax)}°</Text>
                   <Text style={[styles.forecastLow, { color: colors.mutedForeground }]}>{Math.round(d.tempMin)}°</Text>
@@ -1123,15 +1180,33 @@ export default function PackTripScreen() {
         {/* ── Packing list ── */}
         {packingList && (
           <>
+            {stylingPreferences.excludedShopTypes.length > 0 && (
+              <View style={[styles.hiddenTypesCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.hiddenTypesTitle, { color: colors.foreground }]}>Not suggesting</Text>
+                <Text style={[styles.hiddenTypesHint, { color: colors.mutedForeground }]}>Tap a type to allow it again.</Text>
+                <View style={styles.hiddenTypesRow}>
+                  {stylingPreferences.excludedShopTypes.map((type) => (
+                    <TouchableOpacity
+                      key={type}
+                      onPress={() => void restoreShopType(type)}
+                      style={[styles.hiddenTypeChip, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+                    >
+                      <Text style={[styles.hiddenTypeText, { color: colors.foreground }]}>{shopSuggestionTypeLabel(type)}</Text>
+                      <Feather name="x" size={12} color={colors.mutedForeground} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
             <View style={styles.packSummaryRow}>
               <View style={[styles.packStat, { backgroundColor: "#F0FDF4", borderColor: "#BBF7D0" }]}>
                 <Text style={[styles.packStatNum, { color: "#059669" }]}>{totalPacked}</Text>
-                <Text style={[styles.packStatLabel, { color: "#059669" }]}>from wardrobe</Text>
+                <Text style={[styles.packStatLabel, { color: "#059669" }]}>{packTripText(lang, "fromWardrobeStat")}</Text>
               </View>
               {totalToBuy > 0 && (
                 <View style={[styles.packStat, { backgroundColor: "#FEF9EC", borderColor: "#FDE68A" }]}>
                   <Text style={[styles.packStatNum, { color: "#D97706" }]}>{totalToBuy}</Text>
-                  <Text style={[styles.packStatLabel, { color: "#D97706" }]}>consider buying</Text>
+                  <Text style={[styles.packStatLabel, { color: "#D97706" }]}>{packTripText(lang, "considerBuying")}</Text>
                 </View>
               )}
             </View>
@@ -1140,7 +1215,9 @@ export default function PackTripScreen() {
               <View key={cat.category} style={[styles.packCat, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={styles.packCatHeader}>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.packCatTitle, { color: colors.foreground }]}>{cat.category}</Text>
+                    <Text style={[styles.packCatTitle, { color: colors.foreground }]}>
+                      {cat.category.startsWith("cat_") ? t(cat.category) : packTripText(lang, cat.category as "rainGear" | "weatherAccessories")}
+                    </Text>
                     <Text style={[styles.packCatReason, { color: colors.mutedForeground }]}>{cat.reason}</Text>
                   </View>
                   <View style={[styles.neededBadge, { backgroundColor: colors.secondary }]}>
@@ -1150,7 +1227,7 @@ export default function PackTripScreen() {
 
                 {cat.fromWardrobe.length > 0 && (
                   <View style={styles.wardrobeCarousel}>
-                    <Text style={[styles.matchesLabel, { color: colors.mutedForeground }]}>FROM YOUR WARDROBE</Text>
+                    <Text style={[styles.matchesLabel, { color: colors.mutedForeground }]}>{packTripText(lang, "fromWardrobe")}</Text>
                     <ScrollView
                       horizontal
                       showsHorizontalScrollIndicator={false}
@@ -1162,7 +1239,7 @@ export default function PackTripScreen() {
                           item={item}
                           checked={checkedItems.has(item.id)}
                           onToggle={() => toggleChecked(item.id)}
-                          weatherReason={wardrobeWeatherReason(item, cat.weatherTier, cat.hasRain)}
+                          weatherReason={wardrobeWeatherReason(item, cat.weatherTier, cat.hasRain, lang)}
                         />
                       ))}
                     </ScrollView>
@@ -1172,35 +1249,58 @@ export default function PackTripScreen() {
                 {/* ── Consider packing — image cards ── */}
                 {cat.needToBuy.length > 0 && (
                   <View style={styles.toBuySection}>
-                    <Text style={[styles.matchesLabel, { color: "#D97706" }]}>CONSIDER PACKING</Text>
+                    <Text style={[styles.matchesLabel, { color: "#D97706" }]}>{packTripText(lang, "considerPacking")}</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.buyCardRow}>
                       {cat.needToBuy.map((item) => (
-                        <Pressable
+                        <View
                           key={item.id}
-                          accessibilityRole="link"
-                          accessibilityLabel={`View ${item.name} at ${item.store}`}
-                          onPress={() => { void Linking.openURL(item.productUrl); }}
                           style={[styles.buyCard, { backgroundColor: colors.secondary, borderColor: "#FDE68A" }]}
                         >
-                          <Image
-                            source={{ uri: item.imageUrl }}
-                            style={styles.buyCardImg}
-                            contentFit="cover"
-                            transition={200}
-                          />
-                          <View style={styles.buyCardLabel}>
-                            <Feather name="shopping-bag" size={10} color="#D97706" />
-                            <View style={styles.buyCardCopy}>
-                              <Text style={styles.buyCardText} numberOfLines={2}>{item.name}</Text>
-                              <Text style={styles.buyCardMeta}>{item.store} · {item.priceUz.toLocaleString("en-US")} UZS</Text>
-                              <Text style={styles.buyCardReason}>{item.weatherReason}</Text>
+                          <Pressable
+                            accessibilityRole="link"
+                            accessibilityLabel={packTripText(lang, "viewProduct", { name: packTripProductName(lang, item.id, item.name), store: item.store })}
+                            onPress={() => { void Linking.openURL(item.productUrl); }}
+                          >
+                            <Image
+                              source={{ uri: item.imageUrl }}
+                              style={styles.buyCardImg}
+                              contentFit="cover"
+                              transition={200}
+                            />
+                            <View style={styles.buyCardLabel}>
+                              <Feather name="shopping-bag" size={10} color="#D97706" />
+                              <View style={styles.buyCardCopy}>
+                                <Text style={styles.buyCardText} numberOfLines={2}>{packTripProductName(lang, item.id, item.name)}</Text>
+                                <Text style={styles.buyCardMeta}>{item.store} · {item.priceUz.toLocaleString(packTripLocale(lang))} UZS</Text>
+                                <Text style={styles.buyCardReason}>{item.weatherReason}</Text>
+                              </View>
                             </View>
-                          </View>
-                        </Pressable>
+                          </Pressable>
+                          <TouchableOpacity
+                            accessibilityRole="button"
+                            accessibilityLabel={`Don't suggest ${shopSuggestionTypeLabel(getShopSuggestionType(item.name))}`}
+                            onPress={() => void excludeShopType(getShopSuggestionType(item.name))}
+                            style={styles.hideTypeButton}
+                          >
+                            <Feather name="slash" size={11} color="#92400E" />
+                            <Text style={styles.hideTypeButtonText}>Don't suggest this type</Text>
+                          </TouchableOpacity>
+                        </View>
                       ))}
                     </ScrollView>
                   </View>
                 )}
+
+                {Boolean(cat.missingCount) && (
+                  <View style={[styles.errorRow, { marginTop: 10 }]}>
+                    <Feather name="alert-circle" size={14} color="#DC2626" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.errorText}>{packTripText(lang, "stillNeeded", { count: cat.missingCount ?? 0 })}</Text>
+                      <Text style={[styles.packCatReason, { color: colors.mutedForeground }]}>{packTripText(lang, "stillNeededHint")}</Text>
+                    </View>
+                  </View>
+                )}
+
               </View>
             ))}
           </>
@@ -1252,6 +1352,8 @@ const styles = StyleSheet.create({
   },
   generateBtnText: { fontSize: 15, fontWeight: "700" },
   forecastCard: { borderRadius: 18, borderWidth: 1, padding: 16, gap: 12 },
+  forecastNotice: { flexDirection: "row", alignItems: "flex-start", gap: 8, borderWidth: 1, borderRadius: 12, padding: 12 },
+  forecastNoticeText: { flex: 1, fontSize: 12, lineHeight: 17, fontWeight: "500" },
   forecastHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
   forecastCity: { fontSize: 18, fontWeight: "700" },
   forecastRange: { fontSize: 13, marginTop: 2 },
@@ -1267,6 +1369,12 @@ const styles = StyleSheet.create({
   forecastHigh: { fontSize: 16, fontWeight: "800" },
   forecastLow: { fontSize: 12 },
   packSummaryRow: { flexDirection: "row", gap: 10 },
+  hiddenTypesCard: { borderRadius: 14, borderWidth: 1, padding: 12, gap: 7 },
+  hiddenTypesTitle: { fontSize: 13, fontWeight: "700" },
+  hiddenTypesHint: { fontSize: 11 },
+  hiddenTypesRow: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
+  hiddenTypeChip: { flexDirection: "row", alignItems: "center", gap: 5, borderWidth: 1, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6 },
+  hiddenTypeText: { fontSize: 11, fontWeight: "600" },
   packStat: { flex: 1, alignItems: "center", padding: 14, borderRadius: 14, borderWidth: 1, gap: 2 },
   packStatNum: { fontSize: 26, fontWeight: "800" },
   packStatLabel: { fontSize: 11, fontWeight: "600" },
@@ -1299,4 +1407,6 @@ const styles = StyleSheet.create({
   buyCardText: { flex: 1, fontSize: 11, fontWeight: "600", color: "#92400E", lineHeight: 15 },
   buyCardReason: { fontSize: 10, lineHeight: 14, fontWeight: "600", color: "#7C5A35", marginTop: 2 },
   buyCardMeta: { fontSize: 9, fontWeight: "500", color: "#A16207" },
+  hideTypeButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, borderTopWidth: 1, borderTopColor: "#FDE68A", paddingHorizontal: 8, paddingVertical: 9 },
+  hideTypeButtonText: { fontSize: 9, fontWeight: "700", color: "#92400E" },
 });

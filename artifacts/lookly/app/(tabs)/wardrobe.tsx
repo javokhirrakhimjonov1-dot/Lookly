@@ -1,7 +1,7 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/components/FeatherIcon";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   FlatList,
   Platform,
@@ -25,10 +25,13 @@ import {
   useWardrobe,
 } from "@/contexts/WardrobeContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useUserProfile } from "@/contexts/UserProfileContext";
+import { getProfileCategoryOptions } from "@/lib/profileCategories";
 
 export default function WardrobeScreen() {
   const colors = useColors();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  const { gender } = useUserProfile();
   const insets = useSafeAreaInsets();
   const { width: screenW } = useWindowDimensions();
   const gridGap = 10;
@@ -43,16 +46,14 @@ export default function WardrobeScreen() {
   const [selectedItem, setSelectedItem] = useState<ClothingItem | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const CATEGORIES: { key: "all" | ClothingCategory; label: string }[] = [
+  const categories: { key: "all" | ClothingCategory; label: string }[] = [
     { key: "all", label: t("cat_all") },
-    { key: "tops", label: t("cat_tops") },
-    { key: "bottoms", label: t("cat_bottoms") },
-    { key: "dresses", label: t("cat_dresses") },
-    { key: "outerwear", label: t("cat_outerwear") },
-    { key: "shoes", label: t("cat_shoes") },
-    { key: "socks", label: t("cat_socks") },
-    { key: "accessories", label: t("cat_accessories") },
+    ...getProfileCategoryOptions(gender, lang, t),
   ];
+
+  useEffect(() => {
+    if (!categories.some(({ key }) => key === activeCategory)) setActiveCategory("all");
+  }, [activeCategory, gender, lang]);
 
   const topPad = getTopPadding(insets.top);
   const bottomPad = getBottomPadding(insets.bottom, 100);
@@ -126,7 +127,7 @@ export default function WardrobeScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.pills}
         >
-          {CATEGORIES.map((c) => (
+          {categories.map((c) => (
             <CategoryPill
               key={c.key}
               label={c.label}
@@ -145,13 +146,13 @@ export default function WardrobeScreen() {
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Search your wardrobe"
+            placeholder={t("wardrobe_search")}
             placeholderTextColor={colors.mutedForeground}
             style={[styles.searchInput, { color: colors.foreground }]}
             autoCapitalize="none"
             autoCorrect={false}
             clearButtonMode="while-editing"
-            accessibilityLabel="Search your wardrobe"
+            accessibilityLabel={t("wardrobe_search")}
           />
           {searchQuery.length > 0 ? (
             <TouchableOpacity onPress={() => setSearchQuery("")} accessibilityLabel="Clear wardrobe search">

@@ -1,27 +1,25 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/components/FeatherIcon";
 import React, { useEffect, useRef } from "react";
-import { ActivityIndicator, Animated, Easing, Image, ImageSourcePropType, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Animated, Easing, Platform, StyleSheet, Text, View } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useColors } from "@/hooks/useColors";
 import { useWeather } from "@/contexts/WeatherContext";
-
-function WeatherIcon({ code, color, size = 28 }: { code: number; color: string; size?: number }) {
-  let name: React.ComponentProps<typeof Feather>["name"] = "sun";
-  if (code === 0) name = "sun";
-  else if (code <= 3) name = "cloud";
-  else if (code <= 48) name = "wind";
-  else if (code <= 67) name = "cloud-rain";
-  else if (code <= 77) name = "cloud-snow";
-  else if (code <= 82) name = "cloud-drizzle";
-  else name = "zap";
-  return <Feather name={name} size={size} color={color} />;
-}
+import { useLanguage } from "@/contexts/LanguageContext";
 
 type WeatherScene = "sun" | "heat" | "cloud" | "rain" | "snow" | "wind";
+const USE_NATIVE_DRIVER = Platform.OS !== "web";
 
-const weatherScenes: Record<"sunny" | "moody", ImageSourcePropType> = {
-  sunny: require("@/assets/images/weather-sun-city.png"),
-  moody: require("@/assets/images/weather-cloud-city.png"),
-};
+const stars = [
+  { left: "7%", top: 19, size: 3, sparkle: true },
+  { left: "18%", top: 74, size: 2, sparkle: false },
+  { left: "28%", top: 26, size: 2, sparkle: false },
+  { left: "38%", top: 91, size: 3, sparkle: true },
+  { left: "49%", top: 32, size: 2, sparkle: false },
+  { left: "58%", top: 67, size: 2, sparkle: false },
+  { left: "68%", top: 18, size: 3, sparkle: true },
+  { left: "76%", top: 84, size: 2, sparkle: false },
+  { left: "86%", top: 29, size: 2, sparkle: false },
+] as const;
 
 function getWeatherScene(code: number, temperature: number, windSpeed: number): WeatherScene {
   if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) return "snow";
@@ -47,54 +45,67 @@ function WeatherAtmosphere({
   const pulse = useRef(new Animated.Value(0)).current;
   const drift = useRef(new Animated.Value(0)).current;
   const fall = useRef(new Animated.Value(0)).current;
+  const orbit = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const animations = [
       Animated.loop(
         Animated.sequence([
-          Animated.timing(pulse, { toValue: 1, duration: 2600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-          Animated.timing(pulse, { toValue: 0, duration: 2600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          Animated.timing(pulse, { toValue: 1, duration: 2600, easing: Easing.inOut(Easing.sin), useNativeDriver: USE_NATIVE_DRIVER }),
+          Animated.timing(pulse, { toValue: 0, duration: 2600, easing: Easing.inOut(Easing.sin), useNativeDriver: USE_NATIVE_DRIVER }),
         ]),
       ),
       Animated.loop(
-        Animated.timing(drift, { toValue: 1, duration: scene === "wind" ? 2600 : 9000, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(drift, { toValue: 1, duration: scene === "wind" ? 2600 : 9000, easing: Easing.linear, useNativeDriver: USE_NATIVE_DRIVER }),
       ),
       Animated.loop(
-        Animated.timing(fall, { toValue: 1, duration: scene === "snow" ? 6200 : 1900, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(fall, { toValue: 1, duration: scene === "snow" ? 6200 : 1900, easing: Easing.linear, useNativeDriver: USE_NATIVE_DRIVER }),
+      ),
+      Animated.loop(
+        Animated.timing(orbit, { toValue: 1, duration: 18000, easing: Easing.linear, useNativeDriver: USE_NATIVE_DRIVER }),
       ),
     ];
 
     animations.forEach((animation) => animation.start());
     return () => animations.forEach((animation) => animation.stop());
-  }, [drift, fall, pulse, scene]);
+  }, [drift, fall, orbit, pulse, scene]);
 
   const driftX = drift.interpolate({ inputRange: [0, 1], outputRange: [-18, 28] });
   const fallY = fall.interpolate({ inputRange: [0, 1], outputRange: [-18, 160] });
   const glowScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1.12] });
   const glowOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.34, 0.62] });
-  const rayX = drift.interpolate({ inputRange: [0, 1], outputRange: [-30, 24] });
   const rainImpactScale = fall.interpolate({ inputRange: [0, 0.72, 0.93, 1], outputRange: [0.55, 0.55, 1.22, 1.38] });
   const rainImpactOpacity = fall.interpolate({ inputRange: [0, 0.72, 0.93, 1], outputRange: [0, 0, 0.64, 0] });
+  const orbitRotation = orbit.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
 
   return (
     <View pointerEvents="none" style={styles.atmosphere}>
       {isNight && (
         <>
-          <View style={styles.nightShade} />
-          <Animated.View style={[styles.moonGlow, { opacity: glowOpacity, transform: [{ scale: glowScale }] }]} />
-          <View style={styles.moon} />
-          {Array.from({ length: 16 }, (_, index) => (
-            <Animated.View key={`star-${index}`} style={[styles.star, { left: `${5 + ((index * 23) % 92)}%`, top: 8 + ((index * 31) % 70), opacity: index % 3 === 0 ? glowOpacity : 0.52 }]} />
+          {stars.map((star, index) => (
+            <Animated.View
+              key={`star-${index}`}
+              style={[
+                styles.star,
+                { left: star.left, top: star.top, width: star.size, height: star.size, opacity: index % 2 === 0 ? glowOpacity : 0.7 },
+              ]}
+            >
+              {star.sparkle && <><View style={styles.starVertical} /><View style={styles.starHorizontal} /></>}
+            </Animated.View>
           ))}
+          <Animated.View style={[styles.moonGlow, { opacity: glowOpacity, transform: [{ scale: glowScale }] }]} />
+          <Animated.View style={[styles.moonWrap, { transform: [{ translateY: drift.interpolate({ inputRange: [0, 1], outputRange: [-2, 3] }) }] }]}>
+            <Feather name="moon" size={54} color="#FFF2B8" />
+          </Animated.View>
         </>
       )}
       {(scene === "sun" || scene === "heat") && !isNight && (
         <>
           <Animated.View style={[styles.sunGlow, scene === "heat" && styles.heatGlow, { opacity: glowOpacity, transform: [{ scale: glowScale }] }]} />
-          <Animated.View style={[styles.sunRing, { transform: [{ scale: glowScale }] }]} />
-          <Animated.View style={[styles.sunRays, { opacity: glowOpacity, transform: [{ translateX: rayX }] }]}>
-            <View style={[styles.sunRay, styles.sunRayOne]} /><View style={[styles.sunRay, styles.sunRayTwo]} /><View style={[styles.sunRay, styles.sunRayThree]} /><View style={[styles.sunRay, styles.sunRayFour]} />
+          <Animated.View style={[styles.sunRays, { opacity: glowOpacity, transform: [{ rotate: orbitRotation }, { scale: glowScale }] }]}>
+            {Array.from({ length: 8 }, (_, index) => <View key={index} style={[styles.sunRay, { transform: [{ rotate: `${index * 45}deg` }] }]} />)}
           </Animated.View>
+          <View style={styles.sunCore} />
         </>
       )}
 
@@ -141,6 +152,7 @@ function WeatherAtmosphere({
 export default function WeatherWidget() {
   const colors = useColors();
   const weather = useWeather();
+  const { t } = useLanguage();
 
   if (weather.isLoading) {
     return (
@@ -163,26 +175,31 @@ export default function WeatherWidget() {
 
   const scene = getWeatherScene(weather.weatherCode, weather.temperature, weather.windSpeed);
   const isNight = new Date().getHours() >= 19 || new Date().getHours() < 6;
-  const sceneImage = !isNight && (scene === "sun" || scene === "heat") ? weatherScenes.sunny : weatherScenes.moody;
+  const skyColors: readonly [string, string, ...string[]] = isNight
+    ? ["#07162D", "#10294A", "#1E3A56"]
+    : scene === "rain" || scene === "wind"
+      ? ["#344C63", "#587287", "#8194A0"]
+      : scene === "cloud"
+        ? ["#3F6E91", "#7FA7BF", "#C4D5DC"]
+        : ["#247BC2", "#62B8E7", "#F4C98C"];
 
   return (
     <View style={[styles.container, { backgroundColor: colors.primary }]}>
-      <Image source={sceneImage} resizeMode="cover" style={styles.sceneImage} />
-      <View style={styles.sceneShade} />
+      <LinearGradient colors={skyColors} locations={[0, 0.64, 1]} style={StyleSheet.absoluteFillObject} />
+      <View style={[styles.horizonHaze, isNight && styles.horizonHazeNight]} />
       <WeatherAtmosphere code={weather.weatherCode} temperature={weather.temperature} windSpeed={weather.windSpeed} isNight={isNight} />
       <View style={styles.left}>
         <Text style={[styles.city, { color: colors.primaryForeground, opacity: 0.7 }]}>
-          Tashkent
+          {weather.city}
         </Text>
         <Text style={[styles.temp, { color: colors.primaryForeground }]}>
           {weather.temperature}°
         </Text>
         <Text style={[styles.condition, { color: colors.primaryForeground, opacity: 0.85 }]}>
-          {weather.conditionDetail}
+          {t(`weather_${weather.conditionDetail.toLowerCase().replaceAll(" ", "_")}`)}
         </Text>
       </View>
       <View style={styles.right}>
-        <WeatherIcon code={weather.weatherCode} color={colors.primaryForeground} size={42} />
         <View style={styles.statRow}>
           <View style={styles.stat}>
             <Feather name="droplet" size={11} color={colors.primaryForeground} style={{ opacity: 0.7 }} />
@@ -209,29 +226,23 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     position: "relative",
   },
-  sceneImage: {
-    ...StyleSheet.absoluteFillObject,
-    width: undefined,
-    height: undefined,
-  },
-  sceneShade: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(10, 18, 27, 0.34)",
-  },
-  nightShade: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(2, 10, 28, 0.58)" },
-  moonGlow: { position: "absolute", width: 104, height: 104, borderRadius: 999, right: 24, top: -22, backgroundColor: "rgba(215, 231, 255, 0.18)" },
-  moon: { position: "absolute", width: 38, height: 38, borderRadius: 999, right: 57, top: 12, backgroundColor: "rgba(248, 245, 220, 0.92)" },
-  star: { position: "absolute", width: 2, height: 2, borderRadius: 999, backgroundColor: "#FFFFFF" },
+  horizonHaze: { position: "absolute", left: -40, right: -40, bottom: -52, height: 104, borderRadius: 999, backgroundColor: "rgba(255, 223, 169, 0.3)" },
+  horizonHazeNight: { backgroundColor: "rgba(86, 131, 164, 0.16)" },
+  moonGlow: { position: "absolute", width: 112, height: 112, borderRadius: 999, right: 25, top: -20, backgroundColor: "rgba(202, 226, 255, 0.2)" },
+  moonWrap: { position: "absolute", width: 55, height: 55, right: 50, top: 8 },
+  star: { position: "absolute", borderRadius: 999, backgroundColor: "#FFFFFF", shadowColor: "#D9EDFF", shadowOpacity: 1, shadowRadius: 5 },
+  starVertical: { position: "absolute", width: 1, height: 9, left: 1, top: -3, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.82)" },
+  starHorizontal: { position: "absolute", width: 9, height: 1, left: -3, top: 1, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.82)" },
   atmosphere: {
     ...StyleSheet.absoluteFillObject,
     overflow: "hidden",
   },
   sunGlow: {
     position: "absolute",
-    width: 210,
-    height: 210,
-    right: -38,
-    top: -86,
+    width: 118,
+    height: 118,
+    right: 18,
+    top: -21,
     borderRadius: 999,
     backgroundColor: "rgba(255, 208, 118, 0.25)",
   },
@@ -242,22 +253,9 @@ const styles = StyleSheet.create({
     top: -112,
     backgroundColor: "rgba(248, 142, 77, 0.22)",
   },
-  sunRing: {
-    position: "absolute",
-    width: 126,
-    height: 126,
-    right: 7,
-    top: -43,
-    borderWidth: 1,
-    borderColor: "rgba(255, 240, 196, 0.22)",
-    borderRadius: 999,
-  },
-  sunRays: { position: "absolute", width: 310, height: 210, right: -116, top: -72, transform: [{ rotate: "-21deg" }] },
-  sunRay: { position: "absolute", height: 16, borderRadius: 999, backgroundColor: "rgba(255, 227, 153, 0.13)" },
-  sunRayOne: { width: 250, top: 4, right: -12 },
-  sunRayTwo: { width: 210, top: 52, right: 8 },
-  sunRayThree: { width: 286, top: 100, right: -18 },
-  sunRayFour: { width: 164, top: 148, right: 28 },
+  sunRays: { position: "absolute", width: 78, height: 78, right: 38, top: 0 },
+  sunRay: { position: "absolute", width: 3, height: 14, left: 38, top: -3, borderRadius: 999, backgroundColor: "rgba(255, 244, 192, 0.95)", transformOrigin: "1.5px 42px" },
+  sunCore: { position: "absolute", width: 48, height: 48, right: 53, top: 15, borderRadius: 999, backgroundColor: "#FFE77A", borderWidth: 2, borderColor: "rgba(255,250,211,0.88)", shadowColor: "#FFD65C", shadowOpacity: 0.95, shadowRadius: 14 },
   cloudGroup: {
     position: "absolute",
     right: -34,

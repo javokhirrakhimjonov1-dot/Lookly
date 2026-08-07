@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/components/FeatherIcon";
 import { Image } from "expo-image";
 import { SvgXml } from "react-native-svg";
 import React, { useRef, useState } from "react";

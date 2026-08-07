@@ -10,10 +10,11 @@ import {
 
 const router = Router();
 
-type ClientItem = Omit<Partial<DbClothingItem>, "brandLogo"> & {
+type ClientItem = Omit<Partial<DbClothingItem>, "brandLogo" | "visualSignature"> & {
   colorName?: string;
   material?: string;
   brandLogo?: unknown;
+  visualSignature?: unknown;
 };
 
 function serializeBrandLogo(value: unknown, fallback: string | null): string | null {
@@ -36,8 +37,32 @@ function parseBrandLogo(value: string | null): unknown {
   }
 }
 
+function serializeJson(value: unknown, fallback: string | null): string | null {
+  if (value === undefined) return fallback;
+  if (value === null) return null;
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function parseJson(value: string | null): unknown {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 function toClientItem(item: DbClothingItem) {
-  return { ...item, brandLogo: parseBrandLogo(item.brandLogo) };
+  return {
+    ...item,
+    brandLogo: parseBrandLogo(item.brandLogo),
+    visualSignature: parseJson(item.visualSignature),
+  };
 }
 
 function toDbItem(input: ClientItem, existing?: DbClothingItem | null): DbClothingItem {
@@ -55,8 +80,10 @@ function toDbItem(input: ClientItem, existing?: DbClothingItem | null): DbClothi
     purchasePrice: input.purchasePrice ?? existing?.purchasePrice ?? null,
     timesWorn: input.timesWorn ?? existing?.timesWorn ?? 0,
     imageUri: input.imageUri ?? existing?.imageUri ?? null,
+    imageProcessingVersion: input.imageProcessingVersion ?? existing?.imageProcessingVersion ?? 0,
     tags: Array.isArray(input.tags) ? input.tags : (existing?.tags ?? []),
     brandLogo: serializeBrandLogo(input.brandLogo, existing?.brandLogo ?? null),
+    visualSignature: serializeJson(input.visualSignature, existing?.visualSignature ?? null),
     createdAt: input.createdAt ?? existing?.createdAt ?? now,
   };
 }

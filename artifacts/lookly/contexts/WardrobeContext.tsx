@@ -15,8 +15,12 @@ import {
   syncSavedOutfit,
   deleteItemOnServer,
   deleteSavedOutfitOnServer,
+  replaceItemImageOnServer,
 } from "./serverSync";
 import { useAuth } from "./AuthContext";
+import { getApiBase } from "@/constants/api";
+import { apiAuthHeaders } from "@/lib/apiAuth";
+import { migrateWardrobeIds } from "./wardrobeMigration";
 
 export type ClothingCategory =
   | "tops"
@@ -38,11 +42,36 @@ export interface BrandLogo {
   size: "small" | "medium" | "large";
 }
 
+export interface ClothingVisualSignature {
+  itemType: string;
+  garmentFamily?: string;
+  shape: string;
+  silhouette?: string;
+  length?: string;
+  pattern: string;
+  materialFamily: string;
+  closures: string[];
+  sleeve: string;
+  collar: string;
+  neckline?: string;
+  rise?: string;
+  coverage?: string;
+  opacity?: string;
+  layerRole?: string;
+  toeStyle?: string;
+  heelType?: string;
+  heelHeight?: string;
+  bootShaft?: string;
+  features: string[];
+}
+
 export interface ClothingItem {
   id: string;
   /** Optional nickname chosen by the owner. The AI name stays in `name` for recommendations. */
   customName?: string;
   name: string;
+  /** AI-generated names in every supported UI language. */
+  localizedNames?: Partial<Record<"en" | "ru" | "uz", string>>;
   category: ClothingCategory;
   color: string;
   colorHex: string;
@@ -53,23 +82,37 @@ export interface ClothingItem {
   purchaseCurrency?: Currency;
   timesWorn: number;
   imageUri?: string;
+  /** Version 1 is square-normalized; later versions add category-specific catalog layouts. */
+  imageProcessingVersion?: number;
   tags: string[];
   brandLogo?: BrandLogo;
+  visualSignature?: ClothingVisualSignature;
   createdAt: string;
 }
 
 /** The name people see in the app, without losing the AI's descriptive name. */
-export function getItemDisplayName(item: Pick<ClothingItem, "name" | "customName">): string {
-  return item.customName?.trim() || item.name;
+export function getItemDisplayName(
+  item: Pick<ClothingItem, "name" | "customName" | "localizedNames">,
+  lang: "en" | "ru" | "uz" = "en",
+): string {
+  return item.customName?.trim() || item.localizedNames?.[lang]?.trim() || item.name;
 }
 
 export interface SavedOutfit {
   id: string;
   name: string;
-  items: Partial<Record<ClothingCategory, ClothingItem>>;
+  items: OutfitItems;
   previewImage?: string;
   createdAt: string;
 }
+
+/**
+ * Outfit entries are keyed by their visual slot. Most categories use the
+ * category name; repeatable categories (currently accessories) use a stable
+ * key such as `accessories:<item id>` so more than one piece can be kept.
+ */
+export type OutfitItemKey = ClothingCategory | `accessories:${string}`;
+export type OutfitItems = Partial<Record<OutfitItemKey, ClothingItem>>;
 
 interface WardrobeContextValue {
   items: ClothingItem[];
@@ -85,7 +128,7 @@ interface WardrobeContextValue {
   savedOutfits: SavedOutfit[];
   saveOutfit: (
     name: string,
-    items: Partial<Record<ClothingCategory, ClothingItem>>,
+    items: OutfitItems,
     previewImage?: string
   ) => Promise<void>;
   deleteSavedOutfit: (id: string) => Promise<void>;
@@ -98,10 +141,119 @@ const itemsKey = (userId: string) => `@lookly_wardrobe_v3_${userId}`;
 const outfitsKey = (userId: string) => `@lookly_saved_outfits_v2_${userId}`;
 const imageKey = (userId: string, id: string) => `@lookly_img_${userId}_${id}`;
 const outfitImageKey = (userId: string, id: string) => `@lookly_outfit_img_${userId}_${id}`;
+const LEGACY_ITEMS_KEY = "@lookly_wardrobe_v2";
+const LEGACY_OUTFITS_KEY = "@lookly_saved_outfits";
+const LEGACY_OWNER_KEY = "@lookly_legacy_wardrobe_owner";
+const legacyImageKey = (id: string) => `@lookly_img_${id}`;
+const legacyOutfitImageKey = (id: string) => `@lookly_outfit_img_${id}`;
 // Pilot safeguards. These are high enough for real testing while keeping the
 // first ten accounts within Supabase Storage and device-storage limits.
 const MAX_WARDROBE_ITEMS = 150;
 const MAX_SAVED_OUTFITS = 50;
+const PRODUCT_IMAGE_PROCESSING_VERSION = 1;
+const SCARF_CATALOG_PROCESSING_VERSION = 2;
+const FOOTWEAR_CATALOG_PROCESSING_VERSION = 3;
+const HEADBAND_CATALOG_PROCESSING_VERSION = 4;
+const WATCH_CATALOG_PROCESSING_VERSION = 5;
+const EYEWEAR_CATALOG_PROCESSING_VERSION = 6;
+const HOODIE_CATALOG_PROCESSING_VERSION = 7;
+const API_BASE = getApiBase();
+
+function desiredProductImageVersion(item: Pick<ClothingItem, "name" | "category" | "tags" | "visualSignature">): number {
+  if (item.category === "shoes") return FOOTWEAR_CATALOG_PROCESSING_VERSION;
+  const description = [
+    item.name,
+    ...(item.tags ?? []),
+    item.visualSignature?.itemType,
+    item.visualSignature?.garmentFamily,
+  ].filter(Boolean).join(" ").toLocaleLowerCase();
+  const isHeadband = /(?:\bhead[ -]?band\b|\bhair[ -]?band\b|\bsweat[ -]?band\b|\bsports?[ -]?band\b|\bathletic[ -]?band\b)/i.test(description);
+  const isScarf = /(?:\bscarf\b|\bhead[ -]?scarf\b|\bhijab\b|\bkhimar\b|\bmuffler\b|\bpashmina\b|\bstole\b|\bneck wrap\b|\u0448\u0430\u0440\u0444|\u043f\u0430\u043b\u0430\u043d\u0442\u0438\u043d|\u043f\u043b\u0430\u0442\u043e\u043a|\bsharf\b|\bro['\u2019]?mol\b)/i.test(description);
+  if (isHeadband) return HEADBAND_CATALOG_PROCESSING_VERSION;
+  const isWatch = item.category === "accessories" && /(?:\bsmart[ -]?watch\b|\bwrist[ -]?watch\b|\bwatch\b|\bfitness (?:band|tracker)\b|\bactivity tracker\b|\bsmart band\b)/i.test(description);
+  if (isWatch) return WATCH_CATALOG_PROCESSING_VERSION;
+  const isEyewear = item.category === "accessories" && /(?:\bsun[ -]?glasses\b|\beye[ -]?glasses\b|\bglasses\b|\bspectacles?\b|\beyewear\b|\bshades\b)/i.test(description);
+  if (isEyewear) return EYEWEAR_CATALOG_PROCESSING_VERSION;
+  const isHoodie = /(?:\bhoodies?\b|\bhooded (?:sweatshirt|jacket|top)\b|\bzip[ -]?up hood(?:ie|ed sweatshirt)\b)/i.test(description);
+  if (isHoodie) return HOODIE_CATALOG_PROCESSING_VERSION;
+  return isScarf ? SCARF_CATALOG_PROCESSING_VERSION : PRODUCT_IMAGE_PROCESSING_VERSION;
+}
+
+type SourceImage = { base64: string; mimeType: string };
+
+async function imageUriToBase64(uri: string): Promise<SourceImage | null> {
+  if (uri.startsWith("data:")) {
+    const match = uri.match(/^data:([^;,]+);base64,(.+)$/s);
+    return match?.[2] ? { base64: match[2], mimeType: match[1] || "image/jpeg" } : null;
+  }
+  try {
+    const response = await fetch(uri, { signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    let binary = "";
+    for (let index = 0; index < bytes.length; index += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+    }
+    return {
+      base64: globalThis.btoa(binary),
+      mimeType: response.headers.get("content-type")?.split(";", 1)[0] || "image/jpeg",
+    };
+  } catch {
+    return null;
+  }
+}
+
+type NormalizedExistingImage = {
+  uri: string;
+  imageProcessingVersion: number;
+  catalogGenerated: boolean;
+  rateLimited: boolean;
+};
+
+async function normalizeExistingProductImage(item: ClothingItem): Promise<NormalizedExistingImage | null> {
+  if (!item.imageUri) return null;
+  const source = await imageUriToBase64(item.imageUri);
+  if (!source) return null;
+  try {
+    const response = await fetch(`${API_BASE}/remove-bg`, {
+      method: "POST",
+      headers: await apiAuthHeaders(),
+      body: JSON.stringify({
+        photoBase64: source.base64,
+        mimeType: source.mimeType,
+        itemName: item.name,
+        category: item.category,
+        colorName: item.color,
+        colorHex: item.colorHex,
+        material: item.visualSignature?.materialFamily,
+        tags: item.tags,
+        brandLogo: item.brandLogo,
+      }),
+      signal: AbortSignal.timeout(180_000),
+    });
+    if (response.status === 429) {
+      return { uri: item.imageUri, imageProcessingVersion: 0, catalogGenerated: false, rateLimited: true };
+    }
+    const data = await response.json().catch(() => ({})) as {
+      image?: string;
+      url?: string;
+      imageProcessingVersion?: number;
+      studioGenerated?: boolean;
+    };
+    if (!response.ok || data.studioGenerated !== true) return null;
+    const normalizedUri = data.url
+      ? `${API_BASE.replace(/\/api$/, "")}${data.url}`
+      : data.image ? `data:image/png;base64,${data.image}` : null;
+    return normalizedUri ? {
+      uri: normalizedUri,
+      imageProcessingVersion: Math.max(data.imageProcessingVersion ?? 0, desiredProductImageVersion(item)),
+      catalogGenerated: true,
+      rateLimited: false,
+    } : null;
+  } catch {
+    return null;
+  }
+}
 
 async function getStoredValue(key: string): Promise<string | null> {
   if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -141,6 +293,26 @@ function createUuid(): string {
   });
 }
 
+function legacyCloudId(userId: string, legacyId: string, kind: "item" | "outfit"): string {
+  const value = `${userId}:${kind}:${legacyId}`;
+  const words = [0x811c9dc5, 0x9e3779b9, 0x85ebca6b, 0xc2b2ae35].map((seed) => {
+    let hash = seed;
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 0x01000193);
+    }
+    hash ^= hash >>> 16;
+    hash = Math.imul(hash, 0x85ebca6b);
+    hash ^= hash >>> 13;
+    return (hash ^ (hash >>> 16)) >>> 0;
+  });
+  const hex = words.map((word) => word.toString(16).padStart(8, "0")).join("").split("");
+  hex[12] = "4";
+  hex[16] = ((Number.parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
+  const joined = hex.join("");
+  return `${joined.slice(0, 8)}-${joined.slice(8, 12)}-${joined.slice(12, 16)}-${joined.slice(16, 20)}-${joined.slice(20)}`;
+}
+
 function stripImages(items: ClothingItem[]): Omit<ClothingItem, "imageUri">[] {
   return items.map(({ imageUri: _img, ...rest }) => rest);
 }
@@ -164,8 +336,90 @@ function stripOutfitForStorage(outfit: SavedOutfit) {
       const { imageUri: _img, ...itemRest } = item;
       return [cat, itemRest];
     })
-  ) as Partial<Record<ClothingCategory, ClothingItem>>;
+  ) as OutfitItems;
   return { ...rest, items: strippedItems };
+}
+
+function parseStoredArray<T>(value: string | null): T[] {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed as T[] : [];
+  } catch {
+    return [];
+  }
+}
+
+type LocalWardrobe = {
+  items: ClothingItem[];
+  outfits: SavedOutfit[];
+};
+
+/** Claim pre-account storage once, repair legacy IDs, and keep all photos in
+ * the current account-scoped keys before cloud reconciliation begins. */
+async function readAndMigrateLocalWardrobe(userId: string): Promise<LocalWardrobe> {
+  const [scopedItemsValue, scopedOutfitsValue, legacyItemsValue, legacyOutfitsValue, legacyOwner] = await Promise.all([
+    getStoredValue(itemsKey(userId)),
+    getStoredValue(outfitsKey(userId)),
+    getStoredValue(LEGACY_ITEMS_KEY),
+    getStoredValue(LEGACY_OUTFITS_KEY),
+    getStoredValue(LEGACY_OWNER_KEY),
+  ]);
+
+  const scopedItems = parseStoredArray<ClothingItem>(scopedItemsValue);
+  const scopedOutfits = parseStoredArray<SavedOutfit>(scopedOutfitsValue);
+  const mayClaimLegacyStorage = !legacyOwner || legacyOwner === userId;
+  const importedLegacyItems = scopedItems.length === 0
+    && mayClaimLegacyStorage
+    && parseStoredArray<ClothingItem>(legacyItemsValue).length > 0;
+  const importedLegacyOutfits = scopedOutfits.length === 0
+    && mayClaimLegacyStorage
+    && parseStoredArray<SavedOutfit>(legacyOutfitsValue).length > 0;
+  const rawItems = importedLegacyItems
+    ? parseStoredArray<ClothingItem>(legacyItemsValue)
+    : scopedItems;
+  const rawOutfits = importedLegacyOutfits
+    ? parseStoredArray<SavedOutfit>(legacyOutfitsValue)
+    : scopedOutfits;
+
+  const itemsWithImages = await Promise.all(rawItems.map(async (item) => {
+    const primaryKey = importedLegacyItems ? legacyImageKey(item.id) : imageKey(userId, item.id);
+    const fallbackKey = importedLegacyItems ? imageKey(userId, item.id) : legacyImageKey(item.id);
+    const uri = await getStoredValue(primaryKey) ?? await getStoredValue(fallbackKey);
+    return uri ? { ...item, imageUri: uri } : item;
+  }));
+  const outfitsWithPreviews = await Promise.all(rawOutfits.map(async (outfit) => {
+    const primaryKey = importedLegacyOutfits ? legacyOutfitImageKey(outfit.id) : outfitImageKey(userId, outfit.id);
+    const fallbackKey = importedLegacyOutfits ? outfitImageKey(userId, outfit.id) : legacyOutfitImageKey(outfit.id);
+    const previewImage = await getStoredValue(primaryKey) ?? await getStoredValue(fallbackKey);
+    return previewImage ? { ...outfit, previewImage } : outfit;
+  }));
+
+  const migrated = migrateWardrobeIds(
+    itemsWithImages,
+    outfitsWithPreviews,
+    (legacyId, kind) => legacyCloudId(userId, legacyId, kind),
+  );
+  const needsLocalWrite = importedLegacyItems || importedLegacyOutfits || migrated.changed;
+  if (!needsLocalWrite) return { items: migrated.items, outfits: migrated.outfits };
+
+  // Write replacement image keys before publishing metadata that points at the
+  // replacement IDs. Old keys are retained until every new local record exists.
+  await Promise.all([
+    ...migrated.items.map((item) => item.imageUri
+      ? setStoredValue(imageKey(userId, item.id), item.imageUri)
+      : Promise.resolve()),
+    ...migrated.outfits.map((outfit) => outfit.previewImage
+      ? setStoredValue(outfitImageKey(userId, outfit.id), outfit.previewImage)
+      : Promise.resolve()),
+  ]);
+  await setStoredValue(itemsKey(userId), JSON.stringify(stripImages(migrated.items)));
+  await setStoredValue(outfitsKey(userId), JSON.stringify(migrated.outfits.map(stripOutfitForStorage)));
+  if (importedLegacyItems || importedLegacyOutfits) {
+    await setStoredValue(LEGACY_OWNER_KEY, userId);
+  }
+
+  return { items: migrated.items, outfits: migrated.outfits };
 }
 
 /**
@@ -197,6 +451,7 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<ClothingItem[]>([]);
   const [savedOutfits, setSavedOutfits] = useState<SavedOutfit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const normalizationRunUserRef = useRef<string | null>(null);
 
   const itemsRef = useRef<ClothingItem[]>([]);
   useEffect(() => { itemsRef.current = items; }, [items]);
@@ -205,37 +460,28 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { outfitsRef.current = savedOutfits; }, [savedOutfits]);
 
   useEffect(() => {
-    (async () => {
+    let cancelled = false;
+    void (async () => {
       setItems([]);
       itemsRef.current = [];
       setSavedOutfits([]);
       outfitsRef.current = [];
       if (!user) {
         setIsLoading(false);
-        return undefined;
+        return;
       }
 
       setIsLoading(true);
       try {
-        const [storedItems, storedOutfits, serverItems, serverOutfits] = await Promise.all([
-          getStoredValue(itemsKey(user.id)),
-          getStoredValue(outfitsKey(user.id)),
+        const [localWardrobe, serverItems, serverOutfits] = await Promise.all([
+          readAndMigrateLocalWardrobe(user.id),
           fetchServerItems(),
           fetchServerOutfits(),
         ]);
+        if (cancelled) return;
 
-        let merged: ClothingItem[] = [];
-
-        if (storedItems) {
-          const parsed: ClothingItem[] = JSON.parse(storedItems);
-          const withImages = await Promise.all(
-            parsed.map(async (item) => {
-              const uri = await getStoredValue(imageKey(user.id, item.id));
-              return uri ? { ...item, imageUri: uri } : item;
-            })
-          );
-          merged = withImages.map(normalizeItemCategory);
-        }
+        const localItems = localWardrobe.items.map(normalizeItemCategory);
+        let merged: ClothingItem[] = [...localItems];
 
         // Merge server items. A fresh signed Storage URL from Supabase must
         // replace the cached one, because private URLs expire by design.
@@ -245,43 +491,64 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
             if (existingIndex === -1) {
               merged.push(normalizeItemCategory(serverItem));
             } else if (serverItem.imageUri) {
-              merged[existingIndex] = { ...normalizeItemCategory(merged[existingIndex]!), imageUri: serverItem.imageUri };
+              const localItem = normalizeItemCategory(merged[existingIndex]!);
+              merged[existingIndex] = {
+                ...localItem,
+                imageUri: serverItem.imageUri,
+                imageProcessingVersion: Math.max(
+                  localItem.imageProcessingVersion ?? 0,
+                  serverItem.imageProcessingVersion ?? 0,
+                ),
+              };
             }
           }
         }
 
-        if (merged.length > 0) {
-          setItems(merged);
-          itemsRef.current = merged;
-        }
+        setItems(merged);
+        itemsRef.current = merged;
 
-        if (storedOutfits) {
-          const parsed = JSON.parse(storedOutfits) as SavedOutfit[];
-          const withPreviews = await Promise.all(
-            parsed.map(async (outfit) => {
-              const preview = await AsyncStorage.getItem(outfitImageKey(user.id, outfit.id));
-              return preview ? { ...outfit, previewImage: preview } : outfit;
-            })
-          );
-          setSavedOutfits(withPreviews);
-          outfitsRef.current = withPreviews;
-        }
-
+        const mergedOutfits = [...localWardrobe.outfits];
         if (serverOutfits.length > 0) {
-          const mergedOutfits = [...outfitsRef.current];
           for (const serverOutfit of serverOutfits) {
             if (!mergedOutfits.some((localOutfit) => localOutfit.id === serverOutfit.id)) {
               mergedOutfits.push(serverOutfit);
             }
           }
-          setSavedOutfits(mergedOutfits);
-          outfitsRef.current = mergedOutfits;
         }
-      } catch {
+        setSavedOutfits(mergedOutfits);
+        outfitsRef.current = mergedOutfits;
+
+        // A failed first upload used to remain local forever. Retry only local
+        // records absent from the account, plus records whose photo/preview is
+        // still missing. Waiting for each image keeps the recovery reliable
+        // without delaying the wardrobe screen itself.
+        const serverItemsById = new Map(serverItems.map((item) => [item.id, item]));
+        const itemsNeedingCloudRecovery = localItems.filter((item) => {
+          const serverItem = serverItemsById.get(item.id);
+          return !serverItem || (!!item.imageUri && !serverItem.imageUri);
+        });
+        const serverOutfitsById = new Map(serverOutfits.map((outfit) => [outfit.id, outfit]));
+        const outfitsNeedingCloudRecovery = localWardrobe.outfits.filter((outfit) => {
+          const serverOutfit = serverOutfitsById.get(outfit.id);
+          return !serverOutfit || (!!outfit.previewImage && !serverOutfit.previewImage);
+        });
+        void (async () => {
+          for (const item of itemsNeedingCloudRecovery) {
+            if (cancelled) return;
+            await syncItemToServer(item, { waitForImage: true });
+          }
+          for (const outfit of outfitsNeedingCloudRecovery) {
+            if (cancelled) return;
+            await syncSavedOutfit(outfit);
+          }
+        })();
+      } catch (error) {
+        console.warn("Could not restore the local wardrobe", error);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     })();
+    return () => { cancelled = true; };
   }, [user?.id]);
 
   /**
@@ -445,6 +712,54 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
     [persistItems, persistImage]
   );
 
+  // Upgrade source-photo fallbacks with the same garment-specific studio
+  // extraction used for newly scanned items. Failed images retain their
+  // current art and are retried next time this account starts a fresh session.
+  useEffect(() => {
+    if (!user || isLoading || normalizationRunUserRef.current === user.id) return;
+    normalizationRunUserRef.current = user.id;
+    let cancelled = false;
+
+    void (async () => {
+      const candidates = itemsRef.current.filter(
+        (item) => item.imageUri && (item.imageProcessingVersion ?? 0) < desiredProductImageVersion(item),
+      );
+      for (const candidate of candidates) {
+        if (cancelled || !candidate.imageUri) break;
+        const normalized = await normalizeExistingProductImage(candidate);
+        if (cancelled) break;
+        if (normalized?.rateLimited) break;
+        if (!normalized?.catalogGenerated) continue;
+
+        const locallyNormalized: ClothingItem = {
+          ...candidate,
+          imageUri: normalized.uri,
+          // Keep this retryable until private cloud storage confirms the new file.
+          imageProcessingVersion: 0,
+        };
+        let next = itemsRef.current.map((item) => item.id === candidate.id ? locallyNormalized : item);
+        itemsRef.current = next;
+        setItems(next);
+        await persistImage(candidate.id, normalized.uri);
+        await persistItems(next);
+
+        const published = await replaceItemImageOnServer({
+          ...locallyNormalized,
+          imageProcessingVersion: normalized.imageProcessingVersion,
+        });
+        if (!published || cancelled) continue;
+        next = itemsRef.current.map((item) => item.id === candidate.id
+          ? { ...item, imageProcessingVersion: normalized.imageProcessingVersion }
+          : item);
+        itemsRef.current = next;
+        setItems(next);
+        await persistItems(next);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [isLoading, persistImage, persistItems, user?.id]);
+
   const markWorn = useCallback(
     async (ids: string[]) => {
       const idSet = new Set(ids);
@@ -482,7 +797,7 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
   const saveOutfit = useCallback(
     async (
       name: string,
-      outfitItems: Partial<Record<ClothingCategory, ClothingItem>>,
+      outfitItems: OutfitItems,
       previewImage?: string
     ) => {
       if (outfitsRef.current.length >= MAX_SAVED_OUTFITS) {

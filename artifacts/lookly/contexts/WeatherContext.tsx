@@ -7,6 +7,7 @@ import React, {
   useEffect,
   useState,
 } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface WeatherAlert {
   type: "temperature_drop" | "temperature_rise" | "rain_incoming" | "snow_incoming";
@@ -99,6 +100,7 @@ function buildAlert(
 const WeatherContext = createContext<WeatherData | null>(null);
 
 export function WeatherProvider({ children }: { children: React.ReactNode }) {
+  const { session, isLoading: isAuthLoading } = useAuth();
   const [temperature, setTemperature] = useState(22);
   const [feelsLike, setFeelsLike] = useState(22);
   const [humidity, setHumidity] = useState(40);
@@ -166,6 +168,13 @@ export function WeatherProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const fetchWeather = useCallback(async () => {
+    // WeatherProvider also wraps the public auth screen. Never reach the
+    // operating-system permission prompt until authentication has completed.
+    if (!session) {
+      setIsLoading(false);
+      return;
+    }
+
     const saved = await AsyncStorage.getItem(MANUAL_LOCATION_KEY);
     if (saved) {
       try {
@@ -187,7 +196,7 @@ export function WeatherProvider({ children }: { children: React.ReactNode }) {
       // Tashkent remains the safe fallback when location services are unavailable.
     }
     await requestWeather(location);
-  }, [requestWeather]);
+  }, [requestWeather, session]);
 
   const setManualLocation = useCallback(async (query: string): Promise<{ error?: string }> => {
     const name = query.trim();
@@ -217,13 +226,15 @@ export function WeatherProvider({ children }: { children: React.ReactNode }) {
   }, [requestWeather]);
 
   const useCurrentLocation = useCallback(async () => {
+    if (!session) return;
     await AsyncStorage.removeItem(MANUAL_LOCATION_KEY);
     await fetchWeather();
-  }, [fetchWeather]);
+  }, [fetchWeather, session]);
 
   useEffect(() => {
-    fetchWeather();
-  }, [fetchWeather]);
+    if (isAuthLoading) return;
+    void fetchWeather();
+  }, [fetchWeather, isAuthLoading]);
 
   const { condition, detail } = getCondition(weatherCode);
 

@@ -11,6 +11,7 @@
  *
  * See INTEGRATION.md for how to wire this into an app.
  */
+import { getModestyIssue, getOutfitModestyIssues, isAutomaticItemEligible, isHijabItem } from "./modestyRules";
 
 // ============ Types ============
 type Category = "tops" | "bottoms" | "dresses" | "outerwear" | "shoes" | "socks" | "accessories";
@@ -29,6 +30,8 @@ interface Item {
   material?: string;        // cotton|linen|wool|denim|leather|technical|synthetic|suede|canvas
   waterproof?: boolean; windproof?: boolean; warm?: boolean;
   fit?: Fit;
+  garmentFamily?: string; silhouette?: string; length?: string; sleeve?: string; neckline?: string; coverage?: string; opacity?: string; layerRole?: string;
+  toeStyle?: string; heelType?: string; heelHeight?: string; bootShaft?: string;
   lastWornDaysAgo?: number; wearCount?: number;
 }
 interface Weather {
@@ -46,6 +49,13 @@ interface UserProfile {
   colorPreferences?: string[];
   lifestyle?: "office" | "gym" | "student" | "casual" | "night-out" | string;
   climateZone?: "tropical" | "arid" | "temperate" | "continental" | "polar"; // acclimatization (optional, soft)
+  heatAdaptation?: string;
+  stylingPreferences?: {
+    coverage?: "no_preference" | "modest" | "maximum_coverage";
+    silhouette?: "balanced" | "fitted" | "relaxed";
+    heels?: "flats" | "low_heels" | "any";
+    hijabPreference?: "always" | "no" | null;
+  };
 }
 interface Requirements {
   band: string; minWarmth: number;             // raw warmth points (see warmthOf)
@@ -54,7 +64,7 @@ interface Requirements {
   bannedFabrics: string[]; bannedWeights: Weight[]; sunProtection: boolean;
   wet: boolean; humid: boolean; windy: boolean;
 }
-interface ScoredOutfit { outfit: Item[]; score: number; why: string[]; incomplete?: boolean; }
+interface ScoredOutfit { outfit: Item[]; score: number; why: string[]; reasonCodes: string[]; incomplete?: boolean; }
 
 // ============ Config ============
 const WEIGHTS = {
@@ -171,14 +181,16 @@ function deriveRequirements(w: Weather, band: string, feels: number): Requiremen
 
 // ============ 2. Filter (hard gate) ============
 function isBreathableShoe(it: Item): boolean {
-  return it.material === "canvas" || it.material === "mesh" || it.tags.includes("sandals") || it.tags.includes("espadrilles");
+  return it.toeStyle === "open" || it.material === "canvas" || it.material === "mesh" || it.tags.includes("sandals") || it.tags.includes("espadrilles");
 }
+function isHighHeel(it: Item): boolean { return it.heelHeight === "high" || it.heelType === "stiletto"; }
 function passesGate(it: Item, req: Requirements, season: Season): boolean {
   if (it.seasons.length && !it.seasons.includes(season)) return false;
   if (req.bannedWeights.includes(it.weight)) return false;
   if (it.material && req.bannedFabrics.includes(it.material)) return false;
   if (req.requireWarmShoes && it.category === "shoes" && isBreathableShoe(it)) return false;
   if ((req.wet) && it.category === "shoes" && isBreathableShoe(it)) return false; // no canvas/sandals in rain
+  if ((req.wet || req.windy) && it.category === "shoes" && isHighHeel(it)) return false;
   return true;
 }
 
@@ -205,6 +217,12 @@ function quickItemScore(it: Item, req: Requirements, user: UserProfile): number 
     if (req.wet && it.waterproof) s += 0.2;
   }
   if (it.category === "shoes" && req.requireWaterproofShoes && it.waterproof) s += 0.25;
+  if (user.heatAdaptation === "light_linen" && (it.weight === "light" || it.material === "linen")) s += 0.12;
+  if (user.heatAdaptation === "sport_active" && it.tags.includes("sporty")) s += 0.12;
+  if (user.stylingPreferences?.coverage && user.stylingPreferences.coverage !== "no_preference" && it.coverage === user.stylingPreferences.coverage) s += 0.14;
+  if (user.stylingPreferences?.silhouette && user.stylingPreferences.silhouette !== "balanced" && (it.silhouette === user.stylingPreferences.silhouette || it.fit === user.stylingPreferences.silhouette)) s += 0.1;
+  if (it.category === "shoes" && user.stylingPreferences?.heels === "flats" && isHighHeel(it)) s -= 0.5;
+  if (it.category === "shoes" && user.stylingPreferences?.heels === "low_heels" && it.heelHeight === "high") s -= 0.35;
   s += 0.05 * ((it.lastWornDaysAgo ?? 30) / 30);          // gentle freshness nudge
   return s;
 }
@@ -218,11 +236,20 @@ function proportionOK(top: Item, bottom: Item, user: UserProfile): boolean {
   const bothRelaxed = relaxed(top.fit) && relaxed(bottom.fit);
   const bothTight   = top.fit === "fitted" && bottom.fit === "fitted";
   const streety = user.stylePreferences.some(s => s === "sporty" || s === "streetwear");
-  return !(bothRelaxed || bothTight) || streety;
+  const topSilhouette = top.silhouette ?? top.fit;
+  const bottomSilhouette = bottom.silhouette ?? bottom.fit;
+  const bothVoluminous = /oversized|relaxed|wide/.test(topSilhouette ?? "") && /a-line|wide|relaxed|full/.test(bottomSilhouette ?? "");
+  return !(bothRelaxed || bothTight || bothVoluminous) || streety;
 }
-function pickAccessories(accs: Item[], req: Requirements): Item[] {
+function pickAccessories(accs: Item[], req: Requirements, user: UserProfile): Item[] {
   const out: Item[] = [];
   const want = (pred: (a: Item)=>boolean) => { const a = accs.find(pred); if (a && !out.includes(a)) out.push(a); };
+  if (user.stylingPreferences?.hijabPreference === "always") {
+    want(isHijabItem);
+    // The current client has one accessory slot. Keep the required hijab in
+    // that slot instead of allowing a later accent accessory to overwrite it.
+    return out;
+  }
   if (req.wet)                    want(a => a.tags.includes("umbrella"));
   if (req.requireWarmShoes)     { want(a => a.tags.includes("gloves")); want(a => a.tags.includes("scarf")); }
   if (req.sunProtection)        { want(a => a.tags.includes("sunglasses")); want(a => a.tags.includes("hat")); }
@@ -235,7 +262,13 @@ function* generateCandidates(pool: Item[], req: Requirements, user: UserProfile)
   const by = (c: Category) => pool.filter(i => i.category === c);
   const tops = topK(by("tops"),req,user), bottoms = topK(by("bottoms"),req,user);
   const dresses = topK(by("dresses"),req,user), outers = topK(by("outerwear"),req,user);
-  const shoes = topK(by("shoes"),req,user), accs = by("accessories");
+  const rankedShoes = topK(by("shoes"),req,user);
+  const preferredShoes = rankedShoes.filter(shoe => user.stylingPreferences?.heels === "flats"
+    ? !isHighHeel(shoe) && (shoe.heelHeight === "flat" || shoe.heelType === "flat" || !shoe.heelHeight)
+    : user.stylingPreferences?.heels === "low_heels" ? shoe.heelHeight !== "high" : true);
+  const shoes = preferredShoes.length ? preferredShoes : rankedShoes;
+  const accs = by("accessories");
+  const hosiery = topK(by("socks").filter(i => /tight|hosiery|stocking/.test(`${i.garmentFamily ?? ""} ${i.name}`.toLowerCase())), req, user, 2);
 
   const bases: Item[][] = [];
   for (const d of dresses) bases.push([d]);
@@ -250,8 +283,10 @@ function* generateCandidates(pool: Item[], req: Requirements, user: UserProfile)
         : [...outers.filter(o => !req.requireWindproofOuter || o.windproof), null];
       for (const outer of outerOpts) {
         if (req.outerwearPolicy === "required" && outer === null && outers.length) continue;
-        const acc = pickAccessories(accs, req);
-        const candidate = [...base, sh, ...(outer ? [outer] : []), ...acc];
+        const acc = pickAccessories(accs, req, user);
+        const dressBase = base.length === 1 && base[0]?.category === "dresses";
+        const addHosiery = dressBase && req.band !== "21-27" && req.band !== "above27" && !isBreathableShoe(sh) ? hosiery.slice(0, 1) : [];
+        const candidate = [...base, ...addHosiery, sh, ...(outer ? [outer] : []), ...acc];
         if (warmthOf(candidate) >= req.minWarmth || !outers.length) yield candidate; // warmth gate
       }
     }
@@ -322,6 +357,27 @@ function colorScore(o: Item[]): number {
   if (allMono) s += 0.05;
   return clamp01(s);
 }
+function preferredColorScore(o: Item[], preferences?: string[]): number {
+  if (!preferences?.length) return 0;
+  const pref = preferences.join(" ").toLowerCase();
+  const colors = o.map(i => i.color.toLowerCase());
+  const earthy = new Set(["beige","brown","camel","cream","olive","tan","terracotta"]);
+  const pastels = new Set(["blush","cream","lavender","mint","pastel"]);
+  if (/earthy|desert|neutral/.test(pref)) return colors.some(c => earthy.has(c) || NEUTRALS.has(c)) ? 0.08 : 0;
+  if (/pastel/.test(pref)) return colors.some(c => pastels.has(c)) ? 0.08 : 0;
+  if (/monochrome/.test(pref)) return new Set(colors).size <= 2 ? 0.08 : 0;
+  if (/vivid/.test(pref)) return colors.some(c => !NEUTRALS.has(c)) ? 0.08 : 0;
+  return 0;
+}
+function preferenceScore(o: Item[], user: UserProfile): number {
+  let score = preferredColorScore(o, user.colorPreferences);
+  const coverage = user.stylingPreferences?.coverage;
+  if (coverage && coverage !== "no_preference") {
+    const garments = o.filter(i => ["tops","bottoms","dresses","outerwear"].includes(i.category));
+    if (garments.length && garments.every(i => i.coverage === coverage || (coverage === "modest" && i.coverage === "maximum_coverage"))) score += 0.08;
+  }
+  return score;
+}
 function varietyScore(o: Item[]): number {
   const core = o.filter(i => i.category !== "accessories" && i.category !== "socks");
   if (!core.length) return 1;
@@ -372,7 +428,7 @@ function scoreOutfit(o: Item[], req: Requirements, w: Weather, user: UserProfile
     occasionSuitability: occasionScore(o, user, w),
   };
   let total = 0; (Object.keys(WEIGHTS) as (keyof typeof WEIGHTS)[]).forEach(k => total += WEIGHTS[k]*s[k]);
-  return Math.round(total * 100);
+  return Math.round(clamp01(total + preferenceScore(o, user)) * 100);
 }
 function rationale(o: Item[], req: Requirements, feels: number, rawTemp: number): string[] {
   const why: string[] = [];
@@ -385,19 +441,35 @@ function rationale(o: Item[], req: Requirements, feels: number, rawTemp: number)
   if (accent) why.push(`one ${accent.color} accent on a neutral base`);
   return why;
 }
-function recommend(pool: Item[], w: Weather, user: UserProfile, topN = 5): ScoredOutfit[] | ReturnType<typeof fallback> {
+function reasonCodes(o: Item[], req: Requirements, user: UserProfile): string[] {
+  const codes = ["WEATHER_SAFE"];
+  if (o.some(i => i.category === "dresses")) codes.push("VALID_ONE_PIECE_TEMPLATE");
+  else codes.push("VALID_SEPARATES_TEMPLATE");
+  if (o.some(i => i.category === "socks" && /tight|hosiery|stocking/.test(`${i.garmentFamily ?? ""} ${i.name}`.toLowerCase()))) codes.push("COLD_WEATHER_HOSIERY");
+  if (user.stylingPreferences?.coverage && user.stylingPreferences.coverage !== "no_preference") codes.push("COVERAGE_PREFERENCE");
+  if (user.stylingPreferences?.hijabPreference === "always") codes.push("HIJAB_REQUIRED", "MODEST_COVERAGE_REQUIRED");
+  if (user.colorPreferences?.length) codes.push("COLOR_PREFERENCE");
+  if (req.wet) codes.push("RAIN_READY");
+  return codes;
+}
+function recommend(pool: Item[], w: Weather, rawUser: UserProfile, topN = 5): ScoredOutfit[] | ReturnType<typeof fallback> {
+  const user: UserProfile = rawUser.gender === "female"
+    ? rawUser
+    : { ...rawUser, stylingPreferences: undefined };
   const season = seasonOf(w);
   const feels = feelsLike(w, user);
   const bands = candidateBands(feels);
+  const eligiblePool = pool.filter(i => isAutomaticItemEligible(i, user));
   let all: ScoredOutfit[] = [];
   const seen = new Set<string>();
   for (const band of bands) {
     const req = deriveRequirements(w, band, feels);
-    const filtered = pool.filter(i => passesGate(i, req, season));
+    const filtered = eligiblePool.filter(i => passesGate(i, req, season));
     for (const outfit of generateCandidates(filtered, req, user)) {
+      if (getOutfitModestyIssues(outfit, user).length) continue;
       const key = outfit.map(i=>i.id).sort().join("|");
       if (seen.has(key)) continue; seen.add(key);
-      all.push({ outfit, score: scoreOutfit(outfit, req, w, user), why: rationale(outfit, req, feels, w.tempC) });
+      all.push({ outfit, score: scoreOutfit(outfit, req, w, user), why: rationale(outfit, req, feels, w.tempC), reasonCodes: reasonCodes(outfit, req, user) });
     }
   }
   all.sort((a,b) => b.score - a.score);
@@ -409,9 +481,18 @@ function recommend(pool: Item[], w: Weather, user: UserProfile, topN = 5): Score
 function fallback(all: Item[], w: Weather, user: UserProfile, season: Season) {
   const feels = feelsLike(w, user);
   const req = deriveRequirements(w, bandOf(feels), feels);
-  const filtered = all.filter(i => passesGate(i, req, season));
+  const filtered = all.filter(i => isAutomaticItemEligible(i, user) && passesGate(i, req, season));
   const has = (c: Category) => filtered.some(i => i.category === c);
   const missing: string[] = [];
+  const modestyCodes = new Set<string>();
+  if (user.stylingPreferences?.hijabPreference === "always" && !filtered.some(isHijabItem)) {
+    missing.push("hijab/headscarf");
+    modestyCodes.add("HIJAB_REQUIRED");
+  }
+  for (const item of all) {
+    const issue = getModestyIssue(item, user);
+    if (issue) modestyCodes.add(issue);
+  }
   if (!has("shoes")) missing.push("weather-appropriate shoes");
   if (!has("bottoms") && !has("dresses")) missing.push("bottoms or a dress");
   if (!has("tops") && !has("dresses")) missing.push("a top or a dress");
@@ -422,6 +503,7 @@ function fallback(all: Item[], w: Weather, user: UserProfile, season: Season) {
   const bestPartial = buildSafestPartial(filtered, req, user);
   return {
     incomplete: true, missing,
+    reasonCodes: ["INCOMPLETE_WARDROBE", ...modestyCodes, ...missing.map(value => `MISSING_${value.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`)],
     message: missing.length
       ? `Your wardrobe can't fully cover today. Missing: ${missing.join(", ")}.`
       : `No weather-perfect outfit; showing the safest available and what would improve it.`,
@@ -431,7 +513,9 @@ function fallback(all: Item[], w: Weather, user: UserProfile, season: Season) {
 }
 function buildSafestPartial(items: Item[], req: Requirements, user: UserProfile): Item[] {
   const pick = (c: Category) => topK(items.filter(i=>i.category===c), req, user, 1)[0];
-  return [pick("dresses") ?? pick("tops"), pick("bottoms"), pick("shoes"), pick("outerwear")]
+  const dress = pick("dresses");
+  const hijab = user.stylingPreferences?.hijabPreference === "always" ? items.find(isHijabItem) : undefined;
+  return [dress ?? pick("tops"), ...(dress ? [] : [pick("bottoms")]), pick("shoes"), pick("outerwear"), hijab]
     .filter(Boolean) as Item[];
 }
 function suggestLayer(req: Requirements): string {

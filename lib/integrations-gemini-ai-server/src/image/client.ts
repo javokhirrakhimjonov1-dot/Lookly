@@ -67,17 +67,20 @@ export async function editImageFromBase64(
  * from their names alone.
  */
 export async function generateImageFromReferences(
-  references: Array<{ imageBase64: string; imageMime: string }>,
+  references: Array<{ imageBase64: string; imageMime: string; label?: string }>,
   prompt: string,
   _size: "1024x1024" | "1024x1536" | "1536x1024" = "1024x1536",
   model = getGeminiImageModel(),
 ): Promise<Buffer> {
-  const parts = [
-    ...references.map((reference) => ({
-      inlineData: { mimeType: reference.imageMime, data: reference.imageBase64 },
-    })),
-    { text: prompt },
-  ];
+  const parts = references.flatMap((reference, index) => [
+    {
+      text: reference.label
+        ? `REFERENCE ${index + 1}: ${reference.label}`
+        : `REFERENCE ${index + 1}`,
+    },
+    { inlineData: { mimeType: reference.imageMime, data: reference.imageBase64 } },
+  ]);
+  parts.push({ text: prompt });
   const response = await geminiGenerateContent(
     model,
     [{ role: "user", parts }],

@@ -13,11 +13,37 @@ import { Alert, Platform } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Currency } from "@/contexts/WardrobeContext";
 import { supabase } from "@/lib/supabase";
+import { isSupportedAge } from "@/lib/profileRules";
+import type { HijabPreference } from "@/lib/modestyRules";
+import type { ShopSuggestionType } from "@/lib/shopSuggestionPreferences";
+import { normalizeStylingPreferencesForGender } from "@/lib/profileStylingPreferences";
 
 export type Gender = "male" | "female" | "non-binary" | "prefer_not_to_say";
 export type StyleAesthetic = "minimalist" | "streetwear" | "smart_casual" | "boho" | "classic" | "sporty";
 export type HeatAdaptation = "light_linen" | "shorts_casual" | "sport_active" | "cotton_denim";
 export type ColorPalette = "earthy_neutrals" | "monochrome" | "vivid_colors" | "pastels" | "desert_sand";
+export type CoveragePreference = "no_preference" | "modest" | "maximum_coverage";
+export type SilhouettePreference = "balanced" | "fitted" | "relaxed";
+export type HeelPreference = "flats" | "low_heels" | "any";
+export interface StylingPreferences {
+  coverage: CoveragePreference;
+  silhouette: SilhouettePreference;
+  heels: HeelPreference;
+  hijabPreference: HijabPreference;
+  excludedShopTypes: ShopSuggestionType[];
+}
+export interface BodyPhotoSelection {
+  uri: string;
+  base64: string;
+  mime: string;
+}
+export const DEFAULT_STYLING_PREFERENCES: StylingPreferences = {
+  coverage: "no_preference",
+  silhouette: "balanced",
+  heels: "any",
+  hijabPreference: null,
+  excludedShopTypes: [],
+};
 
 interface UserProfile {
   fullName: string;
@@ -29,6 +55,7 @@ interface UserProfile {
   styleAesthetics: StyleAesthetic[];
   heatAdaptation: HeatAdaptation | null;
   colorPalette: ColorPalette | null;
+  stylingPreferences: StylingPreferences;
   preferredCurrency: Currency;
 }
 
@@ -43,6 +70,7 @@ interface UserProfileContextValue {
   styleAesthetics: StyleAesthetic[];
   heatAdaptation: HeatAdaptation | null;
   colorPalette: ColorPalette | null;
+  stylingPreferences: StylingPreferences;
   preferredCurrency: Currency;
   isLoading: boolean;
   setFullName: (name: string) => Promise<void>;
@@ -52,17 +80,18 @@ interface UserProfileContextValue {
   setStyleAesthetics: (v: StyleAesthetic[]) => Promise<void>;
   setHeatAdaptation: (v: HeatAdaptation | null) => Promise<void>;
   setColorPalette: (v: ColorPalette | null) => Promise<void>;
+  setStylingPreferences: (v: StylingPreferences) => Promise<void>;
+  setHijabPreference: (v: Exclude<HijabPreference, null>) => Promise<void>;
   setPreferredCurrency: (v: Currency) => Promise<void>;
   completeOnboarding: (data: {
     fullName: string;
     gender: Gender | null;
     age: number | null;
-    styleAesthetics: StyleAesthetic[];
-    heatAdaptation: HeatAdaptation | null;
-    colorPalette: ColorPalette | null;
+    hijabPreference: HijabPreference;
   }) => Promise<void>;
-  uploadBodyPhoto: () => Promise<void>;
-  captureBodyPhoto: () => Promise<void>;
+  chooseBodyPhoto: () => Promise<BodyPhotoSelection | null>;
+  takeBodyPhoto: () => Promise<BodyPhotoSelection | null>;
+  saveBodyPhoto: (photo: BodyPhotoSelection) => Promise<void>;
   clearBodyPhoto: () => Promise<void>;
 }
 
@@ -165,6 +194,18 @@ async function writeStoredProfile(userId: string, value: string): Promise<void> 
 }
 
 async function readBase64FromUri(uri: string): Promise<string | null> {
+  if (uri.startsWith("data:")) {
+    return uri.split(",", 2)[1] || null;
+  }
+  if (Platform.OS === "web") {
+    try {
+      const response = await fetch(uri);
+      if (!response.ok) return null;
+      return arrayBufferToBase64(await response.arrayBuffer());
+    } catch {
+      return null;
+    }
+  }
   try {
     const base64 = await FileSystem.readAsStringAsync(uri, {
       encoding: FileSystem.EncodingType.Base64,
@@ -213,7 +254,7 @@ async function finishWithin<T>(task: Promise<T>, milliseconds: number): Promise<
   ]);
 }
 
-async function getPrivatePhoto(path: string): Promise<{ uri: string; base64: string } | null> {
+async function getPrivatePhoto(path: string): Promise<{ uri: string; base64: string; mime: string } | null> {
   if (!supabase) return null;
   try {
     const { data, error } = await supabase.storage
@@ -222,7 +263,11 @@ async function getPrivatePhoto(path: string): Promise<{ uri: string; base64: str
     if (error) return null;
     const response = await fetch(data.signedUrl);
     if (!response.ok) return null;
-    return { uri: data.signedUrl, base64: arrayBufferToBase64(await response.arrayBuffer()) };
+    const responseMime = response.headers.get("content-type")?.split(";", 1)[0];
+    const mime = responseMime?.startsWith("image/")
+      ? responseMime
+      : path.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
+    return { uri: data.signedUrl, base64: arrayBufferToBase64(await response.arrayBuffer()), mime };
   } catch {
     return null;
   }
@@ -240,6 +285,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
   const [styleAesthetics, setStyleAestheticsState] = useState<StyleAesthetic[]>([]);
   const [heatAdaptation, setHeatAdaptationState] = useState<HeatAdaptation | null>(null);
   const [colorPalette, setColorPaletteState] = useState<ColorPalette | null>(null);
+  const [stylingPreferences, setStylingPreferencesState] = useState<StylingPreferences>(DEFAULT_STYLING_PREFERENCES);
   const [preferredCurrency, setPreferredCurrencyState] = useState<Currency>("USD");
   const [isLoading, setIsLoading] = useState(true);
   const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
@@ -255,6 +301,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     setStyleAestheticsState([]);
     setHeatAdaptationState(null);
     setColorPaletteState(null);
+    setStylingPreferencesState(DEFAULT_STYLING_PREFERENCES);
     setPreferredCurrencyState("USD");
   }, []);
 
@@ -283,33 +330,57 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
           const stored = JSON.parse(raw) as Partial<UserProfile>;
           if (stored.fullName) setFullNameState(stored.fullName);
           if (stored.gender) setGenderState(stored.gender);
-          if (stored.age != null) setAgeState(stored.age);
+          if (isSupportedAge(stored.age)) setAgeState(stored.age);
           if (stored.bodyPhotoMime) setBodyPhotoMime(stored.bodyPhotoMime);
           if (stored.onboardingComplete) setOnboardingCompleteState(stored.onboardingComplete);
           if (Array.isArray(stored.styleAesthetics)) setStyleAestheticsState(stored.styleAesthetics);
           if (stored.heatAdaptation) setHeatAdaptationState(stored.heatAdaptation);
           if (stored.colorPalette) setColorPaletteState(stored.colorPalette);
+          if (stored.stylingPreferences) {
+            setStylingPreferencesState(normalizeStylingPreferencesForGender(stored.gender, stored.stylingPreferences));
+          }
           if (stored.preferredCurrency) setPreferredCurrencyState(stored.preferredCurrency);
           if (stored.bodyPhotoUri) {
-            setBodyPhotoUri(stored.bodyPhotoUri);
             const b64 = await readBase64FromUri(stored.bodyPhotoUri);
-            if (b64) setBodyPhotoBase64(b64);
+            if (b64) {
+              setBodyPhotoUri(stored.bodyPhotoUri);
+              setBodyPhotoBase64(b64);
+            }
           }
         }
       } catch {}
+      const metadata = user.user_metadata as Partial<{
+        full_name: string;
+        gender: Gender;
+        age: number;
+        onboarding_complete: boolean;
+        hijab_preference: Exclude<HijabPreference, null>;
+      }>;
+      const hasCompleteSignUpProfile = Boolean(
+        metadata.onboarding_complete
+        && metadata.full_name?.trim()
+        && metadata.gender
+        && isSupportedAge(metadata.age)
+      );
       try {
         const { data } = await supabase
           ?.from("profiles")
-          .select("full_name, gender, age, style_aesthetics, heat_adaptation, color_palette, preferred_currency, body_photo_path")
+          .select("full_name, gender, age, style_aesthetics, heat_adaptation, color_palette, styling_preferences, preferred_currency, body_photo_path")
           .eq("id", user.id)
           .maybeSingle() ?? { data: null };
         if (data) {
           setFullNameState(data.full_name ?? "");
           setGenderState((data.gender as Gender | null) ?? null);
-          setAgeState(data.age ?? null);
+          setAgeState(isSupportedAge(data.age) ? data.age : null);
           setStyleAestheticsState(Array.isArray(data.style_aesthetics) ? data.style_aesthetics as StyleAesthetic[] : []);
           setHeatAdaptationState((data.heat_adaptation as HeatAdaptation | null) ?? null);
           setColorPaletteState((data.color_palette as ColorPalette | null) ?? null);
+          const profileGender = (data.gender as Gender | null) ?? null;
+          const nextPreferences = normalizeStylingPreferencesForGender(
+            profileGender,
+            data.styling_preferences as Partial<StylingPreferences> | null,
+          );
+          setStylingPreferencesState(nextPreferences);
           setPreferredCurrencyState((data.preferred_currency as Currency | null) ?? "USD");
           setOnboardingCompleteState(true);
           if (data.body_photo_path) {
@@ -317,8 +388,42 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
             if (photo) {
               setBodyPhotoUri(photo.uri);
               setBodyPhotoBase64(photo.base64);
+              setBodyPhotoMime(photo.mime);
             }
           }
+        } else if (hasCompleteSignUpProfile) {
+          const signUpProfile: UserProfile = {
+            fullName: metadata.full_name!.trim(),
+            gender: metadata.gender!,
+            age: metadata.age!,
+            bodyPhotoUri: null,
+            bodyPhotoMime: "image/jpeg",
+            onboardingComplete: true,
+            styleAesthetics: [],
+            heatAdaptation: null,
+            colorPalette: null,
+            stylingPreferences: {
+              ...DEFAULT_STYLING_PREFERENCES,
+              hijabPreference: metadata.gender === "female" ? (metadata.hijab_preference ?? null) : null,
+              ...(metadata.hijab_preference === "always"
+                ? { coverage: "maximum_coverage" as const, silhouette: "relaxed" as const }
+                : {}),
+            },
+            preferredCurrency: "USD",
+          };
+          setFullNameState(signUpProfile.fullName);
+          setGenderState(signUpProfile.gender);
+          setAgeState(signUpProfile.age);
+          setOnboardingCompleteState(true);
+          setStylingPreferencesState(signUpProfile.stylingPreferences);
+          await writeStoredProfile(user.id, JSON.stringify(signUpProfile));
+          await supabase?.from("profiles").upsert({
+            id: user.id,
+            full_name: signUpProfile.fullName,
+            gender: signUpProfile.gender,
+            age: signUpProfile.age,
+            styling_preferences: signUpProfile.stylingPreferences,
+          });
         }
       } catch {}
       finally {
@@ -338,12 +443,14 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     styleAesthetics,
     heatAdaptation,
     colorPalette,
+    stylingPreferences,
     preferredCurrency,
-  }), [fullName, gender, age, bodyPhotoUri, bodyPhotoMime, onboardingComplete, styleAesthetics, heatAdaptation, colorPalette, preferredCurrency]);
+  }), [fullName, gender, age, bodyPhotoUri, bodyPhotoMime, onboardingComplete, styleAesthetics, heatAdaptation, colorPalette, stylingPreferences, preferredCurrency]);
 
   const persist = useCallback(async (updates: Partial<UserProfile>) => {
     if (!user) return;
     const next = { ...buildCurrent(), ...updates };
+    next.stylingPreferences = normalizeStylingPreferencesForGender(next.gender, next.stylingPreferences);
     await writeStoredProfile(user.id, JSON.stringify(next));
     try {
       await supabase?.from("profiles").upsert({
@@ -354,6 +461,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
         style_aesthetics: next.styleAesthetics,
         heat_adaptation: next.heatAdaptation,
         color_palette: next.colorPalette,
+        styling_preferences: next.stylingPreferences,
         preferred_currency: next.preferredCurrency,
       });
     } catch {}
@@ -366,10 +474,13 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
 
   const setGender = useCallback(async (g: Gender | null) => {
     setGenderState(g);
-    await persist({ gender: g });
-  }, [persist]);
+    const nextPreferences = normalizeStylingPreferencesForGender(g, stylingPreferences);
+    setStylingPreferencesState(nextPreferences);
+    await persist({ gender: g, stylingPreferences: nextPreferences });
+  }, [persist, stylingPreferences]);
 
   const setAge = useCallback(async (a: number | null) => {
+    if (a !== null && !isSupportedAge(a)) return;
     setAgeState(a);
     await persist({ age: a });
   }, [persist]);
@@ -394,6 +505,25 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     await persist({ colorPalette: v });
   }, [persist]);
 
+  const setStylingPreferences = useCallback(async (v: StylingPreferences) => {
+    const next = normalizeStylingPreferencesForGender(gender, v);
+    setStylingPreferencesState(next);
+    await persist({ stylingPreferences: next });
+  }, [gender, persist]);
+
+  const setHijabPreference = useCallback(async (v: Exclude<HijabPreference, null>) => {
+    if (gender !== "female") return;
+    const next: StylingPreferences = {
+      ...stylingPreferences,
+      hijabPreference: v,
+      ...(v === "always"
+        ? { coverage: "maximum_coverage", silhouette: "relaxed" }
+        : {}),
+    };
+    setStylingPreferencesState(next);
+    await persist({ stylingPreferences: next });
+  }, [gender, persist, stylingPreferences]);
+
   const setPreferredCurrency = useCallback(async (v: Currency) => {
     setPreferredCurrencyState(v);
     await persist({ preferredCurrency: v });
@@ -403,33 +533,50 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     fullName: string;
     gender: Gender | null;
     age: number | null;
-    styleAesthetics: StyleAesthetic[];
-    heatAdaptation: HeatAdaptation | null;
-    colorPalette: ColorPalette | null;
+    hijabPreference: HijabPreference;
   }) => {
+    if (data.age !== null && !isSupportedAge(data.age)) return;
     setFullNameState(data.fullName);
     setGenderState(data.gender);
     setAgeState(data.age);
-    setStyleAestheticsState(data.styleAesthetics);
-    setHeatAdaptationState(data.heatAdaptation);
-    setColorPaletteState(data.colorPalette);
     setOnboardingCompleteState(true);
+    const nextPreferences = normalizeStylingPreferencesForGender(data.gender, {
+      ...stylingPreferences,
+      hijabPreference: data.gender === "female" ? data.hijabPreference : null,
+      ...(data.hijabPreference === "always"
+        ? { coverage: "maximum_coverage", silhouette: "relaxed" }
+        : {}),
+    });
+    setStylingPreferencesState(nextPreferences);
     const profile: UserProfile = {
       ...buildCurrent(),
-      ...data,
+      fullName: data.fullName,
+      gender: data.gender,
+      age: data.age,
+      stylingPreferences: nextPreferences,
       onboardingComplete: true,
     };
     await persist(profile);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [buildCurrent, persist]);
+  }, [buildCurrent, persist, stylingPreferences]);
 
-  const applyPickerAsset = useCallback(async (asset: ImagePicker.ImagePickerAsset) => {
+  const preparePickerAsset = useCallback(async (asset: ImagePicker.ImagePickerAsset): Promise<BodyPhotoSelection | null> => {
     const mime = asset.mimeType ?? "image/jpeg";
     const uri = asset.uri;
-    setBodyPhotoUri(uri);
-    setBodyPhotoMime(mime);
     const b64 = asset.base64 ?? await finishWithin(readBase64FromUri(uri), 10_000);
+    if (!b64) {
+      Alert.alert("Photo error", "Lookly could not read that photo. Please choose it again.");
+      return null;
+    }
+
+    return { uri, base64: b64, mime };
+  }, []);
+
+  const saveBodyPhoto = useCallback(async (photo: BodyPhotoSelection) => {
+    const { uri, base64: b64, mime } = photo;
+    setBodyPhotoUri(uri);
     setBodyPhotoBase64(b64);
+    setBodyPhotoMime(mime);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     // The selected photo is usable immediately. Cloud backup must never keep
@@ -449,16 +596,15 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     })();
   }, [persist, user]);
 
-  const uploadBodyPhoto = useCallback(async () => {
+  const chooseBodyPhoto = useCallback(async (): Promise<BodyPhotoSelection | null> => {
     if (Platform.OS === "web") {
       const asset = await pickBodyPhotoOnWeb();
-      if (asset) await applyPickerAsset(asset);
-      return;
+      return asset ? preparePickerAsset(asset) : null;
     }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
       Alert.alert("Permission needed", "Allow access to your photo library.");
-      return;
+      return null;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: "images",
@@ -466,29 +612,28 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
       base64: true,
       allowsEditing: false,
     });
-    if (result.canceled || !result.assets[0]) return;
-    await applyPickerAsset(result.assets[0]);
-  }, [applyPickerAsset]);
+    if (result.canceled || !result.assets[0]) return null;
+    return preparePickerAsset(result.assets[0]);
+  }, [preparePickerAsset]);
 
-  const captureBodyPhoto = useCallback(async () => {
+  const takeBodyPhoto = useCallback(async (): Promise<BodyPhotoSelection | null> => {
     if (Platform.OS === "web") {
       const asset = await pickBodyPhotoOnWeb(true);
-      if (asset) await applyPickerAsset(asset);
-      return;
+      return asset ? preparePickerAsset(asset) : null;
     }
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
       Alert.alert("Permission needed", "Allow camera access.");
-      return;
+      return null;
     }
     const result = await ImagePicker.launchCameraAsync({
       quality: 0.7,
       base64: true,
       allowsEditing: false,
     });
-    if (result.canceled || !result.assets[0]) return;
-    await applyPickerAsset(result.assets[0]);
-  }, [applyPickerAsset]);
+    if (result.canceled || !result.assets[0]) return null;
+    return preparePickerAsset(result.assets[0]);
+  }, [preparePickerAsset]);
 
   const clearBodyPhoto = useCallback(async () => {
     setBodyPhotoUri(null);
@@ -520,6 +665,7 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
         styleAesthetics,
         heatAdaptation,
         colorPalette,
+        stylingPreferences,
         preferredCurrency,
         // The profile effect starts after AuthContext publishes its session.
         // Keep consumers loading during that small gap so route guards never
@@ -532,10 +678,13 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
         setStyleAesthetics,
         setHeatAdaptation,
         setColorPalette,
+        setStylingPreferences,
+        setHijabPreference,
         setPreferredCurrency,
         completeOnboarding,
-        uploadBodyPhoto,
-        captureBodyPhoto,
+        chooseBodyPhoto,
+        takeBodyPhoto,
+        saveBodyPhoto,
         clearBodyPhoto,
       }}
     >

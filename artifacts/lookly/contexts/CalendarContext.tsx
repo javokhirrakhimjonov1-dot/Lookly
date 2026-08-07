@@ -6,7 +6,7 @@ import React, {
   useEffect,
   useState,
 } from "react";
-import { type ClothingCategory, type ClothingItem } from "./WardrobeContext";
+import { type ClothingItem, type OutfitItems } from "./WardrobeContext";
 import { useAuth } from "./AuthContext";
 import { supabase } from "@/lib/supabase";
 
@@ -15,7 +15,7 @@ const calendarKey = (userId: string) => `@lookly_calendar_v2_${userId}`;
 export interface OutfitLog {
   id: string;
   date: string;
-  items: Partial<Record<ClothingCategory, ClothingItem>>;
+  items: OutfitItems;
   note?: string;
   previewImage?: string;
   temperature?: number;
@@ -26,7 +26,7 @@ interface CalendarContextValue {
   logs: OutfitLog[];
   logOutfit: (
     date: string,
-    items: Partial<Record<ClothingCategory, ClothingItem>>,
+    items: OutfitItems,
     opts?: { note?: string; previewImage?: string; temperature?: number; weather?: string }
   ) => Promise<void>;
   removeLog: (id: string) => Promise<void>;
@@ -105,7 +105,7 @@ export function CalendarProvider({ children }: { children: React.ReactNode }) {
 
   const logOutfit = useCallback(async (
     date: string,
-    items: Partial<Record<ClothingCategory, ClothingItem>>,
+    items: OutfitItems,
     opts?: { note?: string; previewImage?: string; temperature?: number; weather?: string }
   ) => {
     const entry: OutfitLog = {

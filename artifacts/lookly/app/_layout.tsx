@@ -25,13 +25,14 @@ import { UserProfileProvider, useUserProfile } from "@/contexts/UserProfileConte
 import { CalendarProvider } from "@/contexts/CalendarContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { FeatureWaitlistProvider } from "@/contexts/FeatureWaitlistContext";
+import { needsHijabProfileCompletion } from "@/lib/profileRules";
 
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
 function OnboardingGuard() {
-  const { onboardingComplete, isLoading } = useUserProfile();
+  const { onboardingComplete, gender, stylingPreferences, isLoading } = useUserProfile();
   const { session, isLoading: isAuthLoading } = useAuth();
   const pathname = usePathname();
   const { reset } = useLocalSearchParams<{ reset?: string }>();
@@ -43,12 +44,16 @@ function OnboardingGuard() {
       router.replace("/auth" as never);
     } else if (!isLoading && !onboardingComplete) {
       router.replace("/onboarding");
+    } else if (!isLoading && onboardingComplete && needsHijabProfileCompletion(gender, stylingPreferences.hijabPreference) && pathname !== "/hijab-profile") {
+      router.replace("/hijab-profile" as never);
+    } else if (!isLoading && onboardingComplete && pathname === "/hijab-profile" && !needsHijabProfileCompletion(gender, stylingPreferences.hijabPreference)) {
+      router.replace("/(tabs)");
     } else if (!isLoading && onboardingComplete && (pathname === "/onboarding" || pathname === "/auth")) {
       // A web refresh can reopen the prior /onboarding URL. Once the saved
       // profile is loaded, always take completed users to the actual app.
       router.replace("/(tabs)");
     }
-  }, [isAuthLoading, session, isLoading, onboardingComplete, pathname, reset]);
+  }, [isAuthLoading, session, isLoading, onboardingComplete, gender, stylingPreferences.hijabPreference, pathname, reset]);
 
   return null;
 }
@@ -60,6 +65,7 @@ function RootLayoutNav() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
+        <Stack.Screen name="hijab-profile" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="auth" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen
           name="add-item"

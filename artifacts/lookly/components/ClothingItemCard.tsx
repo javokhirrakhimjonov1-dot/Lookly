@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/components/FeatherIcon";
 import { Image } from "expo-image";
 import React, { useMemo, useState } from "react";
 import {
@@ -10,6 +10,8 @@ import {
 } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import { getItemDisplayName, type ClothingItem } from "@/contexts/WardrobeContext";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { translateGeneratedClothingName } from "@/lib/localization";
 
 interface Props {
   item: ClothingItem;
@@ -19,11 +21,23 @@ interface Props {
 
 export default function ClothingItemCard({ item, onPress }: Props) {
   const colors = useColors();
+  const { lang, t } = useLanguage();
   const [liked, setLiked] = useState(false);
 
-  const categoryLabel =
-    item.category.charAt(0).toUpperCase() + item.category.slice(1);
-  const displayName = getItemDisplayName(item);
+  const categoryLabel = t(`cat_${item.category}`);
+  const storedDisplayName = getItemDisplayName(item, lang);
+  const displayName = item.customName ? storedDisplayName : translateGeneratedClothingName(storedDisplayName, lang);
+  const dateAdded = useMemo(() => {
+    const date = new Date(item.createdAt);
+    if (Number.isNaN(date.getTime())) return null;
+
+    const locale = lang === "ru" ? "ru-RU" : lang === "uz" ? "uz-UZ" : "en-US";
+    return date.toLocaleDateString(locale, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  }, [item.createdAt, lang]);
 
   const s = useMemo(() => makeStyles(colors), [colors]);
 
@@ -44,10 +58,10 @@ export default function ClothingItemCard({ item, onPress }: Props) {
             transition={250}
           />
         ) : (
-          <View style={[s.noImage, { backgroundColor: item.colorHex }]}> 
+          <View style={[s.noImage, { backgroundColor: item.colorHex }]}>
             <View style={s.noImageSurface}>
               <Text style={s.noImageLabel} numberOfLines={1}>{categoryLabel}</Text>
-              <Text style={s.noImageHint}>Product image unavailable</Text>
+              <Text style={s.noImageHint}>{t("image_unavailable")}</Text>
             </View>
           </View>
         )}
@@ -80,11 +94,17 @@ export default function ClothingItemCard({ item, onPress }: Props) {
             {item.seasons.slice(0, 3).map((season) => (
               <View key={season} style={s.pill}>
                 <Text style={s.pillText}>
-                  {season.charAt(0).toUpperCase() + season.slice(1)}
+                  {t(`season_${season}`)}
                 </Text>
               </View>
             ))}
           </View>
+        )}
+
+        {dateAdded && (
+          <Text style={s.dateAdded} numberOfLines={1}>
+            {t("added_on")} {dateAdded}
+          </Text>
         )}
       </View>
     </Pressable>
@@ -202,6 +222,14 @@ function makeStyles(colors: ReturnType<typeof useColors>) {
       fontWeight: "600",
       color: colors.mutedForeground,
       letterSpacing: 0.3,
+    },
+    dateAdded: {
+      alignSelf: "flex-end",
+      color: colors.mutedForeground,
+      fontSize: 8,
+      fontWeight: "400",
+      opacity: 0.65,
+      marginTop: 1,
     },
   });
 }

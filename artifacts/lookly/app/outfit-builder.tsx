@@ -1,4 +1,4 @@
-import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Feather } from "@/components/FeatherIcon";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
@@ -12,10 +12,13 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
+  type ViewStyle,
 } from "react-native";
 import Animated, {
   runOnJS,
@@ -32,15 +35,23 @@ import { useColors } from "@/hooks/useColors";
 import {
   type ClothingCategory,
   type ClothingItem,
+  type OutfitItemKey,
+  type OutfitItems,
   type Season,
   useWardrobe,
 } from "@/contexts/WardrobeContext";
 import { useSocial } from "@/contexts/SocialContext";
 import { useWeather } from "@/contexts/WeatherContext";
-import { useUserProfile } from "@/contexts/UserProfileContext";
+import { type Gender, type StylingPreferences, useUserProfile } from "@/contexts/UserProfileContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { enforceExclusiveBase } from "@/lib/outfitComposition";
+import { getProfileCategoryOptions } from "@/lib/profileCategories";
+import { getOutfitModestyIssues, isAutomaticItemEligible, isHijabItem } from "@/lib/modestyRules";
+import { getGarmentTone } from "@/lib/garmentTone";
+import { ClothingCategoryIcon } from "@/components/ClothingCategoryIcon";
 
-type OutfitSlotKey = "outerwear" | "tops" | "bottoms" | "dresses" | "shoes" | "socks" | "accessories";
+type BaseOutfitSlotKey = "outerwear" | "tops" | "bottoms" | "dresses" | "shoes" | "socks" | "accessories";
+type OutfitSlotKey = BaseOutfitSlotKey | `accessories:${string}`;
 
 function getCurrentSeason(): Season {
   const m = new Date().getMonth();
@@ -57,8 +68,21 @@ function isLight(hex: string): boolean {
   return (r * 299 + g * 587 + b * 114) / 1000 > 128;
 }
 
-function categoryToSlotKey(cat: ClothingCategory): OutfitSlotKey {
-  return cat as OutfitSlotKey;
+function categoryToSlotKey(cat: ClothingCategory): BaseOutfitSlotKey {
+  return cat as BaseOutfitSlotKey;
+}
+
+function isAccessorySlot(slotKey: string): boolean {
+  return slotKey === "accessories" || slotKey.startsWith("accessories:");
+}
+
+function buildAssignedOutfit(items: ClothingItem[]): OutfitItems {
+  const next: OutfitItems = {};
+  for (const item of items) {
+    const key: OutfitItemKey = item.category === "accessories" ? `accessories:${item.id}` : categoryToSlotKey(item.category);
+    next[key] = item;
+  }
+  return next;
 }
 
 const API_BASE = getApiBase();
@@ -104,7 +128,7 @@ async function imageUriToReference(uri?: string): Promise<{ imageBase64: string;
 }
 
 // ─── Combo fingerprint ───────────────────────────────────────────────────────
-function makeComboKey(assigned: Partial<Record<OutfitSlotKey, ClothingItem>>): string {
+function makeComboKey(assigned: OutfitItems): string {
   return Object.values(assigned)
     .filter(Boolean)
     .map((i) => i!.id)
@@ -238,6 +262,7 @@ function localSmartFill(
   sessionCombos: Set<string>,
   mode: "fill-empty" | "reshuffle",
   strategy: "stable" | "creative" = "stable",
+  stylingPreferences?: StylingPreferences,
   maxAttempts = 40
 ): Partial<Record<OutfitSlotKey, ClothingItem>> {
   const season = getCurrentSeason();
@@ -252,6 +277,7 @@ function localSmartFill(
   const getPool = (cat: ClothingCategory): ClothingItem[] => {
     let pool = allItems.filter((i) => {
       if (i.category !== cat) return false;
+      if (!isAutomaticItemEligible(i, stylingPreferences)) return false;
       if (isHot && i.fabricWeight === "heavy") return false;
       if (isCold && i.fabricWeight === "light") return false;
       // Pre-filter: remove sandals/open-toe shoes when temperature is below threshold
@@ -259,7 +285,7 @@ function localSmartFill(
       return true;
     });
     // Fallback: relax fabric constraint but keep sandal ban if cool
-    if (pool.length === 0) {
+    if (pool.length === 0 && stylingPreferences?.hijabPreference !== "always") {
       pool = allItems.filter(
         (i) =>
           i.category === cat &&
@@ -267,7 +293,11 @@ function localSmartFill(
       );
     }
     // Last resort: full category pool
-    if (pool.length === 0) pool = allItems.filter((i) => i.category === cat);
+    if (pool.length === 0 && stylingPreferences?.hijabPreference !== "always") pool = allItems.filter((i) => i.category === cat);
+
+    if (cat === "accessories" && stylingPreferences?.hijabPreference === "always") {
+      pool = pool.filter(isHijabItem);
+    }
 
     const seasonPool = pool.filter((i) => i.seasons.includes(season));
     return seasonPool.length > 0 ? seasonPool : pool;
@@ -320,16 +350,19 @@ function localSmartFill(
       }
     }
 
-    lastAttempt = next;
+    // One-piece and separates are mutually exclusive. Respect the user's
+    // locked base, otherwise prefer the one-piece selected in this attempt.
+    const exclusiveNext = enforceExclusiveBase(next, lockedSlots);
+    lastAttempt = exclusiveNext;
 
     // ── Climate coherence audit ──────────────────────────────────────────
-    if (!isClimateCompatible(next, temperature)) continue; // bad combo — retry
+    if (!isClimateCompatible(exclusiveNext, temperature)) continue; // bad combo — retry
 
     // Track the best climate-valid result so far for the fallback
-    if (!lastClimateValid) lastClimateValid = next;
+    if (!lastClimateValid) lastClimateValid = exclusiveNext;
 
     // Deduplicate: only return if this combo hasn't been shown in this session
-    if (!sessionCombos.has(makeComboKey(next))) return next;
+    if (!sessionCombos.has(makeComboKey(exclusiveNext))) return exclusiveNext;
   }
 
   // Exhausted all attempts — return best climate-valid result, or last attempt
@@ -343,7 +376,8 @@ async function generateOutfitPreview(
   userBodyPhotoBase64?: string | null,
   userBodyPhotoMime?: string,
   userGender?: string | null,
-  userAge?: number | null
+  userAge?: number | null,
+  stylingPreferences?: StylingPreferences,
 ): Promise<string> {
   const itemImages = (await Promise.all(items.map((item) => imageUriToReference(item.imageUri))))
     .filter((image): image is { imageBase64: string; imageMime: string } => !!image);
@@ -353,6 +387,7 @@ async function generateOutfitPreview(
       color: i.color,
       colorHex: i.colorHex,
       category: i.category,
+      visualSignature: i.visualSignature,
     })),
     weather,
     temperature,
@@ -360,6 +395,7 @@ async function generateOutfitPreview(
     userBodyPhotoMime: userBodyPhotoBase64 ? (userBodyPhotoMime ?? "image/jpeg") : undefined,
     userGender: userGender ?? undefined,
     userAge: userAge ?? undefined,
+    stylingPreferences,
     itemImages,
   };
 
@@ -394,81 +430,6 @@ async function generateOutfitPreview(
   return `data:${data.mimeType || "image/png"};base64,${data.image}`;
 }
 
-interface SlotCardProps {
-  slotKey: OutfitSlotKey;
-  label: string;
-  icon: React.ComponentProps<typeof MaterialCommunityIcons>["name"];
-  assignedItem: ClothingItem | null;
-  onClear: () => void;
-  flex?: number;
-  isLocked?: boolean;
-}
-
-function SlotCard({ slotKey: _slotKey, label, icon, assignedItem, onClear, flex = 1, isLocked }: SlotCardProps) {
-  const colors = useColors();
-  const scale = useSharedValue(1);
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  React.useEffect(() => {
-    if (assignedItem) {
-      scale.value = withSpring(1.05, { damping: 10 }, () => {
-        scale.value = withSpring(1);
-      });
-    }
-  }, [assignedItem?.id]);
-
-  return (
-    <Animated.View
-      style={[
-        styles.slot,
-        animStyle,
-        {
-          flex,
-          backgroundColor: colors.card,
-          borderColor: colors.border,
-          borderStyle: assignedItem ? "solid" : "dashed",
-        },
-      ]}
-    >
-      {assignedItem ? (
-        <>
-          {assignedItem.imageUri ? (
-            <Image
-              source={{ uri: assignedItem.imageUri }}
-              style={StyleSheet.absoluteFillObject}
-              contentFit="contain"
-            />
-          ) : (
-            <View style={styles.slotNoImage}>
-              <MaterialCommunityIcons name={icon} size={24} color="#C8B9AE" />
-            </View>
-          )}
-          {isLocked && (
-            <View style={[styles.lockBadge, { backgroundColor: "rgba(28,21,18,0.12)" }]}>
-              <Feather name="lock" size={9} color={colors.foreground} />
-            </View>
-          )}
-          <TouchableOpacity
-            onPress={onClear}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={[styles.clearBtn, { backgroundColor: "rgba(28,21,18,0.10)" }]}
-          >
-            <Feather name="x" size={12} color={colors.foreground} />
-          </TouchableOpacity>
-        </>
-      ) : (
-        <View style={styles.slotEmpty}>
-          <MaterialCommunityIcons name={icon} size={22} color={colors.border} />
-          <Text style={[styles.slotLabel, { color: colors.mutedForeground }]}>{label}</Text>
-        </View>
-      )}
-    </Animated.View>
-  );
-}
-
 interface DraggableItemProps {
   item: ClothingItem;
   isAssigned: boolean;
@@ -477,6 +438,7 @@ interface DraggableItemProps {
 
 function DraggableItem({ item, isAssigned, onTap }: DraggableItemProps) {
   const colors = useColors();
+  const tone = getGarmentTone(item.colorHex, colors.border);
   const scale = useSharedValue(1);
 
   const animStyle = useAnimatedStyle(() => ({
@@ -500,7 +462,7 @@ function DraggableItem({ item, isAssigned, onTap }: DraggableItemProps) {
       style={styles.draggableWrap}
     >
       <Animated.View style={animStyle}>
-        <View style={[styles.itemCard, { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }]}>
+        <View style={[styles.itemCard, { backgroundColor: tone.background, borderWidth: 1, borderColor: tone.border }]}>
           {item.imageUri ? (
             <Image
               source={{ uri: item.imageUri }}
@@ -531,29 +493,189 @@ function DraggableItem({ item, isAssigned, onTap }: DraggableItemProps) {
 
 // FILTER_CATEGORIES is built inside the component using t() — see below
 
+type AssignedOutfit = OutfitItems;
+
+function getOutfitPieceLayout(
+  slotKey: OutfitSlotKey,
+  assigned: AssignedOutfit,
+  isWideScreen: boolean,
+): ViewStyle {
+  const hasLayeredUpperBody = !!assigned.outerwear && !!assigned.tops;
+  const accessoryIndex = isAccessorySlot(slotKey)
+    ? Object.entries(assigned)
+        .filter(([, item]) => item?.category === "accessories")
+        .findIndex(([key]) => key === slotKey)
+    : -1;
+
+  // Accessories are the only repeatable canvas category. Arrange them on the
+  // side rails in pairs so a bag, belt, jewellery, hijab, etc. remain visible.
+  if (accessoryIndex >= 0) {
+    const row = Math.floor(accessoryIndex / 2);
+    const onRight = accessoryIndex % 2 === 1;
+    return isWideScreen
+      ? { top: 142 + row * 92, ...(onRight ? { right: "14%" } : { left: "14%" }), width: "15%", height: 84, zIndex: 4 }
+      : { top: 126 + row * 84, ...(onRight ? { right: "3%" } : { left: "3%" }), width: "20%", height: 76, zIndex: 4 };
+  }
+
+  if (isWideScreen) {
+    switch (slotKey) {
+      case "outerwear":
+        return hasLayeredUpperBody
+          ? { top: 8, left: "17%", width: "29%", height: 150, zIndex: 1 }
+          : { top: 8, left: "31%", width: "38%", height: 150, zIndex: 2 };
+      case "tops":
+        return hasLayeredUpperBody
+          ? { top: 8, right: "17%", width: "29%", height: 150, zIndex: 2 }
+          : { top: 8, left: "31%", width: "38%", height: 150, zIndex: 2 };
+      case "dresses":
+        return { top: 8, left: "32%", width: "36%", height: 300, zIndex: 2 };
+      case "bottoms":
+        return { top: 166, left: "37%", width: "26%", height: 184, zIndex: 3 };
+      case "shoes":
+        return { top: 354, left: "40%", width: "20%", height: 72, zIndex: 4 };
+      case "socks":
+        return { top: 226, right: "20%", width: "14%", height: 82, zIndex: 4 };
+      case "accessories":
+        return {};
+    }
+  }
+
+  switch (slotKey) {
+    case "outerwear":
+      return hasLayeredUpperBody
+        ? { top: 6, left: "8%", width: "38%", height: 132, zIndex: 1 }
+        : { top: 6, left: "25%", width: "50%", height: 142, zIndex: 2 };
+    case "tops":
+      return hasLayeredUpperBody
+        ? { top: 6, right: "8%", width: "38%", height: 132, zIndex: 2 }
+        : { top: 6, left: "25%", width: "50%", height: 142, zIndex: 2 };
+    case "dresses":
+      return { top: 6, left: "27%", width: "46%", height: 270, zIndex: 2 };
+    case "bottoms":
+      return { top: 150, left: "34%", width: "32%", height: 166, zIndex: 3 };
+    case "shoes":
+      return { top: 318, left: "38%", width: "24%", height: 62, zIndex: 4 };
+    case "socks":
+      return { top: 206, right: "5%", width: "20%", height: 76, zIndex: 4 };
+    case "accessories":
+      return {};
+  }
+  return {};
+}
+
+const CATEGORY_SWATCH_COLORS: Record<ClothingCategory, string> = {
+  outerwear: "#8B7665",
+  tops: "#D8D0C3",
+  bottoms: "#B9BAA9",
+  dresses: "#77706A",
+  shoes: "#A5623D",
+  socks: "#C9BBAA",
+  accessories: "#3D3E3A",
+};
+
+interface OutfitPieceProps {
+  slotKey: OutfitSlotKey;
+  item: ClothingItem;
+  gender: Gender | null;
+  isLocked: boolean;
+  layout: ViewStyle;
+  onClear: () => void;
+}
+
+function OutfitPiece({ slotKey: _slotKey, item, gender, isLocked, layout, onClear }: OutfitPieceProps) {
+  const colors = useColors();
+  const tone = getGarmentTone(item.colorHex, colors.border);
+
+  return (
+    <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityLabel={`Remove ${item.name} from look`}
+      activeOpacity={0.82}
+      onPress={onClear}
+      style={[styles.lookPiece, layout]}
+    >
+      {item.imageUri ? (
+        <Image source={{ uri: item.imageUri }} style={styles.lookPieceImage} contentFit="contain" />
+      ) : (
+        <View style={[styles.lookPieceFallback, { backgroundColor: tone.background, borderColor: tone.border }]}>
+          <ClothingCategoryIcon category={item.category} gender={gender} size={30} color={colors.mutedForeground} />
+        </View>
+      )}
+      <View style={[styles.lookPieceControl, { backgroundColor: colors.card }]}>
+        <Feather name={isLocked ? "lock" : "x"} size={9} color={colors.foreground} />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+interface CategorySwatchProps {
+  category: ClothingCategory;
+  label: string;
+  item?: ClothingItem;
+  gender: Gender | null;
+  active: boolean;
+  wide?: boolean;
+  onPress: () => void;
+}
+
+function CategorySwatch({ category, label, item, gender, active, wide, onPress }: CategorySwatchProps) {
+  const colors = useColors();
+  const baseColor = CATEGORY_SWATCH_COLORS[category];
+  const tone = item ? getGarmentTone(item.colorHex, colors.border) : null;
+  const backgroundColor = tone?.background ?? baseColor;
+  const borderColor = tone?.border ?? baseColor;
+  const foregroundColor = tone ? colors.foreground : isLight(baseColor) ? "#4B433E" : "#FFFFFF";
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.categorySwatch,
+        wide && styles.categorySwatchWide,
+        { backgroundColor, borderColor, opacity: pressed ? 0.82 : 1 },
+        active && styles.categorySwatchActive,
+      ]}
+    >
+      <View style={styles.categorySwatchVisual}>
+        {item?.imageUri ? (
+          <Image source={{ uri: item.imageUri }} style={styles.categorySwatchImage} contentFit="contain" />
+        ) : (
+          <ClothingCategoryIcon category={category} gender={gender} size={31} color={foregroundColor} />
+        )}
+      </View>
+      <Text style={[styles.categorySwatchLabel, { color: foregroundColor }]} numberOfLines={1}>
+        {label}
+      </Text>
+      {active ? (
+        <View style={[styles.categorySwatchActiveBadge, { backgroundColor: colors.accent }]}>
+          <Feather name="check" size={9} color={colors.primaryForeground} />
+        </View>
+      ) : null}
+    </Pressable>
+  );
+}
+
 export default function OutfitBuilderScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { items, saveOutfit, savedOutfits } = useWardrobe();
+  const { items, saveOutfit, savedOutfits, isLoading: isWardrobeLoading } = useWardrobe();
   const { addLook } = useSocial();
   const { condition, temperature, weatherCode } = useWeather();
-  const { bodyPhotoBase64, bodyPhotoMime, gender, age } = useUserProfile();
-  const { t } = useLanguage();
+  const { bodyPhotoUri, bodyPhotoBase64, bodyPhotoMime, gender, age, stylingPreferences } = useUserProfile();
+  const { t, lang } = useLanguage();
+  const { width: windowWidth } = useWindowDimensions();
+  const isWideScreen = windowWidth >= 900;
 
   const FILTER_CATEGORIES: { key: "all" | ClothingCategory; label: string }[] = [
     { key: "all", label: t("cat_all") },
-    { key: "tops", label: t("cat_tops") },
-    { key: "bottoms", label: t("cat_bottoms") },
-    { key: "dresses", label: t("cat_dresses") },
-    { key: "outerwear", label: t("cat_outerwear") },
-    { key: "shoes", label: t("cat_shoes") },
-    { key: "socks", label: t("cat_socks") },
-    { key: "accessories", label: t("cat_accessories") },
+    ...getProfileCategoryOptions(gender, lang, t),
   ];
 
   const topPad = getTopPadding(insets.top);
 
-  const [assigned, setAssigned] = useState<Partial<Record<OutfitSlotKey, ClothingItem>>>({});
+  const [assigned, setAssigned] = useState<AssignedOutfit>({});
   const [lockedSlots, setLockedSlots] = useState<Set<OutfitSlotKey>>(new Set());
   const sessionCombos = useRef<Set<string>>(new Set());
 
@@ -578,10 +700,34 @@ export default function OutfitBuilderScreen() {
   const [hasDoneAuto, setHasDoneAuto] = useState(false);
   const [filterCat, setFilterCat] = useState<"all" | ClothingCategory>("all");
 
+  useEffect(() => {
+    if (filterCat !== "all" || items.length === 0) return;
+    const firstAvailable = (["tops", "dresses", "bottoms", "outerwear", "shoes", "accessories", "socks"] as ClothingCategory[])
+      .find((category) => items.some((item) => item.category === category));
+    if (firstAvailable) setFilterCat(firstAvailable);
+  }, [filterCat, items]);
+
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [useBodyReference, setUseBodyReference] = useState(true);
+  const [previewProgressStage, setPreviewProgressStage] = useState(0);
+  const previewCache = useRef<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    if (!isGenerating) {
+      setPreviewProgressStage(0);
+      return;
+    }
+    setPreviewProgressStage(0);
+    const generatingTimer = setTimeout(() => setPreviewProgressStage(1), 6_000);
+    const finishingTimer = setTimeout(() => setPreviewProgressStage(2), 18_000);
+    return () => {
+      clearTimeout(generatingTimer);
+      clearTimeout(finishingTimer);
+    };
+  }, [isGenerating]);
 
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [outfitName, setOutfitName] = useState("");
@@ -607,11 +753,12 @@ export default function OutfitBuilderScreen() {
       .map((id) => items.find((item) => item.id === id))
       .filter((item): item is ClothingItem => !!item);
     if (selected.length === 0) return;
-    const next: Partial<Record<OutfitSlotKey, ClothingItem>> = {};
-    for (const item of selected) next[categoryToSlotKey(item.category)] = item;
+    const next = buildAssignedOutfit(selected);
     pendingPreviewPieces.current = selected;
     setAssigned(next);
-    setLockedSlots(new Set(Object.keys(next) as OutfitSlotKey[]));
+    const selectedSlots = Object.keys(next) as OutfitSlotKey[];
+    if (selected.some((item) => item.category === "accessories")) selectedSlots.push("accessories");
+    setLockedSlots(new Set(selectedSlots));
     setHasDoneAuto(true);
     if (preview === "true") setTimeout(() => void handleGeneratePreview(), 120);
   });
@@ -621,34 +768,49 @@ export default function OutfitBuilderScreen() {
       anchorFired.current = true;
       const anchor = items.find((i) => i.id === anchorItemId);
       if (anchor) {
-        const slotKey = categoryToSlotKey(anchor.category);
+        const slotKey: OutfitSlotKey = anchor.category === "accessories"
+          ? `accessories:${anchor.id}`
+          : categoryToSlotKey(anchor.category);
         setAssigned({ [slotKey]: anchor });
-        setLockedSlots(new Set([slotKey]));
+        setLockedSlots(new Set(anchor.category === "accessories" ? [slotKey, "accessories"] : [slotKey]));
         setTimeout(() => void handleAutoSuggest(), 100);
       }
     }
   });
 
   const assignItem = useCallback((item: ClothingItem) => {
-    const slotKey = categoryToSlotKey(item.category);
     setPreviewImage(null);
     setAssigned((prev) => {
-      // Toggle off: same item tapped again
-      if (prev[slotKey]?.id === item.id) {
+      const existingEntry = Object.entries(prev).find(([, selected]) => selected?.id === item.id);
+      // Toggle off: the exact same item was tapped again.
+      if (existingEntry) {
         const next = { ...prev };
-        delete next[slotKey];
-        setLockedSlots((ls) => { const n = new Set(ls); n.delete(slotKey); return n; });
+        delete next[existingEntry[0] as OutfitSlotKey];
+        setLockedSlots((slots) => {
+          const updated = new Set(slots);
+          updated.delete(existingEntry[0] as OutfitSlotKey);
+          if (item.category === "accessories" && !Object.values(next).some((selected) => selected?.category === "accessories")) {
+            updated.delete("accessories");
+          }
+          return updated;
+        });
         return next;
       }
-      // Lock the explicitly selected slot. Do not fill other slots here:
-      // tapping one item must select exactly one item.
-      const newLocked = new Set([...lockedSlots, slotKey]);
-      setLockedSlots(newLocked);
+      const slotKey: OutfitSlotKey = item.category === "accessories"
+        ? `accessories:${item.id}`
+        : categoryToSlotKey(item.category);
+      // Accessories are additive. Other garment categories still replace the
+      // existing item in their single visual slot.
+      setLockedSlots((slots) => {
+        const updated = new Set([...slots, slotKey]);
+        if (item.category === "accessories") updated.add("accessories");
+        return updated;
+      });
       const next = { ...prev, [slotKey]: item };
       sessionCombos.current.add(makeComboKey(next));
       return next;
     });
-  }, [lockedSlots]);
+  }, []);
 
   const clearSlot = useCallback((slotKey: OutfitSlotKey) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -656,13 +818,27 @@ export default function OutfitBuilderScreen() {
     setAssigned((prev) => {
       const next = { ...prev };
       delete next[slotKey];
+      setLockedSlots((slots) => {
+        const updated = new Set(slots);
+        updated.delete(slotKey);
+        if (isAccessorySlot(slotKey)) {
+          const stillHasAccessories = Object.values(next).some((item) => item?.category === "accessories");
+          if (stillHasAccessories) updated.add("accessories");
+          else updated.delete("accessories");
+        }
+        return updated;
+      });
       return next;
     });
-    setLockedSlots((ls) => { const n = new Set(ls); n.delete(slotKey); return n; });
   }, []);
 
   const handleAutoSuggest = async () => {
     if (isAutoLoading) return;
+    const selectedAccessories = Object.values(assigned).filter((item): item is ClothingItem => item?.category === "accessories");
+    if (stylingPreferences.hijabPreference === "always" && selectedAccessories.length > 0 && !selectedAccessories.some(isHijabItem)) {
+      Alert.alert("Hijab needed", "Unlock or replace the current accessory so Lookly can include your hijab.");
+      return;
+    }
     setIsAutoLoading(true);
     setAutoWeatherNote(null);
 
@@ -672,7 +848,7 @@ export default function OutfitBuilderScreen() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         const next = localSmartFill(
           assigned, items, lockedSlots, temperature,
-          sessionCombos.current, "reshuffle"
+          sessionCombos.current, "reshuffle", "stable", stylingPreferences
         );
         sessionCombos.current.add(makeComboKey(next));
         fadeSwapCanvas(() => { setPreviewImage(null); setAssigned(next); });
@@ -698,10 +874,15 @@ export default function OutfitBuilderScreen() {
             seasons: i.seasons,
             tags: i.tags ?? [],
             fabricWeight: i.fabricWeight,
+            visualSignature: i.visualSignature,
           })),
           weather: condition,
+          condition,
           weatherCode,
           temperature,
+          userGender: gender ?? undefined,
+          userAge: age ?? undefined,
+          stylingPreferences,
           lockedIds: [...lockedSlots]
             .map((k) => assigned[k]?.id)
             .filter((id): id is string => !!id),
@@ -709,10 +890,35 @@ export default function OutfitBuilderScreen() {
       });
 
       const data = await res.json() as {
-        outfits: { name: string; mood: string; weatherNote?: string | null; items: { itemId: string; role: string }[] }[]
+        outfits: { name: string; mood: string; weatherNote?: string | null; items: { itemId: string; role: string }[] }[];
+        incomplete?: boolean;
+        message?: string;
       };
       const outfitList = (data.outfits ?? []).filter((o) => o.items.length > 0);
+      if (outfitList.length === 0 && data.incomplete) {
+        setAutoWeatherNote(data.message ?? t("hijab_add_item"));
+        return;
+      }
       if (outfitList.length === 0) throw new Error("no outfits");
+
+      // The API's incomplete response contains one deterministic "safest"
+      // partial outfit. Reusing that response made Auto always show the same
+      // top and bottom (and often only those two pieces). Keep its weather
+      // warning, but let the local stylist rotate through the wardrobe so the
+      // result is visibly different when alternatives are available.
+      if (data.incomplete) {
+        const next = localSmartFill(
+          assigned, items, lockedSlots, temperature,
+          sessionCombos.current, "reshuffle", "stable", stylingPreferences
+        );
+        sessionCombos.current.add(makeComboKey(next));
+        setHasDoneAuto(true);
+        setPreviewImage(null);
+        setAssigned(next);
+        setAutoWeatherNote(data.message ?? null);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        return;
+      }
 
       // Pick a combo that hasn't been seen in this session
       const unseenOutfit = outfitList.find((o) => {
@@ -744,9 +950,13 @@ export default function OutfitBuilderScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
       // Local fallback — weather-aware, season-aware, deduped
+      if (stylingPreferences.hijabPreference === "always" && !items.some(isHijabItem)) {
+        setAutoWeatherNote(t("hijab_add_item"));
+        return;
+      }
       const next = localSmartFill(
         assigned, items, lockedSlots, temperature,
-        sessionCombos.current, "reshuffle"
+        sessionCombos.current, "reshuffle", "stable", stylingPreferences
       );
       sessionCombos.current.add(makeComboKey(next));
       setHasDoneAuto(true);
@@ -773,7 +983,30 @@ export default function OutfitBuilderScreen() {
       Alert.alert("No items selected", "Add at least one item to preview the look.");
       return;
     }
-    if (previewImage && !forceRegenerate) {
+    const modestyIssues = getOutfitModestyIssues(pieces, stylingPreferences);
+    if (modestyIssues.length > 0) {
+      const message = modestyIssues.includes("HIJAB_REQUIRED")
+        ? t("hijab_add_item")
+        : "This look does not match your current coverage settings. Adjust the items or your preferences in Profile.";
+      Alert.alert("Coverage check", message);
+      return;
+    }
+    const bodyReferenceEnabled = useBodyReference && !!bodyPhotoBase64;
+    const previewKey = JSON.stringify({
+      pieces: pieces
+        .map((piece) => [piece.id, piece.imageUri ?? "", piece.imageProcessingVersion ?? 0])
+        .sort(([left], [right]) => String(left).localeCompare(String(right))),
+      condition,
+      temperature: Math.round(temperature),
+      bodyReferenceEnabled,
+      bodyReference: bodyReferenceEnabled ? bodyPhotoUri : null,
+      gender,
+      age,
+      stylingPreferences,
+    });
+    const cachedPreview = previewCache.current.get(previewKey);
+    if (cachedPreview && !forceRegenerate) {
+      setPreviewImage(cachedPreview);
       setShowPreview(true);
       return;
     }
@@ -781,7 +1014,21 @@ export default function OutfitBuilderScreen() {
     setIsGenerating(true);
     setShowPreview(true);
     try {
-      const img = await generateOutfitPreview(pieces, condition, temperature, bodyPhotoBase64, bodyPhotoMime, gender, age);
+      const img = await generateOutfitPreview(
+        pieces,
+        condition,
+        temperature,
+        bodyReferenceEnabled ? bodyPhotoBase64 : null,
+        bodyPhotoMime,
+        gender,
+        age,
+        stylingPreferences,
+      );
+      if (previewCache.current.size >= 6) {
+        const oldestKey = previewCache.current.keys().next().value;
+        if (oldestKey) previewCache.current.delete(oldestKey);
+      }
+      previewCache.current.set(previewKey, img);
       setPreviewImage(img);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: unknown) {
@@ -824,6 +1071,10 @@ export default function OutfitBuilderScreen() {
 
   const handleLoadSavedOutfit = (outfit: (typeof savedOutfits)[number]) => {
     setAssigned(outfit.items);
+    const savedSlots = Object.keys(outfit.items) as OutfitSlotKey[];
+    if (Object.values(outfit.items).some((item) => item?.category === "accessories")) savedSlots.push("accessories");
+    setLockedSlots(new Set(savedSlots));
+    setHasDoneAuto(true);
     if (outfit.previewImage) {
       setPreviewImage(outfit.previewImage);
       setShowSavedOutfits(false);
@@ -843,7 +1094,11 @@ export default function OutfitBuilderScreen() {
       .map((i) => i!.id)
   );
   const pieceCount = Object.keys(assigned).length;
-  const hasDress = !!assigned["dresses"];
+  const swatchCategories = FILTER_CATEGORIES.filter(
+    (category): category is { key: ClothingCategory; label: string } => category.key !== "all"
+  );
+  const lookEntries = (Object.entries(assigned) as [OutfitSlotKey, ClothingItem | undefined][])
+    .filter((entry): entry is [OutfitSlotKey, ClothingItem] => !!entry[1]);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -877,20 +1132,6 @@ export default function OutfitBuilderScreen() {
             <Text style={[styles.savedBadge, { color: colors.accent }]}>{savedOutfits.length}</Text>
           )}
         </TouchableOpacity>
-        <TouchableOpacity
-          onPress={handleAutoSuggest}
-          disabled={isAutoLoading}
-          style={[styles.autoBtn, { backgroundColor: colors.secondary, marginLeft: 8, opacity: isAutoLoading ? 0.6 : 1 }]}
-        >
-          {isAutoLoading ? (
-            <ActivityIndicator size="small" color={colors.accent} style={{ width: 14, height: 14 }} />
-          ) : (
-            <Feather name={hasDoneAuto ? "refresh-cw" : "zap"} size={14} color={colors.accent} />
-          )}
-          <Text style={[styles.autoBtnText, { color: colors.accent }]}>
-            {isAutoLoading ? t("ob_styling") : hasDoneAuto ? t("ob_reshuffle") : t("ob_auto")}
-          </Text>
-        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -901,7 +1142,7 @@ export default function OutfitBuilderScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <Animated.View style={[styles.canvas, canvasAnimStyle]}>
+        <Animated.View style={[styles.canvas, isWideScreen && styles.canvasWide, canvasAnimStyle]}>
           <View style={styles.canvasLabelRow}>
             <Text style={[styles.canvasLabel, { color: colors.mutedForeground }]}>
               {t("ob_outfit_canvas")}
@@ -921,77 +1162,98 @@ export default function OutfitBuilderScreen() {
             </View>
           ) : null}
 
-          <View style={styles.canvasRow}>
-            <SlotCard
-              slotKey="outerwear"
-              label={t("cat_outerwear")}
-              icon="hanger"
-              assignedItem={assigned["outerwear"] ?? null}
-              onClear={() => clearSlot("outerwear")}
-              isLocked={lockedSlots.has("outerwear")}
-            />
-            <SlotCard
-              slotKey="tops"
-              label={t("ob_slot_top")}
-              icon="tshirt-crew-outline"
-              assignedItem={hasDress ? null : (assigned["tops"] ?? null)}
-              onClear={() => clearSlot("tops")}
-              isLocked={lockedSlots.has("tops")}
-            />
+          <View style={[styles.lookCard, { backgroundColor: colors.background }]}>
+            <View style={styles.lookCardTopRow}>
+              <TouchableOpacity
+                onPress={handleAutoSuggest}
+                disabled={isAutoLoading}
+                style={[styles.reshuffleBtn, { opacity: isAutoLoading ? 0.55 : 1 }]}
+              >
+                {isAutoLoading ? (
+                  <ActivityIndicator size="small" color={colors.accent} style={{ width: 15, height: 15 }} />
+                ) : (
+                  <Feather name={hasDoneAuto ? "refresh-cw" : "zap"} size={15} color={colors.accent} />
+                )}
+                <Text style={[styles.reshuffleText, { color: colors.foreground }]}>
+                  {isAutoLoading ? t("ob_styling") : hasDoneAuto ? t("ob_reshuffle") : t("ob_auto")}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View
+              style={[
+                styles.lookStage,
+                isWideScreen && styles.lookStageWide,
+                { backgroundColor: colors.secondary },
+              ]}
+            >
+              {lookEntries.length > 0 ? (
+                lookEntries.map(([slotKey, item]) => (
+                  <OutfitPiece
+                    key={slotKey}
+                    slotKey={slotKey}
+                    item={item}
+                    gender={gender}
+                    isLocked={lockedSlots.has(slotKey)}
+                    layout={getOutfitPieceLayout(slotKey, assigned, isWideScreen)}
+                    onClear={() => clearSlot(slotKey)}
+                  />
+                ))
+              ) : (
+                <View style={styles.lookStageEmpty}>
+                  <View style={[styles.lookStageEmptyIcon, { backgroundColor: colors.secondary }]}>
+                    <Feather name="plus" size={22} color={colors.accent} />
+                  </View>
+                </View>
+              )}
+            </View>
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={[
+                styles.categorySwatches,
+                isWideScreen && styles.categorySwatchesWide,
+              ]}
+            >
+              {swatchCategories.map((category) => {
+                const categoryItems = items.filter((item) => item.category === category.key);
+                const swatchItem = Object.values(assigned).find((item) => item?.category === category.key) ?? categoryItems[0];
+                return (
+                  <CategorySwatch
+                    key={category.key}
+                    category={category.key}
+                    label={category.label}
+                    item={swatchItem}
+                    gender={gender}
+                    active={filterCat === category.key}
+                    wide={isWideScreen}
+                    onPress={() => setFilterCat(category.key)}
+                  />
+                );
+              })}
+            </ScrollView>
           </View>
 
-          {hasDress ? (
-            <View style={styles.canvasRow}>
-              <SlotCard
-                slotKey="dresses"
-                label={t("ob_slot_dress")}
-                icon="human-female"
-                assignedItem={assigned["dresses"] ?? null}
-                onClear={() => clearSlot("dresses")}
-                isLocked={lockedSlots.has("dresses")}
+          {bodyPhotoBase64 ? (
+            <View style={[styles.previewReferenceOption, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.previewReferenceTitle, { color: colors.foreground }]}>{t("ob_use_body_reference")}</Text>
+                <Text style={[styles.previewReferenceHint, { color: colors.mutedForeground }]}>{t("ob_body_reference_priority")}</Text>
+              </View>
+              <Switch
+                accessibilityLabel={t("ob_use_body_reference")}
+                value={useBodyReference}
+                onValueChange={(value) => {
+                  setUseBodyReference(value);
+                  setPreviewImage(null);
+                  setPreviewError(null);
+                }}
+                trackColor={{ false: colors.border, true: colors.accent }}
+                thumbColor={colors.card}
               />
             </View>
-          ) : (
-            <View style={styles.canvasRow}>
-              <SlotCard
-                slotKey="bottoms"
-                label={t("ob_slot_bottom")}
-                icon="human-male"
-                assignedItem={assigned["bottoms"] ?? null}
-                onClear={() => clearSlot("bottoms")}
-                isLocked={lockedSlots.has("bottoms")}
-              />
-            </View>
-          )}
-
-          <View style={styles.canvasRow}>
-            <SlotCard
-              slotKey="shoes"
-              label={t("cat_shoes")}
-              icon="shoe-sneaker"
-              assignedItem={assigned["shoes"] ?? null}
-              onClear={() => clearSlot("shoes")}
-              isLocked={lockedSlots.has("shoes")}
-            />
-            <SlotCard
-              slotKey="socks"
-              label={t("cat_socks")}
-              icon="foot-print"
-              assignedItem={assigned["socks"] ?? null}
-              onClear={() => clearSlot("socks")}
-              isLocked={lockedSlots.has("socks")}
-            />
-          </View>
-          <View style={styles.canvasRow}>
-            <SlotCard
-              slotKey="accessories"
-              label={t("ob_slot_accessory")}
-              icon="sunglasses"
-              assignedItem={assigned["accessories"] ?? null}
-              onClear={() => clearSlot("accessories")}
-              isLocked={lockedSlots.has("accessories")}
-            />
-          </View>
+          ) : null}
 
           <TouchableOpacity
             onPress={() => handleGeneratePreview(false)}
@@ -1099,11 +1361,27 @@ export default function OutfitBuilderScreen() {
           </View>
         </Animated.View>
 
-        <View style={[styles.divider, { backgroundColor: colors.border }]} />
+        <View
+          style={[
+            styles.divider,
+            isWideScreen && styles.dividerWide,
+            { backgroundColor: colors.border },
+          ]}
+        />
 
-        <View style={styles.pickerSection}>
+        <View style={[styles.pickerSection, isWideScreen && styles.pickerSectionWide]}>
           <Text style={[styles.pickerTitle, { color: colors.foreground }]}>{t("ob_your_wardrobe")}</Text>
-          {items.length === 0 ? (
+          {filterCat === "accessories" ? (
+            <Text style={[styles.multiSelectHint, { color: colors.mutedForeground }]}>
+              {t("ob_accessories_multi_select")}
+            </Text>
+          ) : null}
+          {isWardrobeLoading ? (
+            <View style={[styles.emptyWardrobe, { backgroundColor: colors.secondary }]}>
+              <ActivityIndicator size="small" color={colors.accent} />
+              <Text style={[styles.emptySubtitle, { color: colors.mutedForeground }]}>{t("loading_wardrobe")}</Text>
+            </View>
+          ) : items.length === 0 ? (
             <View style={[styles.emptyWardrobe, { backgroundColor: colors.secondary }]}>
               <Feather name="layers" size={28} color={colors.border} />
               <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{t("ob_no_items")}</Text>
@@ -1121,53 +1399,16 @@ export default function OutfitBuilderScreen() {
             </View>
           ) : (
             <>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.filterPills}
-              >
-                {FILTER_CATEGORIES.map((c) => {
-                  const count =
-                    c.key === "all"
-                      ? items.length
-                      : items.filter((i) => i.category === c.key).length;
-                  if (c.key !== "all" && count === 0) return null;
-                  return (
-                    <Pressable
-                      key={c.key}
-                      onPress={() => setFilterCat(c.key)}
-                      style={[
-                        styles.filterPill,
-                        {
-                          backgroundColor:
-                            filterCat === c.key ? colors.primary : colors.secondary,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.filterPillText,
-                          {
-                            color:
-                              filterCat === c.key
-                                ? colors.primaryForeground
-                                : colors.mutedForeground,
-                          },
-                        ]}
-                      >
-                        {c.label} {count}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-
               {filteredItems.length === 0 ? (
                 <Text style={[styles.noItems, { color: colors.mutedForeground }]}>
                   {t("ob_no_items_cat")}
                 </Text>
               ) : (
-                <View style={styles.itemGrid}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.itemCarousel}
+                >
                   {filteredItems.map((item) => (
                     <DraggableItem
                       key={item.id}
@@ -1176,7 +1417,7 @@ export default function OutfitBuilderScreen() {
                       onTap={() => assignItem(item)}
                     />
                   ))}
-                </View>
+                </ScrollView>
               )}
             </>
           )}
@@ -1230,7 +1471,7 @@ export default function OutfitBuilderScreen() {
                   {t("ob_generating_your_look")}
                 </Text>
                 <Text style={[styles.generatingSubText, { color: colors.mutedForeground }]}>
-                  {t("ob_ai_styling")}
+                  {t((["ob_preview_stage_prepare", "ob_preview_stage_generate", "ob_preview_stage_finish"] as const)[previewProgressStage] ?? "ob_preview_stage_finish")}
                 </Text>
               </View>
             ) : previewImage ? (
@@ -1436,8 +1677,6 @@ export default function OutfitBuilderScreen() {
   );
 }
 
-const SLOT_HEIGHT = 90;
-
 const styles = StyleSheet.create({
   root: { flex: 1 },
   header: {
@@ -1458,68 +1697,71 @@ const styles = StyleSheet.create({
     borderRadius: 100,
   },
   savedBadge: { fontSize: 12, fontWeight: "700" },
-  autoBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 100,
-  },
-  autoBtnText: { fontSize: 13, fontWeight: "600" },
-  scrollContent: { paddingTop: 18, gap: 0 },
-  canvas: { paddingHorizontal: 18, gap: 10 },
+  scrollContent: { paddingTop: 16, gap: 0 },
+  canvas: { width: "100%", maxWidth: 560, alignSelf: "center", paddingHorizontal: 18, gap: 10 },
+  canvasWide: { maxWidth: 1120, paddingHorizontal: 28 },
   canvasLabelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
   canvasLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 1.2 },
   weatherChip: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   weatherChipText: { fontSize: 11, fontWeight: "500" },
   weatherNoteRow: { flexDirection: "row", alignItems: "flex-start", gap: 6, padding: 10, borderRadius: 10, borderWidth: 1, marginBottom: 12 },
   weatherNoteText: { fontSize: 12, fontWeight: "500", flex: 1, lineHeight: 17 },
-  canvasRow: { flexDirection: "row", gap: 10, minHeight: SLOT_HEIGHT },
-  slot: {
-    borderRadius: 16,
-    borderWidth: 1.5,
-    minHeight: SLOT_HEIGHT,
+  lookCard: {
+    borderRadius: 24,
+    paddingTop: 16,
+    paddingBottom: 14,
     overflow: "hidden",
-    position: "relative",
   },
-  slotEmpty: {
-    flex: 1,
+  lookCardTopRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    padding: 12,
+    justifyContent: "flex-end",
+    paddingHorizontal: 18,
   },
-  slotNoImage: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  slotLabel: { fontSize: 11, fontWeight: "600", textAlign: "center" },
-  slotFilledContent: { flex: 1, padding: 10, justifyContent: "flex-end" },
-  slotFilledOverlay: { backgroundColor: "transparent" },
-  slotFilledName: { fontSize: 13, fontWeight: "700", lineHeight: 16 },
-  slotFilledSub: { fontSize: 10, fontWeight: "500", marginTop: 2 },
-  lockBadge: {
+  reshuffleBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 8, paddingLeft: 12 },
+  reshuffleText: { fontSize: 13, fontWeight: "600" },
+  lookStage: { height: 384, position: "relative", marginHorizontal: 12, marginTop: 2, borderRadius: 22, overflow: "hidden" },
+  lookStageWide: { height: 430, marginHorizontal: 24 },
+  lookStageEmpty: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32 },
+  lookStageEmptyIcon: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center" },
+  lookPiece: { position: "absolute", overflow: "visible" },
+  lookPieceImage: { width: "100%", height: "100%" },
+  lookPieceFallback: { flex: 1, borderWidth: 1, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  lookPieceControl: {
     position: "absolute",
-    top: 8,
-    left: 8,
+    top: 3,
+    right: 3,
     width: 20,
     height: 20,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#1C1512",
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  clearBtn: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+  categorySwatches: { gap: 8, paddingHorizontal: 10, paddingTop: 5, paddingBottom: 2 },
+  categorySwatchesWide: { flexGrow: 1, justifyContent: "center", gap: 14, paddingHorizontal: 22 },
+  categorySwatch: { width: 94, height: 108, borderRadius: 15, borderWidth: 1, paddingHorizontal: 8, paddingTop: 7, paddingBottom: 9, alignItems: "center", position: "relative" },
+  categorySwatchWide: { width: 120, height: 118 },
+  categorySwatchActive: { transform: [{ translateY: -2 }] },
+  categorySwatchActiveBadge: { position: "absolute", top: 6, right: 6, width: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center" },
+  categorySwatchVisual: { width: 72, height: 72, alignItems: "center", justifyContent: "center" },
+  categorySwatchImage: { width: "100%", height: "100%" },
+  categorySwatchLabel: { fontSize: 12, fontWeight: "600", textAlign: "center", width: "100%", marginTop: 3 },
+  previewReferenceOption: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
   },
+  previewReferenceTitle: { fontSize: 13, fontWeight: "700" },
+  previewReferenceHint: { fontSize: 11, lineHeight: 16, marginTop: 2 },
   previewBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1553,9 +1795,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   actionBtnText: { fontSize: 13, fontWeight: "600" },
-  divider: { height: 1, marginHorizontal: 18, marginVertical: 20 },
-  pickerSection: { paddingHorizontal: 18, gap: 14 },
+  divider: { height: 1, width: "100%", maxWidth: 524, alignSelf: "center", marginVertical: 20 },
+  dividerWide: { maxWidth: 1064 },
+  pickerSection: { width: "100%", maxWidth: 560, alignSelf: "center", paddingHorizontal: 18, gap: 14 },
+  pickerSectionWide: { maxWidth: 1120, paddingHorizontal: 28 },
   pickerTitle: { fontSize: 18, fontWeight: "700" },
+  multiSelectHint: { fontSize: 12, lineHeight: 17, marginTop: -8 },
   emptyWardrobe: {
     borderRadius: 16,
     padding: 28,
@@ -1571,16 +1816,9 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   addBtnText: { fontSize: 14, fontWeight: "600" },
-  filterPills: { gap: 8, paddingRight: 18 },
-  filterPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 100,
-  },
-  filterPillText: { fontSize: 13, fontWeight: "600" },
   noItems: { fontSize: 14, textAlign: "center", paddingVertical: 24 },
-  itemGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  draggableWrap: { width: "30%", alignItems: "center", gap: 6 },
+  itemCarousel: { gap: 10, paddingRight: 18, paddingBottom: 4 },
+  draggableWrap: { width: 82, alignItems: "center", gap: 6 },
   itemCard: {
     width: 72,
     height: 72,

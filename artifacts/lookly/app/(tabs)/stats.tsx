@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/components/FeatherIcon";
 import React, { useMemo } from "react";
 import {
   Platform,
@@ -11,7 +11,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getBottomPadding } from "@/constants/layout";
 import { getTopPadding } from "@/constants/layout";
 import { useColors } from "@/hooks/useColors";
-import { type ClothingCategory, type ClothingItem, type Currency, useWardrobe } from "@/contexts/WardrobeContext";
+import { getItemDisplayName, type ClothingCategory, type ClothingItem, type Currency, useWardrobe } from "@/contexts/WardrobeContext";
+import { translateGeneratedClothingName } from "@/lib/localization";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 
@@ -54,7 +55,7 @@ function formatTotalAmount(value: number, currency: Currency): string {
 
 function CostPerWearCard({ item }: { item: ClothingItem }) {
   const colors = useColors();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const cpw =
     item.purchasePrice && item.timesWorn > 0
       ? (item.purchasePrice / item.timesWorn).toFixed(2)
@@ -71,7 +72,7 @@ function CostPerWearCard({ item }: { item: ClothingItem }) {
       <View style={[styles.cpwColor, { backgroundColor: item.colorHex }]} />
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={[styles.cpwName, { color: colors.foreground }]} numberOfLines={2}>
-          {item.name}
+          {item.customName ? getItemDisplayName(item, lang) : translateGeneratedClothingName(getItemDisplayName(item, lang), lang)}
         </Text>
         <Text style={[styles.cpwMeta, { color: colors.mutedForeground }]}>
           {item.timesWorn}× {t("stat_worn")}

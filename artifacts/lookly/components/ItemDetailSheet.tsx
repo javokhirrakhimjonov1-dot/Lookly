@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/components/FeatherIcon";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import { router } from "expo-router";
@@ -24,6 +24,11 @@ import { getApiBase } from "@/constants/api";
 import { apiAuthHeaders } from "@/lib/apiAuth";
 import { useColors } from "@/hooks/useColors";
 import { getItemDisplayName, type ClothingItem, useWardrobe } from "@/contexts/WardrobeContext";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { translateGeneratedClothingName } from "@/lib/localization";
+import { useWeather } from "@/contexts/WeatherContext";
+import { useUserProfile } from "@/contexts/UserProfileContext";
+import { getGarmentTone } from "@/lib/garmentTone";
 
 function isLight(hex: string): boolean {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -67,13 +72,24 @@ interface Props {
 
 export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
   const colors = useColors();
+  const itemTone = getGarmentTone(item?.colorHex, colors.border);
+  const { lang, t } = useLanguage();
   const { items, updateItem } = useWardrobe();
+  const { temperature, condition } = useWeather();
+  const { age, gender, stylingPreferences } = useUserProfile();
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
   const [seenIds, setSeenIds] = useState<string[]>([]);
+  const [suggestionMessage, setSuggestionMessage] = useState<string | null>(null);
   const [customName, setCustomName] = useState("");
   const [isSavingName, setIsSavingName] = useState(false);
+  const [coverageDraft, setCoverageDraft] = useState("");
+  const [lengthDraft, setLengthDraft] = useState("");
+  const [sleeveDraft, setSleeveDraft] = useState("");
+  const [necklineDraft, setNecklineDraft] = useState("");
+  const [opacityDraft, setOpacityDraft] = useState("");
+  const [isSavingCoverage, setIsSavingCoverage] = useState(false);
 
   const suggestOpacity = useSharedValue(0);
   const suggestTranslate = useSharedValue(20);
@@ -88,10 +104,16 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
       setSuggestions([]);
       setHasFetched(false);
       setSeenIds([]);
+      setSuggestionMessage(null);
       suggestOpacity.value = 0;
       suggestTranslate.value = 20;
     }
     setCustomName(item?.customName ?? "");
+    setCoverageDraft(item?.visualSignature?.coverage ?? "");
+    setLengthDraft(item?.visualSignature?.length ?? "");
+    setSleeveDraft(item?.visualSignature?.sleeve ?? "");
+    setNecklineDraft(item?.visualSignature?.neckline ?? "");
+    setOpacityDraft(item?.visualSignature?.opacity ?? "");
   }, [item?.id]);
 
   const handleFindMatches = async (excludeIds?: string[]) => {
@@ -107,10 +129,16 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
           selectedItem: item,
           wardrobe: items,
           excludeIds: excludeIds ?? [],
+          weather: condition,
+          temperature,
+          userGender: gender ?? undefined,
+          userAge: age ?? undefined,
+          stylingPreferences,
         }),
       });
-      const data = (await res.json()) as { suggestions: Suggestion[] };
+      const data = (await res.json()) as { suggestions: Suggestion[]; message?: string };
       const newSuggestions = data.suggestions ?? [];
+      setSuggestionMessage(data.message ?? null);
       setSuggestions(newSuggestions);
       setSeenIds((prev) => [...prev, ...newSuggestions.map((s) => s.id)]);
       setHasFetched(true);
@@ -149,6 +177,41 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
     }
   };
 
+  const handleSaveCoverage = async () => {
+    if (!item || isSavingCoverage) return;
+    setIsSavingCoverage(true);
+    try {
+      const current = item.visualSignature;
+      await updateItem(item.id, {
+        visualSignature: {
+          itemType: current?.itemType ?? item.name.toLowerCase(),
+          garmentFamily: current?.garmentFamily,
+          shape: current?.shape ?? "regular",
+          silhouette: current?.silhouette,
+          length: lengthDraft.trim().toLowerCase(),
+          pattern: current?.pattern ?? "solid",
+          materialFamily: current?.materialFamily ?? "unknown",
+          closures: current?.closures ?? [],
+          sleeve: sleeveDraft.trim().toLowerCase(),
+          collar: current?.collar ?? "not-applicable",
+          neckline: necklineDraft.trim().toLowerCase(),
+          rise: current?.rise,
+          coverage: coverageDraft.trim().toLowerCase(),
+          opacity: opacityDraft.trim().toLowerCase(),
+          layerRole: current?.layerRole,
+          toeStyle: current?.toeStyle,
+          heelType: current?.heelType,
+          heelHeight: current?.heelHeight,
+          bootShaft: current?.bootShaft,
+          features: current?.features ?? [],
+        },
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } finally {
+      setIsSavingCoverage(false);
+    }
+  };
+
   const resolvedItem = (id: string) => items.find((i) => i.id === id);
 
   if (!item) return null;
@@ -173,7 +236,7 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
             <Feather name="x" size={22} color={colors.foreground} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.foreground }]}>Item Details</Text>
+          <Text style={[styles.headerTitle, { color: colors.foreground }]}>{t("item_details")}</Text>
           <TouchableOpacity
             onPress={() => {
               onDelete(item.id);
@@ -192,7 +255,7 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.itemHero, { backgroundColor: item.imageUri ? colors.secondary : item.colorHex }]}>
+          <View style={[styles.itemHero, { backgroundColor: itemTone.background, borderColor: itemTone.border }]}>
             {item.imageUri ? (
               <Image
                 source={{ uri: item.imageUri }}
@@ -209,14 +272,14 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
           </View>
 
           <View style={styles.itemInfo}>
-            <Text style={[styles.itemName, { color: colors.foreground }]}>{getItemDisplayName(item)}</Text>
+            <Text style={[styles.itemName, { color: colors.foreground }]}>{item.customName ? getItemDisplayName(item, lang) : translateGeneratedClothingName(getItemDisplayName(item, lang), lang)}</Text>
             {item.customName ? (
               <Text style={[styles.aiDescription, { color: colors.mutedForeground }]}>
-                AI description: {item.name}
+                AI: {translateGeneratedClothingName(item.localizedNames?.[lang] || item.name, lang)}
               </Text>
             ) : null}
             <Text style={[styles.itemMeta, { color: colors.mutedForeground }]}>
-              {item.category.charAt(0).toUpperCase() + item.category.slice(1)} · {item.color}
+              {t(`cat_${item.category}`)} · {t(`color_${item.color.toLowerCase().replaceAll(" ", "_")}`)}
             </Text>
             <View style={styles.seasonsRow}>
               {item.seasons.map((s) => (
@@ -225,7 +288,7 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
                   style={[styles.seasonPill, { backgroundColor: colors.secondary }]}
                 >
                   <Text style={[styles.seasonText, { color: colors.mutedForeground }]}>
-                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                    {t(`season_${s}`)}
                   </Text>
                 </View>
               ))}
@@ -246,7 +309,7 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
               </View>
             )}
             <View style={styles.personalNameSection}>
-              <Text style={[styles.personalNameLabel, { color: colors.foreground }]}>Personal name (optional)</Text>
+              <Text style={[styles.personalNameLabel, { color: colors.foreground }]}>{t("personal_name_optional")}</Text>
               <View style={styles.personalNameRow}>
                 <TextInput
                   value={customName}
@@ -261,11 +324,23 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
                   disabled={isSavingName || customName.trim() === (item.customName ?? "")}
                   style={[styles.saveNameButton, { backgroundColor: colors.accent, opacity: isSavingName || customName.trim() === (item.customName ?? "") ? 0.5 : 1 }]}
                 >
-                  {isSavingName ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Text style={[styles.saveNameText, { color: colors.primaryForeground }]}>Save</Text>}
+                  {isSavingName ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Text style={[styles.saveNameText, { color: colors.primaryForeground }]}>{t("save")}</Text>}
                 </TouchableOpacity>
               </View>
-              {item.customName ? <Text style={[styles.personalNameHint, { color: colors.mutedForeground }]}>Clear it and save to restore the AI name as the title.</Text> : null}
+              {item.customName ? <Text style={[styles.personalNameHint, { color: colors.mutedForeground }]}>{t("restore_ai_name")}</Text> : null}
             </View>
+            {["tops", "bottoms", "dresses", "outerwear"].includes(item.category) ? <View style={styles.coverageEditor}>
+              <Text style={[styles.personalNameLabel, { color: colors.foreground }]}>Coverage details</Text>
+              <Text style={[styles.personalNameHint, { color: colors.mutedForeground }]}>Verify these details so automatic suggestions can safely match your profile.</Text>
+              <View style={styles.coverageGrid}>
+                <TextInput value={coverageDraft} onChangeText={setCoverageDraft} placeholder="maximum, modest…" placeholderTextColor={colors.mutedForeground} style={[styles.coverageInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]} />
+                <TextInput value={lengthDraft} onChangeText={setLengthDraft} placeholder="maxi, ankle…" placeholderTextColor={colors.mutedForeground} style={[styles.coverageInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]} />
+                <TextInput value={sleeveDraft} onChangeText={setSleeveDraft} placeholder="long, 3/4…" placeholderTextColor={colors.mutedForeground} style={[styles.coverageInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]} />
+                <TextInput value={necklineDraft} onChangeText={setNecklineDraft} placeholder="high, crew…" placeholderTextColor={colors.mutedForeground} style={[styles.coverageInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]} />
+                <TextInput value={opacityDraft} onChangeText={setOpacityDraft} placeholder="opaque, sheer…" placeholderTextColor={colors.mutedForeground} style={[styles.coverageInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]} />
+              </View>
+              <TouchableOpacity onPress={() => void handleSaveCoverage()} disabled={isSavingCoverage} style={[styles.coverageSave, { backgroundColor: colors.accent, opacity: isSavingCoverage ? 0.5 : 1 }]}>{isSavingCoverage ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Text style={[styles.saveNameText, { color: colors.primaryForeground }]}>Save coverage details</Text>}</TouchableOpacity>
+            </View> : null}
           </View>
 
           <View style={styles.actions}>
@@ -274,7 +349,7 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
               style={[styles.actionBtn, { backgroundColor: colors.accent }]}
             >
               <Feather name="zap" size={15} color={colors.primaryForeground} />
-              <Text style={[styles.actionBtnText, { color: colors.primaryForeground }]}>Style This Item</Text>
+              <Text style={[styles.actionBtnText, { color: colors.primaryForeground }]}>{t("style_this_item")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => handleFindMatches(hasFetched ? seenIds : [])}
@@ -309,25 +384,26 @@ export default function ItemDetailSheet({ item, onClose, onDelete }: Props) {
               </Text>
               {suggestions.length === 0 && (
                 <Text style={[styles.suggestionsEmpty, { color: colors.mutedForeground }]}>
-                  Add more items to your wardrobe to get pairing suggestions.
+                  {suggestionMessage ?? "Add more items to your wardrobe to get pairing suggestions."}
                 </Text>
               )}
               {suggestions.map((s) => {
                 const match = resolvedItem(s.id);
                 if (!match) return null;
                 const vibeColor = VIBE_COLORS[s.vibe] ?? colors.accent;
+                const matchTone = getGarmentTone(match.colorHex, colors.border);
                 return (
                   <View
                     key={s.id}
                     style={[
                       styles.suggestionCard,
-                      { backgroundColor: colors.card, borderColor: colors.border },
+                      { backgroundColor: matchTone.background, borderColor: matchTone.border },
                     ]}
                   >
                     <View
                       style={[
                         styles.suggestionColorBlock,
-                        { backgroundColor: match.imageUri ? colors.secondary : match.colorHex },
+                        { backgroundColor: matchTone.background },
                       ]}
                     >
                       {match.imageUri ? (
@@ -430,8 +506,9 @@ const styles = StyleSheet.create({
     // A phone can use a full-width square. On desktop, that same rule turns a
     // single item into a giant image, so keep it as a compact product stage.
     ...(Platform.OS === "web"
-      ? { height: 340, maxWidth: 760, alignSelf: "center" as const, borderRadius: 18 }
+      ? { aspectRatio: 1, maxWidth: 520, alignSelf: "center" as const, borderRadius: 18 }
       : { aspectRatio: 1 }),
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -454,6 +531,10 @@ const styles = StyleSheet.create({
   saveNameButton: { minWidth: 64, minHeight: 42, borderRadius: 12, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },
   saveNameText: { fontSize: 13, fontWeight: "700" },
   personalNameHint: { fontSize: 11, lineHeight: 15 },
+  coverageEditor: { gap: 8, marginTop: 14 },
+  coverageGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  coverageInput: { flexGrow: 1, flexBasis: "44%", borderWidth: 1, borderRadius: 12, paddingHorizontal: 11, paddingVertical: 9, fontSize: 13 },
+  coverageSave: { minHeight: 42, borderRadius: 12, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },
   seasonsRow: { flexDirection: "row", gap: 6, marginTop: 4 },
   seasonPill: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20 },
   seasonText: { fontSize: 11, fontWeight: "600" },
@@ -491,7 +572,7 @@ const styles = StyleSheet.create({
   },
   suggestionColorBlock: {
     width: 76,
-    height: 96,
+    height: 76,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,

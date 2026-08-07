@@ -1,5 +1,5 @@
 import { getApiBase } from "../constants/api";
-import type { ClothingItem, Currency, SavedOutfit } from "./WardrobeContext";
+import type { ClothingItem, ClothingVisualSignature, Currency, SavedOutfit } from "./WardrobeContext";
 import { supabase } from "@/lib/supabase";
 
 const API_BASE = getApiBase();
@@ -19,8 +19,10 @@ type SupabaseWardrobeItem = {
   purchase_currency?: Currency | null;
   times_worn: number;
   photo_path: string | null;
+  image_processing_version?: number | null;
   tags: string[];
   brand_logo: ClothingItem["brandLogo"] | null;
+  visual_signature?: ClothingVisualSignature | null;
   created_at: string;
 };
 
@@ -59,8 +61,10 @@ async function toClientItem(item: SupabaseWardrobeItem): Promise<ClothingItem> {
     purchaseCurrency: item.purchase_currency ?? "USD",
     timesWorn: item.times_worn,
     imageUri: await resolvePrivateImage(item.photo_path),
+    imageProcessingVersion: item.image_processing_version ?? 0,
     tags: item.tags,
     brandLogo: item.brand_logo ?? undefined,
+    visualSignature: item.visual_signature ?? undefined,
     createdAt: item.created_at,
   };
 }
@@ -247,13 +251,17 @@ export async function fetchServerOutfits(): Promise<SavedOutfit[]> {
   })));
 }
 
-export async function syncItemToServer(item: ClothingItem): Promise<void> {
+export async function syncItemToServer(
+  item: ClothingItem,
+  options: { waitForImage?: boolean } = {},
+): Promise<boolean> {
   if (supabase) {
+    const client = supabase;
     // Items created before Supabase used timestamp IDs; leave those on-device
     // rather than accidentally creating duplicate cloud records.
-    if (!isUuid(item.id)) return;
+    if (!isUuid(item.id)) return false;
     const { data: authData } = await supabase.auth.getUser();
-    if (!authData.user) return;
+    if (!authData.user) return false;
     // Save the lightweight wardrobe record before any slow image work. This
     // means an item survives navigation, refreshes and slow connections even
     // if studio processing or Storage uploads are still running.
@@ -262,7 +270,7 @@ export async function syncItemToServer(item: ClothingItem): Promise<void> {
       .select("photo_path")
       .eq("id", item.id)
       .maybeSingle();
-    const { error } = await supabase.from("wardrobe_items").upsert({
+    const cloudItem = {
       id: item.id,
       user_id: authData.user.id,
       name: item.name,
@@ -280,34 +288,101 @@ export async function syncItemToServer(item: ClothingItem): Promise<void> {
       photo_path: existing?.photo_path ?? null,
       tags: item.tags,
       brand_logo: item.brandLogo ?? null,
+      visual_signature: item.visualSignature ?? null,
+      image_processing_version: item.imageProcessingVersion ?? 0,
       created_at: item.createdAt,
-    });
-    if (error || !item.imageUri) return;
+    };
+    let { error } = await supabase.from("wardrobe_items").upsert(cloudItem);
+    // Keep current installations usable while the additive migration is being
+    // rolled out. Once PostgREST sees the column, the version is included on
+    // the first write without requiring an app update.
+    if (error?.message.includes("image_processing_version")) {
+      const { image_processing_version: _version, ...legacyCloudItem } = cloudItem;
+      ({ error } = await supabase.from("wardrobe_items").upsert(legacyCloudItem));
+    }
+    if (error) return false;
+    if (!item.imageUri) return true;
 
     // Image upload is deliberately non-blocking. Product art can take longer
     // than the metadata save, but it must never make the user wait to save an
     // item or cause that item to disappear after a refresh.
-    void (async () => {
+    const publishImage = async (): Promise<boolean> => {
       const photoPath = await uploadPrivateImage(authData.user!.id, item.id, item.imageUri);
-      if (!photoPath) return;
-      await supabase
+      if (!photoPath) return false;
+      let { error: imageUpdateError } = await client
         .from("wardrobe_items")
-        .update({ photo_path: photoPath })
+        .update({
+          photo_path: photoPath,
+          image_processing_version: item.imageProcessingVersion ?? 0,
+        })
         .eq("id", item.id)
         .eq("user_id", authData.user!.id);
-    })();
-    return;
+      if (imageUpdateError?.message.includes("image_processing_version")) {
+        ({ error: imageUpdateError } = await client
+          .from("wardrobe_items")
+          .update({ photo_path: photoPath })
+          .eq("id", item.id)
+          .eq("user_id", authData.user!.id));
+      }
+      return !imageUpdateError;
+    };
+    if (options.waitForImage) return publishImage();
+    void publishImage();
+    return true;
   }
 
   try {
-    await fetch(`${API_BASE}/items`, {
+    const response = await fetch(`${API_BASE}/items`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(item),
       signal: AbortSignal.timeout(5000),
     });
+    return response.ok;
   } catch {
     // Server sync is best-effort
+    return false;
+  }
+}
+
+/** Replace an existing product image and publish its processing version only
+ * after private Storage contains the replacement. */
+export async function replaceItemImageOnServer(item: ClothingItem): Promise<boolean> {
+  if (!item.imageUri) return false;
+  if (supabase) {
+    if (!isUuid(item.id)) return false;
+    const { data: authData } = await supabase.auth.getUser();
+    if (!authData.user) return false;
+    const photoPath = await uploadPrivateImage(authData.user.id, item.id, item.imageUri);
+    if (!photoPath) return false;
+    let { error } = await supabase
+      .from("wardrobe_items")
+      .update({
+        photo_path: photoPath,
+        image_processing_version: item.imageProcessingVersion ?? 0,
+      })
+      .eq("id", item.id)
+      .eq("user_id", authData.user.id);
+    if (error?.message.includes("image_processing_version")) {
+      ({ error } = await supabase
+        .from("wardrobe_items")
+        .update({ photo_path: photoPath })
+        .eq("id", item.id)
+        .eq("user_id", authData.user.id));
+    }
+    return !error;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/items`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(item),
+      signal: AbortSignal.timeout(15_000),
+    });
+    return response.ok;
+  } catch {
+    return false;
   }
 }
 

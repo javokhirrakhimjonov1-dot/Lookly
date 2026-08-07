@@ -1,8 +1,9 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@/components/FeatherIcon";
 import * as Haptics from "expo-haptics";
 import React from "react";
 import {
   Animated,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -31,6 +32,7 @@ function getInitials(name: string): string {
 }
 
 const AVATAR_COLORS = ["#C8906A", "#8B7355", "#2D5BE3", "#6B21A8", "#CC0000"];
+const USE_NATIVE_DRIVER = Platform.OS !== "web";
 
 interface Props {
   look: Look;
@@ -50,8 +52,8 @@ export default function LookCard({ look, onLike, onDelete }: Props) {
   const handleLike = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     Animated.sequence([
-      Animated.timing(scaleAnim, { toValue: 1.3, duration: 100, useNativeDriver: true }),
-      Animated.timing(scaleAnim, { toValue: 1, duration: 100, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 1.3, duration: 100, useNativeDriver: USE_NATIVE_DRIVER }),
+      Animated.timing(scaleAnim, { toValue: 1, duration: 100, useNativeDriver: USE_NATIVE_DRIVER }),
     ]).start();
     onLike();
   };
